@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script>
+      (function() {
+        try {
+          var originalFetch = window.fetch;
+          try {
+            Object.defineProperty(window, 'fetch', {
+              get: function() { return originalFetch; },
+              set: function(val) { console.warn("Ignoring write to window.fetch"); },
+              configurable: true,
+              enumerable: true
+            });
+          } catch (err1) {
+            try {
+              Object.defineProperty(Window.prototype, 'fetch', {
+                get: function() { return originalFetch; },
+                set: function(val) { console.warn("Ignoring write to Window.prototype.fetch"); },
+                configurable: true,
+                enumerable: true
+              });
+            } catch (err2) {
+              if (typeof globalThis !== 'undefined') {
+                Object.defineProperty(globalThis, 'fetch', {
+                  get: function() { return originalFetch; },
+                  set: function(val) { console.warn("Ignoring write to globalThis.fetch"); },
+                  configurable: true,
+                  enumerable: true
+                });
+              }
+            }
+          }
+        } catch (e) {
+          console.error("fetch polyfill safety patch failed:", e);
+        }
+      })();
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>My Google AI Studio App</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

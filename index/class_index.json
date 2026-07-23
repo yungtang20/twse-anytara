@@ -1,0 +1,18 @@
+[
+  {
+    "class_name": "SupportResistanceEngine",
+    "file": "src/lib/strategy-engine.ts",
+    "methods": [],
+    "properties": [],
+    "inheritance": "",
+    "composition": []
+  },
+  {
+    "class_name": "ErrorBoundary",
+    "file": "src/main.tsx",
+    "methods": [],
+    "properties": [],
+    "inheritance": "",
+    "composition": []
+  }
+]

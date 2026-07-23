@@ -1,0 +1,841 @@
+{
+  "app/applet/test-db.js": {
+    "path": "app/applet/test-db.js",
+    "module": "Configuration & Utilities",
+    "description": "Configuration / Script",
+    "exports": [],
+    "imports": [
+      "better-sqlite3"
+    ],
+    "dependencies": [
+      "better-sqlite3"
+    ],
+    "owner_module": "system"
+  },
+  "app/applet/test-mis.js": {
+    "path": "app/applet/test-mis.js",
+    "module": "Configuration & Utilities",
+    "description": "Configuration / Script",
+    "exports": [],
+    "imports": [],
+    "dependencies": [],
+    "owner_module": "system"
+  },
+  "app/test-db.js": {
+    "path": "app/test-db.js",
+    "module": "Configuration & Utilities",
+    "description": "Configuration / Script",
+    "exports": [],
+    "imports": [
+      "better-sqlite3"
+    ],
+    "dependencies": [
+      "better-sqlite3"
+    ],
+    "owner_module": "system"
+  },
+  "index.html": {
+    "path": "index.html",
+    "module": "Configuration & Utilities",
+    "description": "Configuration / Script",
+    "exports": [],
+    "imports": [],
+    "dependencies": [],
+    "owner_module": "system"
+  },
+  "scripts/build_knowledge_base.js": {
+    "path": "scripts/build_knowledge_base.js",
+    "module": "Configuration & Utilities",
+    "description": "Configuration / Script",
+    "exports": [
+      "funcName"
+    ],
+    "imports": [
+      "fs",
+      "path"
+    ],
+    "dependencies": [],
+    "owner_module": "system"
+  },
+  "scripts/check_supabase.js": {
+    "path": "scripts/check_supabase.js",
+    "module": "Configuration & Utilities",
+    "description": "Configuration / Script",
+    "exports": [],
+    "imports": [
+      "@supabase/supabase-js",
+      "dotenv"
+    ],
+    "dependencies": [
+      "@supabase/supabase-js",
+      "dotenv"
+    ],
+    "owner_module": "system"
+  },
+  "scripts/complete_and_fetch_today.js": {
+    "path": "scripts/complete_and_fetch_today.js",
+    "module": "Configuration & Utilities",
+    "description": "Configuration / Script",
+    "exports": [],
+    "imports": [
+      "@supabase/supabase-js",
+      "better-sqlite3",
+      "path"
+    ],
+    "dependencies": [
+      "@supabase/supabase-js",
+      "better-sqlite3"
+    ],
+    "owner_module": "system"
+  },
+  "scripts/fast_sync.js": {
+    "path": "scripts/fast_sync.js",
+    "module": "Configuration & Utilities",
+    "description": "Configuration / Script",
+    "exports": [],
+    "imports": [
+      "@supabase/supabase-js",
+      "better-sqlite3",
+      "path"
+    ],
+    "dependencies": [
+      "@supabase/supabase-js",
+      "better-sqlite3"
+    ],
+    "owner_module": "system"
+  },
+  "scripts/fetch_today_only.js": {
+    "path": "scripts/fetch_today_only.js",
+    "module": "Configuration & Utilities",
+    "description": "Configuration / Script",
+    "exports": [],
+    "imports": [
+      "@supabase/supabase-js",
+      "better-sqlite3",
+      "path"
+    ],
+    "dependencies": [
+      "@supabase/supabase-js",
+      "better-sqlite3"
+    ],
+    "owner_module": "system"
+  },
+  "scripts/pull_from_supabase.js": {
+    "path": "scripts/pull_from_supabase.js",
+    "module": "Configuration & Utilities",
+    "description": "Configuration / Script",
+    "exports": [],
+    "imports": [
+      "@supabase/supabase-js",
+      "better-sqlite3",
+      "path"
+    ],
+    "dependencies": [
+      "@supabase/supabase-js",
+      "better-sqlite3"
+    ],
+    "owner_module": "system"
+  },
+  "scripts/syncData.ts": {
+    "path": "scripts/syncData.ts",
+    "module": "Configuration & Utilities",
+    "description": "Configuration / Script",
+    "exports": [],
+    "imports": [
+      "@supabase/supabase-js"
+    ],
+    "dependencies": [
+      "@supabase/supabase-js"
+    ],
+    "owner_module": "system"
+  },
+  "server/db.ts": {
+    "path": "server/db.ts",
+    "module": "Backend Server",
+    "description": "SQLite database schema initialization and connection management",
+    "exports": [
+      "initDb",
+      "getDb"
+    ],
+    "imports": [
+      "better-sqlite3",
+      "path",
+      "fs"
+    ],
+    "dependencies": [
+      "better-sqlite3"
+    ],
+    "owner_module": "server"
+  },
+  "server/routes.ts": {
+    "path": "server/routes.ts",
+    "module": "Backend Server",
+    "description": "Express routes handling all stock APIs, historical queries, and crawl updates",
+    "exports": [],
+    "imports": [
+      "express",
+      "child_process",
+      "fs",
+      "path",
+      "./db",
+      "../src/api/ai",
+      "../src/lib/strategy-engine"
+    ],
+    "dependencies": [
+      "express"
+    ],
+    "owner_module": "server"
+  },
+  "server/services.ts": {
+    "path": "server/services.ts",
+    "module": "Backend Server",
+    "description": "Taiwan Stock Exchange & TPEX APIs crawler, database synchronized pipelines",
+    "exports": [
+      "supabase",
+      "debugState",
+      "addLog",
+      "fetchFollowRedirects",
+      "getNormalizedProp",
+      "formatDateStr",
+      "getLatestTradingDate",
+      "formatTpexDateStr",
+      "fallbackTwseData",
+      "fallbackOtcData",
+      "stripHtml",
+      "parseNum",
+      "parseTwseIndex",
+      "parseTwseUpDown",
+      "parseTpexIndex",
+      "parseTpexUpDown",
+      "getTwseStatsFromDb",
+      "fetchRealtimeIndexFromMis",
+      "getTwseStats",
+      "getOtcStatsFromDb",
+      "getOtcStats",
+      "calcIndicators",
+      "getTradingDays",
+      "makeSeedRandom",
+      "generateMockHistory",
+      "generateMockInstitutional",
+      "generateMockShareholding",
+      "syncPopularDividendsIfNeeded"
+    ],
+    "imports": [
+      "https",
+      "http",
+      "@supabase/supabase-js",
+      "./db"
+    ],
+    "dependencies": [
+      "@supabase/supabase-js"
+    ],
+    "owner_module": "server"
+  },
+  "server.ts": {
+    "path": "server.ts",
+    "module": "System Entry Point (Server)",
+    "description": "Main Node.js system starter mounting Vite middleware and express server",
+    "exports": [],
+    "imports": [
+      "express",
+      "path",
+      "vite",
+      "dotenv",
+      "./server/db",
+      "./server/routes"
+    ],
+    "dependencies": [
+      "express",
+      "vite",
+      "dotenv"
+    ],
+    "owner_module": "system"
+  },
+  "src/App.tsx": {
+    "path": "src/App.tsx",
+    "module": "Frontend Shell",
+    "description": "Vite application shell directing routing selections and navigation rails",
+    "exports": [],
+    "imports": [
+      "react",
+      "./components/Layout",
+      "./components/views/DashboardView",
+      "./components/views/MarketsView",
+      "./components/views/StrategiesView",
+      "./components/views/SettingsView",
+      "./components/views/AIAnalysisView",
+      "./types"
+    ],
+    "dependencies": [
+      "react"
+    ],
+    "owner_module": "client"
+  },
+  "src/api/ai.ts": {
+    "path": "src/api/ai.ts",
+    "module": "Frontend API Client",
+    "description": "Configuration / Script",
+    "exports": [],
+    "imports": [
+      "express",
+      "mammoth",
+      "fs",
+      "path",
+      "openai",
+      "better-sqlite3",
+      "../config/apis"
+    ],
+    "dependencies": [
+      "express",
+      "mammoth",
+      "openai",
+      "better-sqlite3"
+    ],
+    "owner_module": "client"
+  },
+  "src/components/BottomNav.tsx": {
+    "path": "src/components/BottomNav.tsx",
+    "module": "Frontend Components",
+    "description": "Configuration / Script",
+    "exports": [
+      "BottomNav"
+    ],
+    "imports": [
+      "react",
+      "lucide-react",
+      "../types"
+    ],
+    "dependencies": [
+      "react",
+      "lucide-react"
+    ],
+    "owner_module": "client"
+  },
+  "src/components/ChipsBarChart.tsx": {
+    "path": "src/components/ChipsBarChart.tsx",
+    "module": "Frontend Components",
+    "description": "Configuration / Script",
+    "exports": [
+      "ChipsBarChart"
+    ],
+    "imports": [
+      "react"
+    ],
+    "dependencies": [
+      "react"
+    ],
+    "owner_module": "client"
+  },
+  "src/components/Header.tsx": {
+    "path": "src/components/Header.tsx",
+    "module": "Frontend Components",
+    "description": "Configuration / Script",
+    "exports": [
+      "Header"
+    ],
+    "imports": [
+      "lucide-react"
+    ],
+    "dependencies": [
+      "lucide-react"
+    ],
+    "owner_module": "client"
+  },
+  "src/components/KlineChart.tsx": {
+    "path": "src/components/KlineChart.tsx",
+    "module": "Frontend Components",
+    "description": "Visual candlestick chart renderer using custom chart designs",
+    "exports": [
+      "KlineOverlay",
+      "KlineChart"
+    ],
+    "imports": [
+      "react",
+      "lucide-react",
+      "../lib/indicators"
+    ],
+    "dependencies": [
+      "react",
+      "lucide-react"
+    ],
+    "owner_module": "client"
+  },
+  "src/components/Layout.tsx": {
+    "path": "src/components/Layout.tsx",
+    "module": "Frontend Components",
+    "description": "Configuration / Script",
+    "exports": [
+      "Layout"
+    ],
+    "imports": [
+      "react",
+      "./Sidebar",
+      "./Header",
+      "./BottomNav",
+      "../types"
+    ],
+    "dependencies": [
+      "react"
+    ],
+    "owner_module": "client"
+  },
+  "src/components/MarketChart.tsx": {
+    "path": "src/components/MarketChart.tsx",
+    "module": "Frontend Components",
+    "description": "Indices trend visualizer mapping real-time movements",
+    "exports": [
+      "MarketChart"
+    ],
+    "imports": [
+      "../types",
+      "../lib/utils"
+    ],
+    "dependencies": [],
+    "owner_module": "client"
+  },
+  "src/components/MarketDetailDashboard.tsx": {
+    "path": "src/components/MarketDetailDashboard.tsx",
+    "module": "Frontend Components",
+    "description": "Configuration / Script",
+    "exports": [
+      "MarketDetailDashboard"
+    ],
+    "imports": [
+      "react",
+      "./KlineChart",
+      "./ChipsBarChart",
+      "lucide-react"
+    ],
+    "dependencies": [
+      "react",
+      "lucide-react"
+    ],
+    "owner_module": "client"
+  },
+  "src/components/MoversList.tsx": {
+    "path": "src/components/MoversList.tsx",
+    "module": "Frontend Components",
+    "description": "Configuration / Script",
+    "exports": [
+      "MoversList"
+    ],
+    "imports": [
+      "lucide-react",
+      "../lib/utils"
+    ],
+    "dependencies": [
+      "lucide-react"
+    ],
+    "owner_module": "client"
+  },
+  "src/components/Sidebar.tsx": {
+    "path": "src/components/Sidebar.tsx",
+    "module": "Frontend Components",
+    "description": "Configuration / Script",
+    "exports": [
+      "Sidebar"
+    ],
+    "imports": [
+      "react",
+      "lucide-react",
+      "../types"
+    ],
+    "dependencies": [
+      "react",
+      "lucide-react"
+    ],
+    "owner_module": "client"
+  },
+  "src/components/StatCard.tsx": {
+    "path": "src/components/StatCard.tsx",
+    "module": "Frontend Components",
+    "description": "Configuration / Script",
+    "exports": [
+      "StatCard"
+    ],
+    "imports": [
+      "react",
+      "../types",
+      "../lib/utils",
+      "lucide-react"
+    ],
+    "dependencies": [
+      "react",
+      "lucide-react"
+    ],
+    "owner_module": "client"
+  },
+  "src/components/views/AIAnalysisView.tsx": {
+    "path": "src/components/views/AIAnalysisView.tsx",
+    "module": "Frontend Views",
+    "description": "AI agent chat module providing prompt-driven investment reports",
+    "exports": [
+      "AIAnalysisView"
+    ],
+    "imports": [
+      "react",
+      "react-markdown",
+      "motion/react"
+    ],
+    "dependencies": [
+      "react",
+      "react-markdown",
+      "motion"
+    ],
+    "owner_module": "client"
+  },
+  "src/components/views/ChipsPanel.tsx": {
+    "path": "src/components/views/ChipsPanel.tsx",
+    "module": "Frontend Views",
+    "description": "Configuration / Script",
+    "exports": [
+      "ChipsPanel"
+    ],
+    "imports": [
+      "react",
+      "../../lib/api"
+    ],
+    "dependencies": [
+      "react"
+    ],
+    "owner_module": "client"
+  },
+  "src/components/views/DashboardView.tsx": {
+    "path": "src/components/views/DashboardView.tsx",
+    "module": "Frontend Views",
+    "description": "Primary user interface aggregating market statistics, stock indices, and active gainers",
+    "exports": [
+      "DashboardView"
+    ],
+    "imports": [
+      "react",
+      "../../lib/utils",
+      "../../types"
+    ],
+    "dependencies": [
+      "react"
+    ],
+    "owner_module": "client"
+  },
+  "src/components/views/MAPanel.tsx": {
+    "path": "src/components/views/MAPanel.tsx",
+    "module": "Frontend Views",
+    "description": "Configuration / Script",
+    "exports": [
+      "MAPanel"
+    ],
+    "imports": [
+      "react",
+      "lucide-react",
+      "../../lib/api"
+    ],
+    "dependencies": [
+      "react",
+      "lucide-react"
+    ],
+    "owner_module": "client"
+  },
+  "src/components/views/MarketsView.tsx": {
+    "path": "src/components/views/MarketsView.tsx",
+    "module": "Frontend Views",
+    "description": "Interactive grid panel mapping list of stocks with filtering logic",
+    "exports": [
+      "MarketsView"
+    ],
+    "imports": [
+      "react",
+      "lucide-react",
+      "motion/react",
+      "../../lib/supabase",
+      "../MarketDetailDashboard",
+      "../../types/stock"
+    ],
+    "dependencies": [
+      "react",
+      "lucide-react",
+      "motion"
+    ],
+    "owner_module": "client"
+  },
+  "src/components/views/PatternPanel.tsx": {
+    "path": "src/components/views/PatternPanel.tsx",
+    "module": "Frontend Views",
+    "description": "Configuration / Script",
+    "exports": [
+      "PatternPanel"
+    ],
+    "imports": [
+      "react",
+      "../../lib/api"
+    ],
+    "dependencies": [
+      "react"
+    ],
+    "owner_module": "client"
+  },
+  "src/components/views/PredictionPanel.tsx": {
+    "path": "src/components/views/PredictionPanel.tsx",
+    "module": "Frontend Views",
+    "description": "Configuration / Script",
+    "exports": [
+      "PredictionPanel"
+    ],
+    "imports": [
+      "react",
+      "../../lib/api"
+    ],
+    "dependencies": [
+      "react"
+    ],
+    "owner_module": "client"
+  },
+  "src/components/views/SRPanel.tsx": {
+    "path": "src/components/views/SRPanel.tsx",
+    "module": "Frontend Views",
+    "description": "Configuration / Script",
+    "exports": [
+      "SRPanel"
+    ],
+    "imports": [
+      "react",
+      "../../lib/api"
+    ],
+    "dependencies": [
+      "react"
+    ],
+    "owner_module": "client"
+  },
+  "src/components/views/SettingsView.tsx": {
+    "path": "src/components/views/SettingsView.tsx",
+    "module": "Frontend Views",
+    "description": "Database synchronizer trigger dashboard, logs monitor, and file uploads",
+    "exports": [
+      "SettingsView"
+    ],
+    "imports": [
+      "react",
+      "motion/react"
+    ],
+    "dependencies": [
+      "react",
+      "motion"
+    ],
+    "owner_module": "client"
+  },
+  "src/components/views/StrategiesView.tsx": {
+    "path": "src/components/views/StrategiesView.tsx",
+    "module": "Frontend Views",
+    "description": "Stock screener running technical strategies (MA breakout, volume explosion, custom rules)",
+    "exports": [
+      "StrategiesView"
+    ],
+    "imports": [
+      "react",
+      "lucide-react",
+      "motion/react",
+      "./SRPanel",
+      "./MAPanel",
+      "./ChipsPanel",
+      "./PredictionPanel",
+      "./PatternPanel",
+      "../KlineChart",
+      "../ChipsBarChart"
+    ],
+    "dependencies": [
+      "react",
+      "lucide-react",
+      "motion"
+    ],
+    "owner_module": "client"
+  },
+  "src/config/apis.ts": {
+    "path": "src/config/apis.ts",
+    "module": "Frontend Configuration",
+    "description": "Configuration / Script",
+    "exports": [
+      "API_CONFIG"
+    ],
+    "imports": [],
+    "dependencies": [],
+    "owner_module": "client"
+  },
+  "src/index.css": {
+    "path": "src/index.css",
+    "module": "Configuration & Utilities",
+    "description": "Configuration / Script",
+    "exports": [],
+    "imports": [],
+    "dependencies": [],
+    "owner_module": "client"
+  },
+  "src/lib/api.ts": {
+    "path": "src/lib/api.ts",
+    "module": "Frontend Library",
+    "description": "Configuration / Script",
+    "exports": [
+      "IndexStats",
+      "StockMeta",
+      "StockIndicators",
+      "InstitutionalRow",
+      "StockQuote",
+      "MoverRow",
+      "MoversResult",
+      "SRAnalysis",
+      "MAAnalysis",
+      "ChipsAnalysis",
+      "PredictionAnalysis",
+      "PatternAnalysis",
+      "SRScanItem",
+      "MAScanItem",
+      "ChipsScanItem",
+      "PredictionScanItem",
+      "PatternScanItem"
+    ],
+    "imports": [
+      "./indicators"
+    ],
+    "dependencies": [],
+    "owner_module": "client"
+  },
+  "src/lib/indicators.ts": {
+    "path": "src/lib/indicators.ts",
+    "module": "Frontend Library",
+    "description": "Pure computations of moving averages, support and resistance, candlestick patterns",
+    "exports": [
+      "PriceData",
+      "calcMA",
+      "calcEMA",
+      "calcMACD",
+      "calcRSI",
+      "calcKD",
+      "calcATR",
+      "calcDeduction"
+    ],
+    "imports": [],
+    "dependencies": [],
+    "owner_module": "client"
+  },
+  "src/lib/strategy-engine.ts": {
+    "path": "src/lib/strategy-engine.ts",
+    "module": "Frontend Library",
+    "description": "Client-side rules processor matching technical indicator criteria",
+    "exports": [
+      "lightSrScore",
+      "SupportResistanceEngine",
+      "scanAndScoreStock"
+    ],
+    "imports": [],
+    "dependencies": [],
+    "owner_module": "client"
+  },
+  "src/lib/supabase.ts": {
+    "path": "src/lib/supabase.ts",
+    "module": "Frontend Library",
+    "description": "Configuration / Script",
+    "exports": [
+      "supabase"
+    ],
+    "imports": [
+      "@supabase/supabase-js"
+    ],
+    "dependencies": [
+      "@supabase/supabase-js"
+    ],
+    "owner_module": "client"
+  },
+  "src/lib/utils.ts": {
+    "path": "src/lib/utils.ts",
+    "module": "Frontend Library",
+    "description": "Configuration / Script",
+    "exports": [
+      "cn",
+      "formatTaipeiTime",
+      "getMarketStatus"
+    ],
+    "imports": [
+      "clsx",
+      "tailwind-merge"
+    ],
+    "dependencies": [
+      "clsx",
+      "tailwind-merge"
+    ],
+    "owner_module": "client"
+  },
+  "src/main.tsx": {
+    "path": "src/main.tsx",
+    "module": "Frontend Shell",
+    "description": "Configuration / Script",
+    "exports": [],
+    "imports": [
+      "react",
+      "react-dom/client",
+      "./App.tsx"
+    ],
+    "dependencies": [
+      "react",
+      "react-dom"
+    ],
+    "owner_module": "client"
+  },
+  "src/types/stock.ts": {
+    "path": "src/types/stock.ts",
+    "module": "Frontend Domain Types",
+    "description": "Configuration / Script",
+    "exports": [
+      "StockData"
+    ],
+    "imports": [],
+    "dependencies": [],
+    "owner_module": "client"
+  },
+  "src/types.ts": {
+    "path": "src/types.ts",
+    "module": "Configuration & Utilities",
+    "description": "Configuration / Script",
+    "exports": [
+      "AppView",
+      "MarketStat",
+      "ChartDataPoint"
+    ],
+    "imports": [],
+    "dependencies": [],
+    "owner_module": "client"
+  },
+  "src/vite-env.d.ts": {
+    "path": "src/vite-env.d.ts",
+    "module": "Configuration & Utilities",
+    "description": "Configuration / Script",
+    "exports": [],
+    "imports": [],
+    "dependencies": [],
+    "owner_module": "client"
+  },
+  "test-mis.js": {
+    "path": "test-mis.js",
+    "module": "Configuration & Utilities",
+    "description": "Configuration / Script",
+    "exports": [],
+    "imports": [],
+    "dependencies": [],
+    "owner_module": "system"
+  },
+  "vite.config.ts": {
+    "path": "vite.config.ts",
+    "module": "Configuration & Utilities",
+    "description": "Configuration / Script",
+    "exports": [],
+    "imports": [
+      "@tailwindcss/vite",
+      "@vitejs/plugin-react",
+      "path",
+      "vite"
+    ],
+    "dependencies": [
+      "@tailwindcss/vite",
+      "@vitejs/plugin-react",
+      "vite"
+    ],
+    "owner_module": "system"
+  }
+}

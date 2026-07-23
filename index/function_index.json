@@ -1,0 +1,1722 @@
+[
+  {
+    "function_name": "test",
+    "file": "app/applet/test-mis.js",
+    "line_range": "1-16",
+    "purpose": "Computes or runs routine related to test",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "ensureDirExists",
+    "file": "scripts/build_knowledge_base.js",
+    "line_range": "7-22",
+    "purpose": "Computes or runs routine related to ensureDirExists",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "getFiles",
+    "file": "scripts/build_knowledge_base.js",
+    "line_range": "14-29",
+    "purpose": "Computes or runs routine related to getFiles",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "getModuleFromPath",
+    "file": "scripts/build_knowledge_base.js",
+    "line_range": "51-66",
+    "purpose": "Computes or runs routine related to getModuleFromPath",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "getOwnerModule",
+    "file": "scripts/build_knowledge_base.js",
+    "line_range": "64-79",
+    "purpose": "Computes or runs routine related to getOwnerModule",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "funcName",
+    "file": "scripts/build_knowledge_base.js",
+    "line_range": "162-177",
+    "purpose": "Computes or runs routine related to funcName",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "check",
+    "file": "scripts/check_supabase.js",
+    "line_range": "15-30",
+    "purpose": "Computes or runs routine related to check",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "cleanFloat",
+    "file": "scripts/complete_and_fetch_today.js",
+    "line_range": "29-44",
+    "purpose": "Computes or runs routine related to cleanFloat",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "cleanInt",
+    "file": "scripts/complete_and_fetch_today.js",
+    "line_range": "37-52",
+    "purpose": "Computes or runs routine related to cleanInt",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "run",
+    "file": "scripts/complete_and_fetch_today.js",
+    "line_range": "45-60",
+    "purpose": "Computes or runs routine related to run",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchAndInsertTable",
+    "file": "scripts/fast_sync.js",
+    "line_range": "24-39",
+    "purpose": "Computes or runs routine related to fetchAndInsertTable",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "run",
+    "file": "scripts/fast_sync.js",
+    "line_range": "87-102",
+    "purpose": "Computes or runs routine related to run",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "cleanFloat",
+    "file": "scripts/fetch_today_only.js",
+    "line_range": "67-82",
+    "purpose": "Computes or runs routine related to cleanFloat",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "cleanInt",
+    "file": "scripts/fetch_today_only.js",
+    "line_range": "75-90",
+    "purpose": "Computes or runs routine related to cleanInt",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "run",
+    "file": "scripts/fetch_today_only.js",
+    "line_range": "83-98",
+    "purpose": "Computes or runs routine related to run",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "run",
+    "file": "scripts/pull_from_supabase.js",
+    "line_range": "24-39",
+    "purpose": "Computes or runs routine related to run",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchAndInsertTable",
+    "file": "scripts/pull_from_supabase.js",
+    "line_range": "81-96",
+    "purpose": "Computes or runs routine related to fetchAndInsertTable",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "getLatestTradingDate",
+    "file": "scripts/syncData.ts",
+    "line_range": "9-24",
+    "purpose": "Computes or runs routine related to getLatestTradingDate",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "parseNum",
+    "file": "scripts/syncData.ts",
+    "line_range": "17-32",
+    "purpose": "Computes or runs routine related to parseNum",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "parseSpread",
+    "file": "scripts/syncData.ts",
+    "line_range": "23-38",
+    "purpose": "Computes or runs routine related to parseSpread",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "syncDailyPrices",
+    "file": "scripts/syncData.ts",
+    "line_range": "32-47",
+    "purpose": "Computes or runs routine related to syncDailyPrices",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "initDb",
+    "file": "server/db.ts",
+    "line_range": "7-22",
+    "purpose": "Computes or runs routine related to initDb",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "getDb",
+    "file": "server/db.ts",
+    "line_range": "185-200",
+    "purpose": "Computes or runs routine related to getDb",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "updateEnvFile",
+    "file": "server/routes.ts",
+    "line_range": "27-42",
+    "purpose": "Computes or runs routine related to updateEnvFile",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchEngineRows",
+    "file": "server/routes.ts",
+    "line_range": "60-75",
+    "purpose": "Computes or runs routine related to fetchEngineRows",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "clusterLevels",
+    "file": "server/routes.ts",
+    "line_range": "1317-1332",
+    "purpose": "Computes or runs routine related to clusterLevels",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "calcMA",
+    "file": "server/routes.ts",
+    "line_range": "1441-1456",
+    "purpose": "Computes or runs routine related to calcMA",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "getTrend",
+    "file": "server/routes.ts",
+    "line_range": "1454-1469",
+    "purpose": "Computes or runs routine related to getTrend",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "getTomorrow",
+    "file": "server/routes.ts",
+    "line_range": "1465-1480",
+    "purpose": "Computes or runs routine related to getTomorrow",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "seededRandom",
+    "file": "server/routes.ts",
+    "line_range": "1606-1621",
+    "purpose": "Computes or runs routine related to seededRandom",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "seededRandom",
+    "file": "server/routes.ts",
+    "line_range": "1860-1875",
+    "purpose": "Computes or runs routine related to seededRandom",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "addLog",
+    "file": "server/services.ts",
+    "line_range": "23-38",
+    "purpose": "Computes or runs routine related to addLog",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchFollowRedirects",
+    "file": "server/services.ts",
+    "line_range": "30-45",
+    "purpose": "Computes or runs routine related to fetchFollowRedirects",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "getNormalizedProp",
+    "file": "server/services.ts",
+    "line_range": "50-65",
+    "purpose": "Computes or runs routine related to getNormalizedProp",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "stripHtml",
+    "file": "server/services.ts",
+    "line_range": "126-141",
+    "purpose": "Computes or runs routine related to stripHtml",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "parseNum",
+    "file": "server/services.ts",
+    "line_range": "129-144",
+    "purpose": "Computes or runs routine related to parseNum",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "parseTwseIndex",
+    "file": "server/services.ts",
+    "line_range": "132-147",
+    "purpose": "Computes or runs routine related to parseTwseIndex",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "parseTwseUpDown",
+    "file": "server/services.ts",
+    "line_range": "152-167",
+    "purpose": "Computes or runs routine related to parseTwseUpDown",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "parseTpexIndex",
+    "file": "server/services.ts",
+    "line_range": "177-192",
+    "purpose": "Computes or runs routine related to parseTpexIndex",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "parseTpexUpDown",
+    "file": "server/services.ts",
+    "line_range": "193-208",
+    "purpose": "Computes or runs routine related to parseTpexUpDown",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "getTwseStatsFromDb",
+    "file": "server/services.ts",
+    "line_range": "210-225",
+    "purpose": "Computes or runs routine related to getTwseStatsFromDb",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchRealtimeIndexFromMis",
+    "file": "server/services.ts",
+    "line_range": "267-282",
+    "purpose": "Computes or runs routine related to fetchRealtimeIndexFromMis",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "getTwseStats",
+    "file": "server/services.ts",
+    "line_range": "300-315",
+    "purpose": "Computes or runs routine related to getTwseStats",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "getOtcStatsFromDb",
+    "file": "server/services.ts",
+    "line_range": "465-480",
+    "purpose": "Computes or runs routine related to getOtcStatsFromDb",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "getOtcStats",
+    "file": "server/services.ts",
+    "line_range": "522-537",
+    "purpose": "Computes or runs routine related to getOtcStats",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "calcIndicators",
+    "file": "server/services.ts",
+    "line_range": "721-736",
+    "purpose": "Computes or runs routine related to calcIndicators",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "ma",
+    "file": "server/services.ts",
+    "line_range": "726-741",
+    "purpose": "Computes or runs routine related to ma",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "getTradingDays",
+    "file": "server/services.ts",
+    "line_range": "752-767",
+    "purpose": "Computes or runs routine related to getTradingDays",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "makeSeedRandom",
+    "file": "server/services.ts",
+    "line_range": "766-781",
+    "purpose": "Computes or runs routine related to makeSeedRandom",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "generateMockHistory",
+    "file": "server/services.ts",
+    "line_range": "777-792",
+    "purpose": "Computes or runs routine related to generateMockHistory",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "generateMockInstitutional",
+    "file": "server/services.ts",
+    "line_range": "808-823",
+    "purpose": "Computes or runs routine related to generateMockInstitutional",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "generateMockShareholding",
+    "file": "server/services.ts",
+    "line_range": "827-842",
+    "purpose": "Computes or runs routine related to generateMockShareholding",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "syncPopularDividendsIfNeeded",
+    "file": "server/services.ts",
+    "line_range": "847-862",
+    "purpose": "Computes or runs routine related to syncPopularDividendsIfNeeded",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "startServer",
+    "file": "server.ts",
+    "line_range": "11-26",
+    "purpose": "Computes or runs routine related to startServer",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "App",
+    "file": "src/App.tsx",
+    "line_range": "15-30",
+    "purpose": "Computes or runs routine related to App",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "generateContentWithFallback",
+    "file": "src/api/ai.ts",
+    "line_range": "10-25",
+    "purpose": "Computes or runs routine related to generateContentWithFallback",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "aiAnalysisHandler",
+    "file": "src/api/ai.ts",
+    "line_range": "53-68",
+    "purpose": "Computes or runs routine related to aiAnalysisHandler",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "addLog",
+    "file": "src/api/ai.ts",
+    "line_range": "62-77",
+    "purpose": "Computes or runs routine related to addLog",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "BottomNav",
+    "file": "src/components/BottomNav.tsx",
+    "line_range": "10-25",
+    "purpose": "Computes or runs routine related to BottomNav",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "InstitutionalTooltip",
+    "file": "src/components/ChipsBarChart.tsx",
+    "line_range": "17-32",
+    "purpose": "Computes or runs routine related to InstitutionalTooltip",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "WhaleTooltip",
+    "file": "src/components/ChipsBarChart.tsx",
+    "line_range": "34-49",
+    "purpose": "Computes or runs routine related to WhaleTooltip",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "ChipsBarChart",
+    "file": "src/components/ChipsBarChart.tsx",
+    "line_range": "45-60",
+    "purpose": "Computes or runs routine related to ChipsBarChart",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "Header",
+    "file": "src/components/Header.tsx",
+    "line_range": "3-18",
+    "purpose": "Computes or runs routine related to Header",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "CustomTooltip",
+    "file": "src/components/KlineChart.tsx",
+    "line_range": "26-41",
+    "purpose": "Computes or runs routine related to CustomTooltip",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "KlineChart",
+    "file": "src/components/KlineChart.tsx",
+    "line_range": "58-73",
+    "purpose": "Computes or runs routine related to KlineChart",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "Layout",
+    "file": "src/components/Layout.tsx",
+    "line_range": "13-28",
+    "purpose": "Computes or runs routine related to Layout",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "MarketChart",
+    "file": "src/components/MarketChart.tsx",
+    "line_range": "19-34",
+    "purpose": "Computes or runs routine related to MarketChart",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "MarketDetailDashboard",
+    "file": "src/components/MarketDetailDashboard.tsx",
+    "line_range": "10-25",
+    "purpose": "Computes or runs routine related to MarketDetailDashboard",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "MoversList",
+    "file": "src/components/MoversList.tsx",
+    "line_range": "12-27",
+    "purpose": "Computes or runs routine related to MoversList",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "Sidebar",
+    "file": "src/components/Sidebar.tsx",
+    "line_range": "10-25",
+    "purpose": "Computes or runs routine related to Sidebar",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "NavItem",
+    "file": "src/components/Sidebar.tsx",
+    "line_range": "35-50",
+    "purpose": "Computes or runs routine related to NavItem",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "AIAnalysisView",
+    "file": "src/components/views/AIAnalysisView.tsx",
+    "line_range": "53-68",
+    "purpose": "Computes or runs routine related to AIAnalysisView",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "runAnalysis",
+    "file": "src/components/views/AIAnalysisView.tsx",
+    "line_range": "85-100",
+    "purpose": "Computes or runs routine related to runAnalysis",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "getStatusBadge",
+    "file": "src/components/views/AIAnalysisView.tsx",
+    "line_range": "145-160",
+    "purpose": "Computes or runs routine related to getStatusBadge",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "getPipelineStatus",
+    "file": "src/components/views/AIAnalysisView.tsx",
+    "line_range": "160-175",
+    "purpose": "Computes or runs routine related to getPipelineStatus",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "handleCopy",
+    "file": "src/components/views/AIAnalysisView.tsx",
+    "line_range": "194-209",
+    "purpose": "Computes or runs routine related to handleCopy",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "ChipsPanel",
+    "file": "src/components/views/ChipsPanel.tsx",
+    "line_range": "8-23",
+    "purpose": "Computes or runs routine related to ChipsPanel",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "CollapsibleCard",
+    "file": "src/components/views/DashboardView.tsx",
+    "line_range": "93-108",
+    "purpose": "Computes or runs routine related to CollapsibleCard",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "DashboardView",
+    "file": "src/components/views/DashboardView.tsx",
+    "line_range": "166-181",
+    "purpose": "Computes or runs routine related to DashboardView",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "loadTwse",
+    "file": "src/components/views/DashboardView.tsx",
+    "line_range": "217-232",
+    "purpose": "Computes or runs routine related to loadTwse",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "loadOtc",
+    "file": "src/components/views/DashboardView.tsx",
+    "line_range": "246-261",
+    "purpose": "Computes or runs routine related to loadOtc",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "formatChange",
+    "file": "src/components/views/DashboardView.tsx",
+    "line_range": "356-371",
+    "purpose": "Computes or runs routine related to formatChange",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "formatPercent",
+    "file": "src/components/views/DashboardView.tsx",
+    "line_range": "357-372",
+    "purpose": "Computes or runs routine related to formatPercent",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "formatAmount",
+    "file": "src/components/views/DashboardView.tsx",
+    "line_range": "358-373",
+    "purpose": "Computes or runs routine related to formatAmount",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "changeColor",
+    "file": "src/components/views/DashboardView.tsx",
+    "line_range": "359-374",
+    "purpose": "Computes or runs routine related to changeColor",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "safeToFixed",
+    "file": "src/components/views/DashboardView.tsx",
+    "line_range": "362-377",
+    "purpose": "Computes or runs routine related to safeToFixed",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "MAPanel",
+    "file": "src/components/views/MAPanel.tsx",
+    "line_range": "11-26",
+    "purpose": "Computes or runs routine related to MAPanel",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "TrendIcon",
+    "file": "src/components/views/MAPanel.tsx",
+    "line_range": "24-39",
+    "purpose": "Computes or runs routine related to TrendIcon",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "generateAsciiHeatmap",
+    "file": "src/components/views/MarketsView.tsx",
+    "line_range": "9-24",
+    "purpose": "Computes or runs routine related to generateAsciiHeatmap",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "getPrevTradingDayStr",
+    "file": "src/components/views/MarketsView.tsx",
+    "line_range": "56-71",
+    "purpose": "Computes or runs routine related to getPrevTradingDayStr",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "MarketsView",
+    "file": "src/components/views/MarketsView.tsx",
+    "line_range": "71-86",
+    "purpose": "Computes or runs routine related to MarketsView",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "querySupabase",
+    "file": "src/components/views/MarketsView.tsx",
+    "line_range": "98-113",
+    "purpose": "Computes or runs routine related to querySupabase",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "getLots",
+    "file": "src/components/views/MarketsView.tsx",
+    "line_range": "159-174",
+    "purpose": "Computes or runs routine related to getLots",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "maxIn",
+    "file": "src/components/views/MarketsView.tsx",
+    "line_range": "282-297",
+    "purpose": "Computes or runs routine related to maxIn",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "minIn",
+    "file": "src/components/views/MarketsView.tsx",
+    "line_range": "283-298",
+    "purpose": "Computes or runs routine related to minIn",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "calcMa",
+    "file": "src/components/views/MarketsView.tsx",
+    "line_range": "284-299",
+    "purpose": "Computes or runs routine related to calcMa",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "formatTaipeiTime",
+    "file": "src/components/views/MarketsView.tsx",
+    "line_range": "388-403",
+    "purpose": "Computes or runs routine related to formatTaipeiTime",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "loadStock",
+    "file": "src/components/views/MarketsView.tsx",
+    "line_range": "402-417",
+    "purpose": "Computes or runs routine related to loadStock",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "handleSearch",
+    "file": "src/components/views/MarketsView.tsx",
+    "line_range": "415-430",
+    "purpose": "Computes or runs routine related to handleSearch",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "handleQuickSelect",
+    "file": "src/components/views/MarketsView.tsx",
+    "line_range": "422-437",
+    "purpose": "Computes or runs routine related to handleQuickSelect",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "triggerDailyUpdate",
+    "file": "src/components/views/MarketsView.tsx",
+    "line_range": "427-442",
+    "purpose": "Computes or runs routine related to triggerDailyUpdate",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "getASCIIHeaderBox",
+    "file": "src/components/views/MarketsView.tsx",
+    "line_range": "479-494",
+    "purpose": "Computes or runs routine related to getASCIIHeaderBox",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "PatternPanel",
+    "file": "src/components/views/PatternPanel.tsx",
+    "line_range": "8-23",
+    "purpose": "Computes or runs routine related to PatternPanel",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "PredictionPanel",
+    "file": "src/components/views/PredictionPanel.tsx",
+    "line_range": "8-23",
+    "purpose": "Computes or runs routine related to PredictionPanel",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "SRPanel",
+    "file": "src/components/views/SRPanel.tsx",
+    "line_range": "8-23",
+    "purpose": "Computes or runs routine related to SRPanel",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "SettingsView",
+    "file": "src/components/views/SettingsView.tsx",
+    "line_range": "8-23",
+    "purpose": "Computes or runs routine related to SettingsView",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchRealDatabaseStatus",
+    "file": "src/components/views/SettingsView.tsx",
+    "line_range": "115-130",
+    "purpose": "Computes or runs routine related to fetchRealDatabaseStatus",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchCurrentSettings",
+    "file": "src/components/views/SettingsView.tsx",
+    "line_range": "129-144",
+    "purpose": "Computes or runs routine related to fetchCurrentSettings",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "handleManualUpdate",
+    "file": "src/components/views/SettingsView.tsx",
+    "line_range": "145-160",
+    "purpose": "Computes or runs routine related to handleManualUpdate",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "handleSaveSettings",
+    "file": "src/components/views/SettingsView.tsx",
+    "line_range": "175-190",
+    "purpose": "Computes or runs routine related to handleSaveSettings",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "handleFinMindBackfill",
+    "file": "src/components/views/SettingsView.tsx",
+    "line_range": "209-224",
+    "purpose": "Computes or runs routine related to handleFinMindBackfill",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "handleDragOver",
+    "file": "src/components/views/SettingsView.tsx",
+    "line_range": "258-273",
+    "purpose": "Computes or runs routine related to handleDragOver",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "handleDragLeave",
+    "file": "src/components/views/SettingsView.tsx",
+    "line_range": "263-278",
+    "purpose": "Computes or runs routine related to handleDragLeave",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "handleDrop",
+    "file": "src/components/views/SettingsView.tsx",
+    "line_range": "267-282",
+    "purpose": "Computes or runs routine related to handleDrop",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "handleFileSelect",
+    "file": "src/components/views/SettingsView.tsx",
+    "line_range": "282-297",
+    "purpose": "Computes or runs routine related to handleFileSelect",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "handleTdccUpload",
+    "file": "src/components/views/SettingsView.tsx",
+    "line_range": "291-306",
+    "purpose": "Computes or runs routine related to handleTdccUpload",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "handleTdccAutoFetch",
+    "file": "src/components/views/SettingsView.tsx",
+    "line_range": "342-357",
+    "purpose": "Computes or runs routine related to handleTdccAutoFetch",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "buildOverlay",
+    "file": "src/components/views/StrategiesView.tsx",
+    "line_range": "33-48",
+    "purpose": "Computes or runs routine related to buildOverlay",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "StrategiesView",
+    "file": "src/components/views/StrategiesView.tsx",
+    "line_range": "66-81",
+    "purpose": "Computes or runs routine related to StrategiesView",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "loadStockData",
+    "file": "src/components/views/StrategiesView.tsx",
+    "line_range": "103-118",
+    "purpose": "Computes or runs routine related to loadStockData",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "handleSyncFinMind",
+    "file": "src/components/views/StrategiesView.tsx",
+    "line_range": "138-153",
+    "purpose": "Computes or runs routine related to handleSyncFinMind",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "handleSearch",
+    "file": "src/components/views/StrategiesView.tsx",
+    "line_range": "204-219",
+    "purpose": "Computes or runs routine related to handleSearch",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "selectStock",
+    "file": "src/components/views/StrategiesView.tsx",
+    "line_range": "213-228",
+    "purpose": "Computes or runs routine related to selectStock",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "executeScan",
+    "file": "src/components/views/StrategiesView.tsx",
+    "line_range": "222-237",
+    "purpose": "Computes or runs routine related to executeScan",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "selectFromScan",
+    "file": "src/components/views/StrategiesView.tsx",
+    "line_range": "240-255",
+    "purpose": "Computes or runs routine related to selectFromScan",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "resetStock",
+    "file": "src/components/views/StrategiesView.tsx",
+    "line_range": "248-263",
+    "purpose": "Computes or runs routine related to resetStock",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "renderPanel",
+    "file": "src/components/views/StrategiesView.tsx",
+    "line_range": "258-273",
+    "purpose": "Computes or runs routine related to renderPanel",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "renderScanTable",
+    "file": "src/components/views/StrategiesView.tsx",
+    "line_range": "270-285",
+    "purpose": "Computes or runs routine related to renderScanTable",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "renderSRTable",
+    "file": "src/components/views/StrategiesView.tsx",
+    "line_range": "285-300",
+    "purpose": "Computes or runs routine related to renderSRTable",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "renderMATable",
+    "file": "src/components/views/StrategiesView.tsx",
+    "line_range": "302-317",
+    "purpose": "Computes or runs routine related to renderMATable",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "renderChipsTable",
+    "file": "src/components/views/StrategiesView.tsx",
+    "line_range": "319-334",
+    "purpose": "Computes or runs routine related to renderChipsTable",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "renderPredictionTable",
+    "file": "src/components/views/StrategiesView.tsx",
+    "line_range": "336-351",
+    "purpose": "Computes or runs routine related to renderPredictionTable",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "renderPatternTable",
+    "file": "src/components/views/StrategiesView.tsx",
+    "line_range": "353-368",
+    "purpose": "Computes or runs routine related to renderPatternTable",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "renderScanSettings",
+    "file": "src/components/views/StrategiesView.tsx",
+    "line_range": "370-385",
+    "purpose": "Computes or runs routine related to renderScanSettings",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "getEnv",
+    "file": "src/config/apis.ts",
+    "line_range": "2-17",
+    "purpose": "Computes or runs routine related to getEnv",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchTwseStats",
+    "file": "src/lib/api.ts",
+    "line_range": "30-45",
+    "purpose": "Computes or runs routine related to fetchTwseStats",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchOtcStats",
+    "file": "src/lib/api.ts",
+    "line_range": "34-49",
+    "purpose": "Computes or runs routine related to fetchOtcStats",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchStockSearch",
+    "file": "src/lib/api.ts",
+    "line_range": "47-62",
+    "purpose": "Computes or runs routine related to fetchStockSearch",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchStockHistory",
+    "file": "src/lib/api.ts",
+    "line_range": "54-69",
+    "purpose": "Computes or runs routine related to fetchStockHistory",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchStockIndicators",
+    "file": "src/lib/api.ts",
+    "line_range": "71-86",
+    "purpose": "Computes or runs routine related to fetchStockIndicators",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchStockInstitutional",
+    "file": "src/lib/api.ts",
+    "line_range": "86-101",
+    "purpose": "Computes or runs routine related to fetchStockInstitutional",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchStockQuote",
+    "file": "src/lib/api.ts",
+    "line_range": "112-127",
+    "purpose": "Computes or runs routine related to fetchStockQuote",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchMovers",
+    "file": "src/lib/api.ts",
+    "line_range": "136-151",
+    "purpose": "Computes or runs routine related to fetchMovers",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchSRAnalysis",
+    "file": "src/lib/api.ts",
+    "line_range": "153-168",
+    "purpose": "Computes or runs routine related to fetchSRAnalysis",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchMAAnalysis",
+    "file": "src/lib/api.ts",
+    "line_range": "179-194",
+    "purpose": "Computes or runs routine related to fetchMAAnalysis",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchChipsAnalysis",
+    "file": "src/lib/api.ts",
+    "line_range": "199-214",
+    "purpose": "Computes or runs routine related to fetchChipsAnalysis",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchPredictionAnalysis",
+    "file": "src/lib/api.ts",
+    "line_range": "217-232",
+    "purpose": "Computes or runs routine related to fetchPredictionAnalysis",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchPatternAnalysis",
+    "file": "src/lib/api.ts",
+    "line_range": "234-249",
+    "purpose": "Computes or runs routine related to fetchPatternAnalysis",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchSRScan",
+    "file": "src/lib/api.ts",
+    "line_range": "301-316",
+    "purpose": "Computes or runs routine related to fetchSRScan",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchMAScan",
+    "file": "src/lib/api.ts",
+    "line_range": "308-323",
+    "purpose": "Computes or runs routine related to fetchMAScan",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchChipsScan",
+    "file": "src/lib/api.ts",
+    "line_range": "315-330",
+    "purpose": "Computes or runs routine related to fetchChipsScan",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchPredictionScan",
+    "file": "src/lib/api.ts",
+    "line_range": "322-337",
+    "purpose": "Computes or runs routine related to fetchPredictionScan",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "fetchPatternScan",
+    "file": "src/lib/api.ts",
+    "line_range": "329-344",
+    "purpose": "Computes or runs routine related to fetchPatternScan",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "calcMA",
+    "file": "src/lib/indicators.ts",
+    "line_range": "16-31",
+    "purpose": "Computes or runs routine related to calcMA",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "calcEMA",
+    "file": "src/lib/indicators.ts",
+    "line_range": "26-41",
+    "purpose": "Computes or runs routine related to calcEMA",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "calcMACD",
+    "file": "src/lib/indicators.ts",
+    "line_range": "42-57",
+    "purpose": "Computes or runs routine related to calcMACD",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "calcRSI",
+    "file": "src/lib/indicators.ts",
+    "line_range": "70-85",
+    "purpose": "Computes or runs routine related to calcRSI",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "calcKD",
+    "file": "src/lib/indicators.ts",
+    "line_range": "99-114",
+    "purpose": "Computes or runs routine related to calcKD",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "calcATR",
+    "file": "src/lib/indicators.ts",
+    "line_range": "127-142",
+    "purpose": "Computes or runs routine related to calcATR",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "calcDeduction",
+    "file": "src/lib/indicators.ts",
+    "line_range": "147-162",
+    "purpose": "Computes or runs routine related to calcDeduction",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "getTickSize",
+    "file": "src/lib/strategy-engine.ts",
+    "line_range": "98-113",
+    "purpose": "Computes or runs routine related to getTickSize",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "toDateInt",
+    "file": "src/lib/strategy-engine.ts",
+    "line_range": "107-122",
+    "purpose": "Computes or runs routine related to toDateInt",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "lightSrScore",
+    "file": "src/lib/strategy-engine.ts",
+    "line_range": "116-131",
+    "purpose": "Computes or runs routine related to lightSrScore",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "scoreResult",
+    "file": "src/lib/strategy-engine.ts",
+    "line_range": "131-146",
+    "purpose": "Computes or runs routine related to scoreResult",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "linspace",
+    "file": "src/lib/strategy-engine.ts",
+    "line_range": "516-531",
+    "purpose": "Computes or runs routine related to linspace",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "logspace",
+    "file": "src/lib/strategy-engine.ts",
+    "line_range": "521-536",
+    "purpose": "Computes or runs routine related to logspace",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "scanAndScoreStock",
+    "file": "src/lib/strategy-engine.ts",
+    "line_range": "530-545",
+    "purpose": "Computes or runs routine related to scanAndScoreStock",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "runFullSRScan",
+    "file": "src/lib/strategy-engine.ts",
+    "line_range": "572-587",
+    "purpose": "Computes or runs routine related to runFullSRScan",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "cn",
+    "file": "src/lib/utils.ts",
+    "line_range": "4-19",
+    "purpose": "Computes or runs routine related to cn",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "formatTaipeiTime",
+    "file": "src/lib/utils.ts",
+    "line_range": "8-23",
+    "purpose": "Computes or runs routine related to formatTaipeiTime",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "getMarketStatus",
+    "file": "src/lib/utils.ts",
+    "line_range": "20-35",
+    "purpose": "Computes or runs routine related to getMarketStatus",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  },
+  {
+    "function_name": "test",
+    "file": "test-mis.js",
+    "line_range": "1-16",
+    "purpose": "Computes or runs routine related to test",
+    "parameters": [],
+    "return_type": "unknown",
+    "callers": [],
+    "callees": []
+  }
+]

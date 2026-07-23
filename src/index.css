@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+@layer base {
+  html {
+    /* Fluid typography and spacing: scales from 10px to 16px based on viewport width */
+    font-size: clamp(10px, 1.25vw + 4px, 16px);
+  }
+}
+
+@layer components {
+  .report-markdown {
+    color: rgb(226 232 240);
+    font-size: 0.875rem;
+    line-height: 1.75;
+  }
+
+  .report-markdown h1 {
+    margin: 0 0 1rem;
+    color: white;
+    font-size: 1.35rem;
+    font-weight: 800;
+    line-height: 1.35;
+  }
+
+  .report-markdown h2 {
+    margin: 1.35rem 0 0.65rem;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid rgb(51 65 85);
+    color: rgb(191 219 254);
+    font-size: 1.05rem;
+    font-weight: 750;
+  }
+
+  .report-markdown h3 {
+    margin: 1rem 0 0.45rem;
+    color: rgb(226 232 240);
+    font-size: 0.95rem;
+    font-weight: 700;
+  }
+
+  .report-markdown p,
+  .report-markdown ul,
+  .report-markdown ol,
+  .report-markdown table {
+    margin: 0.65rem 0;
+  }
+
+  .report-markdown ul,
+  .report-markdown ol {
+    padding-left: 1.25rem;
+  }
+
+  .report-markdown li {
+    margin: 0.25rem 0;
+  }
+
+  .report-markdown table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8rem;
+  }
+
+  .report-markdown th,
+  .report-markdown td {
+    border: 1px solid rgb(51 65 85);
+    padding: 0.45rem 0.55rem;
+    vertical-align: top;
+  }
+
+  .report-markdown th {
+    background: rgb(15 23 42);
+    color: rgb(191 219 254);
+    font-weight: 700;
+  }
+
+  .report-markdown hr {
+    margin: 1.25rem 0;
+    border-color: rgb(51 65 85);
+  }
+}

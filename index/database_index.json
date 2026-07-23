@@ -1,0 +1,164 @@
+{
+  "tables": {
+    "stock_meta": {
+      "columns": [
+        "stock_id",
+        "stock_name",
+        "industry_category",
+        "market",
+        "type",
+        "source",
+        "updated_at"
+      ],
+      "primary_key": "stock_id",
+      "foreign_keys": [],
+      "indexes": []
+    },
+    "stock_trading_calendar": {
+      "columns": [
+        "date",
+        "is_open",
+        "source",
+        "updated_at"
+      ],
+      "primary_key": "date",
+      "foreign_keys": [],
+      "indexes": []
+    },
+    "stock_history": {
+      "columns": [
+        "stock_id",
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "amount",
+        "trade_count",
+        "spread",
+        "adj_factor",
+        "adj_close",
+        "source",
+        "updated_at"
+      ],
+      "primary_key": "(stock_id, date)",
+      "foreign_keys": [
+        {
+          "column": "stock_id",
+          "references": "stock_meta(stock_id)"
+        }
+      ],
+      "indexes": [
+        "idx_stock_history_stock_date"
+      ]
+    },
+    "dividend_events": {
+      "columns": [
+        "stock_id",
+        "date",
+        "before_price",
+        "after_price",
+        "reference_price",
+        "cash_dividend",
+        "stock_dividend",
+        "source",
+        "updated_at"
+      ],
+      "primary_key": "(stock_id, date)",
+      "foreign_keys": [
+        {
+          "column": "stock_id",
+          "references": "stock_meta(stock_id)"
+        }
+      ],
+      "indexes": [
+        "idx_dividend_events_stock_date"
+      ]
+    },
+    "institutional_data": {
+      "columns": [
+        "stock_id",
+        "date",
+        "foreign_net",
+        "trust_net",
+        "dealer_net",
+        "foreign_buy",
+        "foreign_sell",
+        "trust_buy",
+        "trust_sell",
+        "dealer_buy",
+        "dealer_sell",
+        "institutional_net",
+        "source",
+        "updated_at"
+      ],
+      "primary_key": "(stock_id, date)",
+      "foreign_keys": [
+        {
+          "column": "stock_id",
+          "references": "stock_meta(stock_id)"
+        }
+      ],
+      "indexes": [
+        "idx_institutional_stock_date"
+      ]
+    },
+    "shareholding_data": {
+      "columns": [
+        "stock_id",
+        "date",
+        "foreign_shares",
+        "foreign_ratio",
+        "source",
+        "updated_at"
+      ],
+      "primary_key": "(stock_id, date)",
+      "foreign_keys": [
+        {
+          "column": "stock_id",
+          "references": "stock_meta(stock_id)"
+        }
+      ],
+      "indexes": [
+        "idx_shareholding_stock_date"
+      ]
+    },
+    "tdcc_shareholding": {
+      "columns": [
+        "stock_id",
+        "date",
+        "total_shares",
+        "whale_ratio",
+        "retail_ratio",
+        "source",
+        "updated_at"
+      ],
+      "primary_key": "(stock_id, date)",
+      "foreign_keys": [
+        {
+          "column": "stock_id",
+          "references": "stock_meta(stock_id)"
+        }
+      ],
+      "indexes": [
+        "idx_tdcc_stock_date"
+      ]
+    },
+    "audit_log": {
+      "columns": [
+        "log_id",
+        "stock_id",
+        "action",
+        "status",
+        "detail",
+        "timestamp"
+      ],
+      "primary_key": "log_id",
+      "foreign_keys": [],
+      "indexes": []
+    }
+  },
+  "migrations": "Database schema updates initialized on bootstrap in server/db.ts",
+  "ORM_mapping": "Native SQLite3 connector utilized through better-sqlite3 wrapper layer"
+}

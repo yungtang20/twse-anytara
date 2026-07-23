@@ -1,0 +1,241 @@
+{
+  "modules": {
+    "Backend Server": [
+      "Frontend Library",
+      "Frontend Domain Types"
+    ],
+    "Frontend Views": [
+      "Frontend Library",
+      "Frontend Components",
+      "Frontend Domain Types"
+    ],
+    "Frontend Components": [
+      "Frontend Library",
+      "Frontend Domain Types"
+    ],
+    "Frontend Library": [
+      "Frontend Domain Types",
+      "Frontend Configuration"
+    ]
+  },
+  "files": {
+    "app/applet/test-db.js": [],
+    "app/applet/test-mis.js": [],
+    "app/test-db.js": [],
+    "index.html": [],
+    "scripts/build_knowledge_base.js": [],
+    "scripts/check_supabase.js": [],
+    "scripts/complete_and_fetch_today.js": [],
+    "scripts/fast_sync.js": [],
+    "scripts/fetch_today_only.js": [],
+    "scripts/pull_from_supabase.js": [],
+    "scripts/syncData.ts": [],
+    "server/db.ts": [],
+    "server/routes.ts": [
+      "server/db.ts",
+      "src/api/ai.ts",
+      "src/lib/strategy-engine.ts"
+    ],
+    "server/services.ts": [
+      "server/db.ts"
+    ],
+    "server.ts": [
+      "server/db.ts",
+      "server/routes.ts"
+    ],
+    "src/App.tsx": [
+      "src/components/Layout.tsx",
+      "src/components/views/DashboardView.tsx",
+      "src/components/views/MarketsView.tsx",
+      "src/components/views/StrategiesView.tsx",
+      "src/components/views/SettingsView.tsx",
+      "src/components/views/AIAnalysisView.tsx",
+      "src/types.ts"
+    ],
+    "src/api/ai.ts": [
+      "src/config/apis.ts"
+    ],
+    "src/components/BottomNav.tsx": [
+      "src/types.ts"
+    ],
+    "src/components/ChipsBarChart.tsx": [],
+    "src/components/Header.tsx": [],
+    "src/components/KlineChart.tsx": [
+      "src/lib/indicators.ts"
+    ],
+    "src/components/Layout.tsx": [
+      "src/components/Sidebar.tsx",
+      "src/components/Header.tsx",
+      "src/components/BottomNav.tsx",
+      "src/types.ts"
+    ],
+    "src/components/MarketChart.tsx": [
+      "src/types.ts",
+      "src/lib/utils.ts"
+    ],
+    "src/components/MarketDetailDashboard.tsx": [
+      "src/components/KlineChart.tsx",
+      "src/components/ChipsBarChart.tsx"
+    ],
+    "src/components/MoversList.tsx": [
+      "src/lib/utils.ts"
+    ],
+    "src/components/Sidebar.tsx": [
+      "src/types.ts"
+    ],
+    "src/components/StatCard.tsx": [
+      "src/types.ts",
+      "src/lib/utils.ts"
+    ],
+    "src/components/views/AIAnalysisView.tsx": [],
+    "src/components/views/ChipsPanel.tsx": [
+      "src/lib/api.ts"
+    ],
+    "src/components/views/DashboardView.tsx": [
+      "src/lib/utils.ts",
+      "src/types.ts"
+    ],
+    "src/components/views/MAPanel.tsx": [
+      "src/lib/api.ts"
+    ],
+    "src/components/views/MarketsView.tsx": [
+      "src/lib/supabase.ts",
+      "src/components/MarketDetailDashboard.tsx",
+      "src/types/stock.ts"
+    ],
+    "src/components/views/PatternPanel.tsx": [
+      "src/lib/api.ts"
+    ],
+    "src/components/views/PredictionPanel.tsx": [
+      "src/lib/api.ts"
+    ],
+    "src/components/views/SRPanel.tsx": [
+      "src/lib/api.ts"
+    ],
+    "src/components/views/SettingsView.tsx": [],
+    "src/components/views/StrategiesView.tsx": [
+      "src/components/views/SRPanel.tsx",
+      "src/components/views/MAPanel.tsx",
+      "src/components/views/ChipsPanel.tsx",
+      "src/components/views/PredictionPanel.tsx",
+      "src/components/views/PatternPanel.tsx",
+      "src/components/KlineChart.tsx",
+      "src/components/ChipsBarChart.tsx"
+    ],
+    "src/config/apis.ts": [],
+    "src/index.css": [],
+    "src/lib/api.ts": [
+      "src/lib/indicators.ts"
+    ],
+    "src/lib/indicators.ts": [],
+    "src/lib/strategy-engine.ts": [],
+    "src/lib/supabase.ts": [],
+    "src/lib/utils.ts": [],
+    "src/main.tsx": [
+      "src/App.tsx"
+    ],
+    "src/types/stock.ts": [],
+    "src/types.ts": [],
+    "src/vite-env.d.ts": [],
+    "test-mis.js": [],
+    "vite.config.ts": []
+  },
+  "packages": {
+    "better-sqlite3": [
+      "app/applet/test-db.js",
+      "app/test-db.js",
+      "scripts/complete_and_fetch_today.js",
+      "scripts/fast_sync.js",
+      "scripts/fetch_today_only.js",
+      "scripts/pull_from_supabase.js",
+      "server/db.ts",
+      "src/api/ai.ts"
+    ],
+    "@supabase/supabase-js": [
+      "scripts/check_supabase.js",
+      "scripts/complete_and_fetch_today.js",
+      "scripts/fast_sync.js",
+      "scripts/fetch_today_only.js",
+      "scripts/pull_from_supabase.js",
+      "scripts/syncData.ts",
+      "server/services.ts",
+      "src/lib/supabase.ts"
+    ],
+    "dotenv": [
+      "scripts/check_supabase.js",
+      "server.ts"
+    ],
+    "express": [
+      "server/routes.ts",
+      "server.ts",
+      "src/api/ai.ts"
+    ],
+    "vite": [
+      "server.ts",
+      "vite.config.ts"
+    ],
+    "react": [
+      "src/App.tsx",
+      "src/components/BottomNav.tsx",
+      "src/components/ChipsBarChart.tsx",
+      "src/components/KlineChart.tsx",
+      "src/components/Layout.tsx",
+      "src/components/MarketDetailDashboard.tsx",
+      "src/components/Sidebar.tsx",
+      "src/components/StatCard.tsx",
+      "src/components/views/AIAnalysisView.tsx",
+      "src/components/views/ChipsPanel.tsx",
+      "src/components/views/DashboardView.tsx",
+      "src/components/views/MAPanel.tsx",
+      "src/components/views/MarketsView.tsx",
+      "src/components/views/PatternPanel.tsx",
+      "src/components/views/PredictionPanel.tsx",
+      "src/components/views/SRPanel.tsx",
+      "src/components/views/SettingsView.tsx",
+      "src/components/views/StrategiesView.tsx",
+      "src/main.tsx"
+    ],
+    "mammoth": [
+      "src/api/ai.ts"
+    ],
+    "openai": [
+      "src/api/ai.ts"
+    ],
+    "lucide-react": [
+      "src/components/BottomNav.tsx",
+      "src/components/Header.tsx",
+      "src/components/KlineChart.tsx",
+      "src/components/MarketDetailDashboard.tsx",
+      "src/components/MoversList.tsx",
+      "src/components/Sidebar.tsx",
+      "src/components/StatCard.tsx",
+      "src/components/views/MAPanel.tsx",
+      "src/components/views/MarketsView.tsx",
+      "src/components/views/StrategiesView.tsx"
+    ],
+    "react-markdown": [
+      "src/components/views/AIAnalysisView.tsx"
+    ],
+    "motion": [
+      "src/components/views/AIAnalysisView.tsx",
+      "src/components/views/MarketsView.tsx",
+      "src/components/views/SettingsView.tsx",
+      "src/components/views/StrategiesView.tsx"
+    ],
+    "clsx": [
+      "src/lib/utils.ts"
+    ],
+    "tailwind-merge": [
+      "src/lib/utils.ts"
+    ],
+    "react-dom": [
+      "src/main.tsx"
+    ],
+    "@tailwindcss/vite": [
+      "vite.config.ts"
+    ],
+    "@vitejs/plugin-react": [
+      "vite.config.ts"
+    ]
+  }
+}

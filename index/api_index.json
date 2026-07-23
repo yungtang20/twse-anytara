@@ -1,0 +1,274 @@
+[
+  {
+    "endpoint": "/api/stock/search",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/stock/:id/history",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/stock/:id/indicators",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/stock/:id/institutional",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/stock/:id/shareholding",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/stock/:id/quote",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/sync-daily",
+    "method": "POST",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "JSON body",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/trigger-update",
+    "method": "POST",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "JSON body",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/sync-status",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/settings",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/settings",
+    "method": "POST",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "JSON body",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/backfill-finmind",
+    "method": "POST",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "JSON body",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/upload-tdcc",
+    "method": "POST",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "JSON body",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/auto-download-tdcc",
+    "method": "POST",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "JSON body",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/movers",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/dashboard/recent-dividend",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/dashboard/trust-buy-2day",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/dashboard/break-ma200",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/dashboard/limit-up-yesterday",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/health",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/twse-stats",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/otc-stats",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/debug-status",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/stock/:id/sr-analysis",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/stock/:id/ma-analysis",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/stock/:id/chips-analysis",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/stock/:id/prediction-analysis",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/strategy/sr-scan",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/strategy/ma-scan",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/strategy/chips-scan",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/strategy/prediction-scan",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/strategy/pattern-scan",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/stock/:id/pattern-analysis",
+    "method": "GET",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "Query Parameters / Route Parameters",
+    "response": "JSON containing success indicator and result data payload"
+  },
+  {
+    "endpoint": "/api/ai-analysis",
+    "method": "POST",
+    "controller": "server/routes.ts",
+    "service": "server/services.ts",
+    "request": "JSON body",
+    "response": "JSON containing success indicator and result data payload"
+  }
+]
