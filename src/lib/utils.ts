@@ -17,11 +17,12 @@ export function formatTaipeiTime(date: Date): string {
   return `${yyyy}-${mm}-${dd} (${d}) ${hh}:${min}:${ss}`;
 }
 
-export function getMarketStatus(date: Date): boolean {
-  const day = date.getDay();
+export function getMarketStatus(): boolean {
+  const now = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
+  const day = now.getDay();
   if (day === 0 || day === 6) return false; // Sunday or Saturday
-  const hours = date.getHours();
-  const minutes = date.getMinutes();
+  const hours = now.getHours();
+  const minutes = now.getMinutes();
   const timeNum = hours * 100 + minutes;
   return timeNum >= 900 && timeNum <= 1330;
 }

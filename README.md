@@ -307,7 +307,7 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 ## 6. 技術棧
 
 ### 6.1 前端
-- **框架**：React 18 + TypeScript
+- **框架**：React 19 + TypeScript
 - **構建工具**：Vite
 - **樣式**：Tailwind CSS
 - **圖表**：lightweight-charts
@@ -329,7 +329,7 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 ## 7. 檔案結構
 
 ```
-D:\twse\twse-app\
+D:\twse\twse-anytara\
 ├── src\
 │   ├── components\
 │   │   ├── views\

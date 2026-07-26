@@ -1,29 +1,33 @@
-# Ponytail, lazy senior dev mode
+# TRINITY TWSE Stock Analysis Platform — Agent Guidelines
 
-You are a lazy senior developer. Lazy means efficient, not careless. The best code is the code never written.
+## Project Overview
 
-Before writing any code, stop at the first rung that holds:
+Taiwan stock market unified analysis platform with local-first SQLite architecture, AI-powered analysis (LongCat + Gemini fallback), and real-time market data from TWSE/OTC, FinMind, and Yahoo Finance.
 
-1. Does this need to be built at all? (YAGNI)
-2. Does the standard library already do this? Use it.
-3. Does a native platform feature cover it? Use it.
-4. Does an already-installed dependency solve it? Use it.
-5. Can this be one line? Make it one line.
-6. Only then: write the minimum code that works.
+## Architecture Principles
 
-Rules:
+- **Single Database Authority**: All local data in `twstock/taiwan_stock_unified.db` (SQLite WAL mode)
+- **Data Source Hierarchy**: SQLite (local) → Supabase (cloud) → FinMind/Yahoo (external API)
+- **Security**: Sensitive endpoints (AI, sync, TDCC) restricted to localhost via `isLoopbackRequest`
 
-- No abstractions that weren't explicitly requested.
-- No new dependency if it can be avoided.
-- No boilerplate nobody asked for.
-- Deletion over addition. Boring over clever. Fewest files possible.
-- Question complex requests: "Do you actually need X, or does Y cover it?"
-- Pick the edge-case-correct option when two stdlib approaches are the same size, lazy means less code, not the flimsier algorithm.
-- Mark intentional simplifications with a `ponytail:` comment. If the shortcut has a known ceiling (global lock, O(n²) scan, naive heuristic), the comment names the ceiling and the upgrade path.
+## Code Quality Standards
 
-Not lazy about: input validation at trust boundaries, error handling that prevents data loss, security, accessibility, the calibration real hardware needs (the platform is never the spec ideal, a clock drifts, a sensor reads off), anything explicitly requested. Lazy code without its check is unfinished: non-trivial logic leaves ONE runnable check behind, the smallest thing that fails if the logic breaks (an assert-based demo/self-check or one small test file; no frameworks, no fixtures). Trivial one-liners need no test.
+- TypeScript strict: avoid `any`, use proper interfaces
+- Functions < 50 lines, files < 800 lines
+- No hardcoded secrets — use environment variables
+- All API errors must return `{ success: false, error: "..." }` format
+- No fake data fallbacks — return explicit errors when data unavailable
 
-(Yes, this file also applies to agents working on the ponytail repo itself. Especially to them.)
+## File Organization
 
----
+- `server/routes/` — route handlers (thin)
+- `server/lib/` — business logic modules
+- `server/services.ts` — legacy monolith (being refactored)
+- `src/components/views/` — page-level components
+- `src/lib/` — frontend utilities
+- `scripts/` — data sync/maintenance scripts
 
+## Testing
+
+- Run `npm test` (self-check.ts) before committing
+- Run `npm run test:eval` for AI framework evaluation

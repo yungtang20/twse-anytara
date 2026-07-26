@@ -310,6 +310,7 @@ export interface FrameworkAnalysisResult {
   claims: ReportClaim[];
   evidence: Record<string, unknown>;
   evidenceSummary: EvidenceSummary;
+  provider?: 'longcat' | 'gemini';
 }
 
 export async function runFrameworkAnalysis(stockId: string, frameworkId: string, signal?: AbortSignal, suppliedSnapshot?: AnalysisSnapshot): Promise<FrameworkAnalysisResult> {
@@ -384,7 +385,7 @@ export async function runFrameworkAnalysis(stockId: string, frameworkId: string,
       if (!report) throw new Error("LongCat 空回覆");
       console.log(`[jobQueue] LongCat analysis completed successfully for ${stockId} (${frameworkId})`);
       const validated = validateEvidenceReport(report, snapshot);
-      return { report: validated.markdown, claims: validated.claims, evidence: validated.evidence, evidenceSummary: validated.summary };
+      return { report: validated.markdown, claims: validated.claims, evidence: validated.evidence, evidenceSummary: validated.summary, provider: 'longcat' };
     } catch (e: any) {
       if (signal?.aborted || e?.name === "AbortError") throw e;
       console.error(`[jobQueue] LongCat failed: ${e.message}`);
@@ -416,7 +417,7 @@ export async function runFrameworkAnalysis(stockId: string, frameworkId: string,
       if (response.text) {
         console.log(`[jobQueue] Gemini analysis completed successfully for ${stockId} (${frameworkId})`);
         const validated = validateEvidenceReport(response.text, snapshot);
-        return { report: validated.markdown, claims: validated.claims, evidence: validated.evidence, evidenceSummary: validated.summary };
+        return { report: validated.markdown, claims: validated.claims, evidence: validated.evidence, evidenceSummary: validated.summary, provider: 'gemini' };
       }
       throw new Error("Gemini 回傳了空的內容。");
     } catch (e: any) {

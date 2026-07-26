@@ -1,16 +1,15 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   RefreshCw,
   ChevronDown,
   ChevronUp,
-  Database,
   AlertTriangle,
   CheckCircle2,
   Info,
-  Clock,
 } from "lucide-react";
-import { cn, formatTaipeiTime, getMarketStatus } from "../../lib/utils";
+import { cn, getMarketStatus } from "../../lib/utils";
 import type { AppView } from "../../types";
+import { ClockBadge } from "../ClockBadge";
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -164,10 +163,7 @@ function CollapsibleCard({
 // ── Main Dashboard View ────────────────────────────────────
 
 export function DashboardView() {
-  const [taipeiTime, setTaipeiTime] = useState<Date>(
-    () =>
-      new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }))
-  );
+  // Clock state moved to <ClockBadge /> to avoid full-page re-renders every second.
   const [tseStats, setTseStats] = useState<IndexStats>({
     success: false,
     index: 0,
@@ -210,7 +206,7 @@ export function DashboardView() {
     limitDown: 0,
   });
 
-  const isOpen = getMarketStatus(taipeiTime);
+  const isOpen = getMarketStatus();
 
   // Load TWSE stats
   useEffect(() => {
@@ -270,15 +266,7 @@ export function DashboardView() {
     loadOtc();
   }, []);
 
-  // Clock
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setTaipeiTime(
-        new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }))
-      );
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+  // Clock is now rendered by <ClockBadge /> — no state here.
 
   // ── Dividend query ──────────────────────────────────────
   const loadDividend = useCallback(async () => {
@@ -348,7 +336,7 @@ export function DashboardView() {
   }, []);
   useEffect(() => { loadLimitUp(); }, [loadLimitUp]);
 
-  const timeString = formatTaipeiTime(taipeiTime);
+  // timeString now rendered by <ClockBadge /> below.
 
   // ── Render ──────────────────────────────────────────────
 
@@ -461,8 +449,7 @@ export function DashboardView() {
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-1.5 text-xs font-semibold text-primary-500 bg-primary-500/10 px-2 py-0.5 rounded-full">
-              <Clock className="w-3.5 h-3.5" />
-              台北時間 {timeString}
+              <ClockBadge />
             </span>
             <span>
               {isOpen ? (

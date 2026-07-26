@@ -17,7 +17,7 @@ export function startTdccScheduler(): void {
     const status = getTdccSqliteStatus();
     const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Taipei" }); // YYYY-MM-DD
     const dayOfWeek = new Date().toLocaleDateString("en-US", { timeZone: "Asia/Taipei", weekday: "short" });
-    const hour = new Date().getHours();
+    const hour = Number(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei", hour: "numeric", hour12: false }));
 
     // Run window: Sat 18:00 - Sun 23:59 Taipei, OR if latest data is older than 6 days
     const latestAge = status.latest

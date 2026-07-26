@@ -10,12 +10,13 @@ if (!connectionString) {
   process.exit(1);
 }
 
-// Disable SSL certificate validation for connection flexibility if needed
+// SSL enabled by default. For self-signed certs, pass DATABASE_CA env var.
+const sslConfig = process.env.DATABASE_CA
+  ? { ca: process.env.DATABASE_CA, rejectUnauthorized: true }
+  : undefined;
 const pool = new pg.Pool({
   connectionString,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  ssl: sslConfig
 });
 
 async function run() {

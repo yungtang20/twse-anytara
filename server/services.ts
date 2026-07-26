@@ -103,39 +103,39 @@ export const formatTpexDateStr = (date: Date): string => {
   return `${y}/${m}/${d}`;
 };
 
-/** Fallback cache - used when API calls fail */
-export const lastTwseCache = {
-  success: true,
-  date: "2026-06-25",
-  index: 22800.0,
-  change: 120.5,
-  changePercent: 0.53,
-  amount: 3820.5,
-  limitUp: 12,
-  up: 450,
-  flat: 120,
-  down: 310,
-  limitDown: 3,
-  _source: 'default_cache'
-};
-
-export const lastOtcCache = {
-  success: true,
-  date: "2026-06-25",
-  index: 265.4,
-  change: 1.85,
-  changePercent: 0.7,
-  amount: 1120.2,
-  limitUp: 8,
-  up: 320,
-  flat: 95,
-  down: 210,
-  limitDown: 2,
-  _source: 'default_cache'
-};
-
+/**
+ * Fallback cache - starts as 'uninitialized' until first successful API call.
+ * IMPORTANT: Do NOT hardcode fake data. When all APIs fail,
+ * the route handler must return { success: false, error: "..." }
+ * so the frontend can show a clear stale-data warning.
+ */
+export let lastTwseCache: CacheEntry = { _source: 'uninitialized' } as CacheEntry;
+export let lastOtcCache: CacheEntry = { _source: 'uninitialized' } as CacheEntry;
 export const fallbackTwseData = lastTwseCache;
 export const fallbackOtcData = lastOtcCache;
+
+export interface CacheEntry {
+  success: boolean;
+  date: string;
+  index: number;
+  change: number;
+  changePercent: number;
+  amount: number;
+  limitUp: number;
+  up: number;
+  flat: number;
+  down: number;
+  limitDown: number;
+  _source?: string;
+}
+
+/** True when cache has real data (not uninitialized). */
+export function hasTwseCache(): boolean {
+  return lastTwseCache._source !== 'uninitialized';
+}
+export function hasOtcCache(): boolean {
+  return lastOtcCache._source !== 'uninitialized';
+}
 
 /** Strip HTML tags from a string */
 export const stripHtml = (s: string) => String(s || '').replace(/<[^>]*>/g, '').trim();
@@ -384,7 +384,7 @@ export const fetchRealtimeIndexFromMis = async (exCh: 'tse_t00.tw' | 'otc_o00.tw
 
 /** Fetch TWSE data from official API */
 let twseCacheTime = 0;
-export const getTwseStats = async () => {
+export const getTwseStats = async (): Promise<CacheEntry | { success: false; error: string; _source: string }> => {
   if (Date.now() - twseCacheTime < 60000 && lastTwseCache._source === 'live_cache') {
     return lastTwseCache;
   }
@@ -575,7 +575,14 @@ export const getTwseStats = async () => {
       const netUp = (dbStats.up + dbStats.limit_up * 1.5) - (dbStats.down + dbStats.limit_down * 1.5);
       const estChangePercent = totalStocks > 0 ? parseFloat(((netUp / totalStocks) * 2.5).toFixed(2)) : 0.05;
       
-      const baseIndex = lastTwseCache.index > 0 ? lastTwseCache.index : 22800.0;
+      const baseIndex = lastTwseCache._source !== 'uninitialized' && lastTwseCache.index > 0 ? lastTwseCache.index : null;
+      if (!baseIndex) {
+        return {
+          success: false,
+          error: 'All TWSE data sources failed and no cached data available.',
+          _source: 'error'
+        };
+      }
       const change = parseFloat((baseIndex * estChangePercent / 100).toFixed(2));
       const index = parseFloat((baseIndex + change).toFixed(2));
 
@@ -662,7 +669,7 @@ export const getOtcStatsFromDb = (date: string) => {
 
 /** Fetch TPEX data from official API */
 let otcCacheTime = 0;
-export const getOtcStats = async () => {
+export const getOtcStats = async (): Promise<CacheEntry | { success: false; error: string; _source: string }> => {
   if (Date.now() - otcCacheTime < 60000 && lastOtcCache._source === 'live_cache') {
     return lastOtcCache;
   }
@@ -897,7 +904,14 @@ export const getOtcStats = async () => {
       const netUp = (dbStats.up + dbStats.limit_up * 1.5) - (dbStats.down + dbStats.limit_down * 1.5);
       const estChangePercent = totalStocks > 0 ? parseFloat(((netUp / totalStocks) * 2.5).toFixed(2)) : 0.05;
       
-      const baseIndex = lastOtcCache.index > 0 ? lastOtcCache.index : 260.0;
+      const baseIndex = lastOtcCache._source !== 'uninitialized' && lastOtcCache.index > 0 ? lastOtcCache.index : null;
+      if (!baseIndex) {
+        return {
+          success: false,
+          error: 'All TPEX data sources failed and no cached data available.',
+          _source: 'error'
+        };
+      }
       const change = parseFloat((baseIndex * estChangePercent / 100).toFixed(2));
       const index = parseFloat((baseIndex + change).toFixed(2));
 

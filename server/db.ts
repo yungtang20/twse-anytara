@@ -175,6 +175,9 @@ export function initDb() {
     // Now open database connection for application usage
     db = new Database(dbPath);
     db.pragma('journal_mode = WAL');
+    db.pragma('foreign_keys = ON');
+    db.pragma('busy_timeout = 5000');
+    db.pragma('synchronous = NORMAL');
     console.log(`[DB] Connected to SQLite: ${dbPath}`);
     return db;
   } catch (err: any) {

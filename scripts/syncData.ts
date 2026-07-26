@@ -164,14 +164,14 @@ async function syncDailyPrices() {
   
   console.log(`[Sync] Successfully upserted ${successCount} records to Supabase.`);
 
-  // 總容量控制，保留最近 512 個交易日（滿足用戶 512 天普通股/法人/TDCC 數據的策略需求）
-  // 我們透過查詢天天交易的台積電 (2330)，取得其第 512 筆的日期作為 cutoffDate。
+  // 總容量控制，保留最近 RETENTION_TRADING_DAYS 個交易日
+  const RETENTION_TRADING_DAYS = 512;
   const { data: dates } = await supabase
     .from("stock_price")
     .select("date")
     .eq("stock_id", "2330")
     .order("date", { ascending: false })
-    .range(511, 511);
+    .range(RETENTION_TRADING_DAYS - 1, RETENTION_TRADING_DAYS - 1);
 
   if (dates && dates.length > 0) {
     const cutoffDate = dates[0].date;

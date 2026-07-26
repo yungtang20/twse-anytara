@@ -53,11 +53,13 @@ export function MarketsView() {
   });
 
   useEffect(() => {
-    let activeInterval: NodeJS.Timeout | null = null;
+    let activeInterval: ReturnType<typeof setInterval> | null = null;
+    let disposed = false;
 
     const checkStatus = async () => {
       try {
         const res = await fetch("/api/sync-status").then(r => r.json());
+        if (disposed) return;
         if (res.success) {
           if (res.latestDbDate) {
             setLatestDate(res.latestDbDate);
@@ -68,7 +70,7 @@ export function MarketsView() {
             if (res.logs && res.logs.length > 0) {
               setUpdateLogs(res.logs);
             }
-            
+
             activeInterval = setInterval(async () => {
               try {
                 const pollRes = await fetch("/api/sync-status").then(r => r.json());
@@ -102,8 +104,10 @@ export function MarketsView() {
     checkStatus();
 
     return () => {
+      disposed = true;
       if (activeInterval) {
         clearInterval(activeInterval);
+        activeInterval = null;
       }
     };
   }, []);
