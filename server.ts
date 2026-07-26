@@ -16,19 +16,30 @@ dotenv.config();
 let syncChild: ChildProcess | null = null;
 
 function getLatestTradingDayInTaipei(): string {
-  // Get current date/time in Taipei
-  const taipeiTimeStr = new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" });
-  const taipeiDate = new Date(taipeiTimeStr);
-  
-  const y = taipeiDate.getFullYear();
-  const m = String(taipeiDate.getMonth() + 1).padStart(2, '0');
-  const d = String(taipeiDate.getDate()).padStart(2, '0');
+  // Get current date/time in Taipei using Intl to avoid local-timezone bugs
+  const now = new Date();
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Taipei",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(now);
+
+  const get = (type: string) => parts.find((p) => p.type === type)?.value || "0";
+  const y = get("year");
+  const m = get("month");
+  const d = get("day");
+  const hour = Number(get("hour"));
+  const minute = Number(get("minute"));
   const todayStr = `${y}-${m}-${d}`;
 
-  // Check day of week (0 = Sunday, 1 = Monday, ..., 6 = Saturday)
-  const dayOfWeek = taipeiDate.getDay();
-  const hour = taipeiDate.getHours();
-  const minute = taipeiDate.getMinutes();
+  // Intl weekday: use a separate format call
+  const weekdayStr = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Taipei", weekday: "short" }).format(now);
+  const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const dayOfWeek = dayMap[weekdayStr] ?? 0;
 
   // If weekday and after 14:30 (when TWSE/TPEX are guaranteed to be fully processed),
   // latest trading day should be today.
@@ -39,15 +50,17 @@ function getLatestTradingDayInTaipei(): string {
     }
   }
 
-  // Find the previous weekday
-  const tempDate = new Date(taipeiDate);
+  // Find the previous weekday using Taipei date
+  const taipeiDateStr = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
+  const [tm, td, ty] = taipeiDateStr.split("/").map(Number);
+  const taipeiDate = new Date(ty, tm - 1, td);
   do {
-    tempDate.setDate(tempDate.getDate() - 1);
-  } while (tempDate.getDay() === 0 || tempDate.getDay() === 6);
+    taipeiDate.setDate(taipeiDate.getDate() - 1);
+  } while (taipeiDate.getDay() === 0 || taipeiDate.getDay() === 6);
 
-  const py = tempDate.getFullYear();
-  const pm = String(tempDate.getMonth() + 1).padStart(2, '0');
-  const pd = String(tempDate.getDate()).padStart(2, '0');
+  const py = taipeiDate.getFullYear();
+  const pm = String(taipeiDate.getMonth() + 1).padStart(2, '0');
+  const pd = String(taipeiDate.getDate()).padStart(2, '0');
   return `${py}-${pm}-${pd}`;
 }
 
@@ -93,20 +106,42 @@ async function startServer() {
          const webhookUrl = process.env.UPDATE_WEBHOOK_URL || process.env.VITE_UPDATE_WEBHOOK_URL;
 
          if (webhookUrl && (webhookUrl.startsWith("http://") || webhookUrl.startsWith("https://"))) {
-           pushSyncLog(`[系統] 偵測到遠端 Webhook，進行同步觸發: ${webhookUrl}`);
+           // SSRF protection: block private/internal IP ranges
            try {
-             await fetch(webhookUrl, {
-               method: 'POST',
-               signal: AbortSignal.timeout(4000)
-             });
-             pushSyncLog(`[系統] 遠端 Webhook 觸發成功。`);
-           } catch (err: any) {
-             pushSyncLog(`[系統] [警告] 遠端 Webhook 觸發未成功: ${err.message}`);
-             console.warn(`[Webhook-Warning] Background remote webhook trigger failed: ${err.message}`);
+             const urlObj = new URL(webhookUrl);
+             const hostname = urlObj.hostname;
+             const isPrivate =
+               hostname === "localhost" ||
+               hostname === "127.0.0.1" ||
+               hostname.startsWith("127.") ||
+               hostname.startsWith("10.") ||
+               hostname.startsWith("192.168.") ||
+               hostname.match(/^172\.(1[6-9]|2[0-9]|3[01])\./) !== null ||
+               hostname === "[::1]" ||
+               hostname.startsWith("169.254.");
+             if (isPrivate) {
+               pushSyncLog(`[系統] [警告] Webhook URL 指向內網位址，已拒絕: ${webhookUrl}`);
+               console.warn(`[Webhook-Blocked] Private IP blocked: ${webhookUrl}`);
+             } else {
+               pushSyncLog(`[系統] 偵測到遠端 Webhook，進行同步觸發: ${webhookUrl}`);
+               try {
+                 await fetch(webhookUrl, {
+                   method: 'POST',
+                   signal: AbortSignal.timeout(4000)
+                 });
+                 pushSyncLog(`[系統] 遠端 Webhook 觸發成功。`);
+               } catch (err: any) {
+                 pushSyncLog(`[系統] [警告] 遠端 Webhook 觸發未成功: ${err.message}`);
+                 console.warn(`[Webhook-Warning] Background remote webhook trigger failed: ${err.message}`);
+               }
+             }
+           } catch (urlErr: any) {
+             pushSyncLog(`[系統] [警告] Webhook URL 格式無效: ${webhookUrl}`);
            }
          }
 
          // For critical empty, we do fast_sync first. For stale, we do pull_from_supabase && complete_and_fetch_today.
+         // Scripts are internal paths (not user input) — shell=true is safe here for && chaining.
          const node = JSON.stringify(process.execPath);
          const cmd = isDBCriticalEmpty
            ? `${node} scripts/fast_sync.js && ${node} scripts/pull_from_supabase.js`

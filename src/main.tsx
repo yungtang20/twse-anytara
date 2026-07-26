@@ -19,8 +19,12 @@ class ErrorBoundary extends Component<{children: ReactNode}, {hasError: boolean,
       return (
         <div style={{ padding: 20, color: 'white', background: 'red' }}>
           <h1>Something went wrong.</h1>
-          <pre>{this.state.error?.toString()}</pre>
-          <pre>{this.state.error?.stack}</pre>
+          {process.env.NODE_ENV !== "production" && (
+            <>
+              <pre>{this.state.error?.toString()}</pre>
+              <pre>{this.state.error?.stack}</pre>
+            </>
+          )}
         </div>
       );
     }
