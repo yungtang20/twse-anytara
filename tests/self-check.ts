@@ -35,6 +35,7 @@ import { appViewHash, parseAppView } from "../src/lib/navigation";
 import { buildIntegratedMarketData } from "../src/lib/integratedMarketData";
 import {
   buildSupportResistanceLines,
+  selectExtremeAnchors,
   selectTrendAnchors,
 } from "../src/lib/trendLines";
 import {
@@ -169,7 +170,23 @@ const trendRows: PriceData[] = Array.from({ length: 60 }, (_, index) => ({
   open: 100,
   high: index === 5 ? 200 : index === 10 ? 190 : index === 40 ? 180 : index === 50 ? 170 : 120,
   low: index === 6 ? 40 : index === 11 ? 45 : index === 41 ? 50 : index === 51 ? 55 : 80,
-  close: 100,
+  close: index === 5
+    ? 160
+    : index === 6
+      ? 60
+      : index === 10
+        ? 150
+        : index === 11
+          ? 65
+          : index === 40
+            ? 150
+            : index === 41
+              ? 70
+              : index === 50
+                ? 140
+                : index === 51
+                  ? 75
+                  : 100,
   volume: 1_000,
 }));
 const trendLines = buildSupportResistanceLines(trendRows, 59);
@@ -188,13 +205,13 @@ trendRows.forEach((row, index) => {
   }
   assert.ok(
     trendLines.longResistance[index] !== null
-      && trendLines.longResistance[index] >= row.high,
-    `long resistance must stay above the high at index ${index}`,
+      && trendLines.longResistance[index] >= row.close,
+    `long resistance must stay above the close at index ${index}`,
   );
   assert.ok(
     trendLines.longSupport[index] !== null
-      && trendLines.longSupport[index] <= row.low,
-    `long support must stay below the low at index ${index}`,
+      && trendLines.longSupport[index] <= row.close,
+    `long support must stay below the close at index ${index}`,
   );
 });
 const adjacentExtremes: PriceData[] = Array.from({ length: 60 }, (_, index) => ({
@@ -207,11 +224,13 @@ const adjacentExtremes: PriceData[] = Array.from({ length: 60 }, (_, index) => (
 }));
 assert.deepEqual(
   selectTrendAnchors(adjacentExtremes, 59, 60, "high", true).map(({ index }) => index),
-  [59, 40],
+  [59, 46],
+  "anchors must use the two most recent distinct highs when scanning newest-first",
 );
 assert.deepEqual(
   selectTrendAnchors(adjacentExtremes, 59, 60, "low", false).map(({ index }) => index),
-  [10, 30],
+  [30, 10],
+  "support anchors must use the two strongest distinct lows and remain newest-first",
 );
 const edgeAwareSwings: PriceData[] = Array.from({ length: 30 }, (_, index) => ({
   date: `S${index + 1}`,
@@ -223,7 +242,7 @@ const edgeAwareSwings: PriceData[] = Array.from({ length: 30 }, (_, index) => ({
 }));
 assert.deepEqual(
   selectTrendAnchors(edgeAwareSwings, 29, 25, "high", true).map(({ index }) => index),
-  [12, 29],
+  [29, 12],
   "the latest candle may be a visually confirmed one-sided swing",
 );
 assert.deepEqual(
@@ -234,15 +253,97 @@ assert.deepEqual(
 const plateauSwings: PriceData[] = Array.from({ length: 25 }, (_, index) => ({
   date: `P${index + 1}`,
   open: 100,
-  high: index === 10 || index === 11 ? 150 : index === 18 ? 140 : 100 + index * 0.01,
+  high: index === 10 || index === 11
+    ? 150
+    : index >= 18
+      ? 140 - (index - 18)
+      : 100 + index * 0.01,
   low: 80 + index * 0.01,
   close: 100,
   volume: 1_000,
 }));
 assert.deepEqual(
   selectTrendAnchors(plateauSwings, 24, 25, "high", true).map(({ index }) => index),
-  [10, 18],
+  [18, 11],
   "adjacent candles on the same plateau must count as one swing high",
+);
+const mixedPriceBasis: PriceData[] = Array.from({ length: 60 }, (_, index) => ({
+  date: `M${index + 1}`,
+  open: 100,
+  high: index === 10 ? 500 : index === 40 ? 400 : 110,
+  low: index === 15 ? 1 : index === 45 ? 2 : 90,
+  close: index === 20 ? 160 : index === 50 ? 150 : 100,
+  volume: 1_000,
+}));
+assert.deepEqual(
+  selectTrendAnchors(mixedPriceBasis, 59, 60, "close", true).map(({ index }) => index),
+  [50, 20],
+  "long-term pressure anchors must be selectable from closes instead of intraday highs",
+);
+assert.deepEqual(
+  selectTrendAnchors(mixedPriceBasis, 59, 60, "close", false).map(({ index }) => index),
+  [52, 22],
+  "long-term support anchors must follow closing-price valleys instead of intraday lows",
+);
+const longCloseExtremes: PriceData[] = Array.from({ length: 60 }, (_, index) => ({
+  date: `L${index + 1}`,
+  open: 100,
+  high: 120,
+  low: 80,
+  close: index === 10
+    ? 200
+    : index === 20
+      ? 190
+      : index === 30
+        ? 40
+        : index === 40
+          ? 50
+          : index === 50
+            ? 180
+            : index === 55
+              ? 60
+              : 100,
+  volume: 1_000,
+}));
+assert.deepEqual(
+  selectExtremeAnchors(longCloseExtremes, 59, 60, "close", true).map(({ index }) => index),
+  [20, 10],
+  "long resistance must start from the two highest distinct closing-price peaks",
+);
+assert.deepEqual(
+  selectExtremeAnchors(longCloseExtremes, 59, 60, "close", false).map(({ index }) => index),
+  [40, 30],
+  "long support must start from the two lowest distinct closing-price valleys",
+);
+const clusteredLongPeaks: PriceData[] = Array.from({ length: 60 }, (_, index) => ({
+  date: `P${index + 1}`,
+  open: 70,
+  high: 100,
+  low: 40,
+  close: index === 20 ? 88.7 : index === 21 ? 87 : index === 37 ? 85.7 : 70,
+  volume: 1_000,
+}));
+assert.deepEqual(
+  selectExtremeAnchors(clusteredLongPeaks, 59, 60, "close", true).map(({ index }) => index),
+  [37, 20],
+  "an adjacent candle from the same peak must not replace the second distinct peak",
+);
+const latestDayBoundaryBreak: PriceData[] = Array.from({ length: 25 }, (_, index) => ({
+  date: `R${index + 1}`,
+  open: 100,
+  high: index === 5 ? 200 : index === 15 ? 190 : index === 24 ? 189 : 100,
+  low: index === 5 ? 50 : index === 15 ? 60 : index === 24 ? 61 : 100,
+  close: 100,
+  volume: 1_000,
+}));
+const latestDayLines = buildSupportResistanceLines(latestDayBoundaryBreak, 24);
+assert.ok(
+  Number(latestDayLines.shortResistance[24]) >= latestDayBoundaryBreak[24].high,
+  "short resistance must restart from the latest day when a later high crosses the line",
+);
+assert.ok(
+  Number(latestDayLines.shortSupport[24]) <= latestDayBoundaryBreak[24].low,
+  "short support must restart from the latest day when a later low crosses the line",
 );
 assert.equal(formatPriceAxisTick(49.999999999), "50.00");
 assert.equal(formatPriceAxisTick(277.5), "277.50");

@@ -15,7 +15,7 @@ import {
   formatTrendLegendLabel,
 } from '../lib/chartFormatting';
 
-const TREND_LINE_ALGORITHM_VERSION = 7;
+const TREND_LINE_ALGORITHM_VERSION = 15;
 
 export interface KlineOverlay {
   hLines?: { value: number; color: string; label?: string; dash?: boolean }[];

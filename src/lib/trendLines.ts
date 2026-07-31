@@ -7,7 +7,7 @@ export interface SupportResistanceLines {
   longSupport: Array<number | null>;
 }
 
-type PriceField = "high" | "low";
+type PriceField = "high" | "low" | "close";
 
 export interface TrendAnchor {
   index: number;
@@ -46,15 +46,18 @@ export function selectTrendAnchors(
         && neighbor.value > 0
       ));
     if (neighbors.length < pivotRadius) return false;
-    return neighbors.every((neighbor) => highest
+    const containsStrictExtreme = neighbors.some((neighbor) => highest
+      ? point.value > neighbor.value
+      : point.value < neighbor.value);
+    return containsStrictExtreme && neighbors.every((neighbor) => highest
       ? point.value >= neighbor.value
       : point.value <= neighbor.value);
   });
-  const byPrice = (left: { index: number; value: number }, right: { index: number; value: number }) => {
-      const priceOrder = highest
-        ? right.value - left.value
-        : left.value - right.value;
-      return priceOrder || left.index - right.index;
+  const byPrice = (left: TrendAnchor, right: TrendAnchor) => {
+    const priceOrder = highest
+      ? right.value - left.value
+      : left.value - right.value;
+    return priceOrder || right.index - left.index;
   };
   const pivotGroups: TrendAnchor[][] = [];
   for (const pivot of pivots) {
@@ -68,63 +71,126 @@ export function selectTrendAnchors(
   }
   const distinctPivots = pivotGroups.map((group) => [...group].sort(byPrice)[0]);
   if (distinctPivots.length < 2) return [];
-  return distinctPivots.sort(byPrice).slice(0, 2);
+  return distinctPivots
+    .sort((left, right) => right.index - left.index)
+    .slice(0, 2)
+    .map((anchor) => ({ ...anchor }));
 }
 
-function backwardEnvelopeSeries(
+export function selectExtremeAnchors(
   data: PriceData[],
   endIndex: number,
   period: number,
   field: PriceField,
   highest: boolean,
-) {
+): TrendAnchor[] {
   const startIndex = Math.max(0, endIndex - period + 1);
-  const points = data.slice(startIndex, endIndex + 1)
+  const candidates = data
+    .slice(startIndex, endIndex + 1)
     .map((row, offset) => ({
       index: startIndex + offset,
-      high: Number(row.high),
-      low: Number(row.low),
+      value: Number(row[field]),
     }))
-    .filter((point) => (
-      Number.isFinite(point.high)
-      && Number.isFinite(point.low)
-      && point.high > 0
-      && point.low > 0
+    .filter((anchor) => Number.isFinite(anchor.value) && anchor.value > 0);
+  const pivotRadius = 2;
+  const pivots = candidates.filter((point) => {
+    const neighbors = candidates.filter((candidate) => (
+      candidate.index !== point.index
+      && Math.abs(candidate.index - point.index) <= pivotRadius
     ));
-  const series: Array<number | null> = Array(data.length).fill(null);
-  if (points.length < 2) return series;
-
-  const meanIndex = points.reduce((sum, point) => sum + point.index, 0) / points.length;
-  const meanMidpoint = points.reduce(
-    (sum, point) => sum + (point.high + point.low) / 2,
-    0,
-  ) / points.length;
-  const denominator = points.reduce(
-    (sum, point) => sum + (point.index - meanIndex) ** 2,
-    0,
+    if (neighbors.length < pivotRadius) return false;
+    return neighbors.every((neighbor) => highest
+      ? point.value >= neighbor.value
+      : point.value <= neighbor.value);
+  });
+  const rankedPivots = pivots
+    .sort((left, right) => {
+      const priceOrder = highest
+        ? right.value - left.value
+        : left.value - right.value;
+      return priceOrder || right.index - left.index;
+    })
+    .filter((point, index, ranked) => (
+      ranked.findIndex((candidate) => (
+        Math.abs(candidate.index - point.index) <= pivotRadius
+      )) === index
+    ));
+  const selected = rankedPivots.length >= 2 ? rankedPivots : candidates.sort(
+    (left, right) => (highest
+      ? right.value - left.value
+      : left.value - right.value) || right.index - left.index,
   );
-  const slope = denominator === 0
-    ? 0
-    : points.reduce(
-      (sum, point) => sum
-        + (point.index - meanIndex)
-        * (((point.high + point.low) / 2) - meanMidpoint),
-      0,
-    ) / denominator;
-  const intercept = meanMidpoint - slope * meanIndex;
+  return selected.slice(0, 2)
+    .sort((left, right) => right.index - left.index);
+}
 
-  // The active window is anchored at its newest candle. Walk backwards so an
-  // older high/low can only push the corresponding boundary outwards.
-  let correction = highest ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
-  for (let position = points.length - 1; position >= 0; position--) {
-    const point = points[position];
-    const residual = point[field] - (intercept + slope * point.index);
-    correction = highest
-      ? Math.max(correction, residual)
-      : Math.min(correction, residual);
-  }
+function extendedBoundarySeries(
+  data: PriceData[],
+  startIndex: number,
+  endIndex: number,
+  field: PriceField,
+  highest: boolean,
+  anchors: TrendAnchor[],
+) {
+  const series = extendedSeries(data.length, startIndex, endIndex, anchors);
+  let adjustment = 0;
   for (let index = startIndex; index <= endIndex; index++) {
-    series[index] = intercept + slope * index + correction;
+    const projected = series[index];
+    const value = Number(data[index]?.[field]);
+    if (projected === null || !Number.isFinite(value) || value <= 0) continue;
+    const difference = value - projected;
+    adjustment = highest
+      ? Math.max(adjustment, difference)
+      : Math.min(adjustment, difference);
+  }
+  if (adjustment === 0) return series;
+  return series.map((value) => value === null ? null : value + adjustment);
+}
+
+function adjustOlderAnchor(
+  data: PriceData[],
+  startIndex: number,
+  endIndex: number,
+  field: PriceField,
+  highest: boolean,
+  anchors: TrendAnchor[],
+): TrendAnchor[] {
+  if (anchors.length !== 2) return [];
+  let [newer, older] = anchors;
+  const maxCorrections = (endIndex - startIndex + 1) * 2;
+  for (let correction = 0; correction < maxCorrections; correction++) {
+    let boundaryBreak: TrendAnchor | null = null;
+    for (let index = endIndex; index >= startIndex; index--) {
+      if (index === newer.index || index === older.index) continue;
+      const value = Number(data[index]?.[field]);
+      if (!Number.isFinite(value) || value <= 0) continue;
+      const slope = (newer.value - older.value) / (newer.index - older.index);
+      const projected = older.value + slope * (index - older.index);
+      if (highest ? value > projected : value < projected) {
+        boundaryBreak = { index, value };
+        break;
+      }
+    }
+    if (!boundaryBreak) break;
+    if (boundaryBreak.index > newer.index) newer = boundaryBreak;
+    else older = boundaryBreak;
+  }
+  return [newer, older];
+}
+
+function extendedSeries(
+  length: number,
+  startIndex: number,
+  endIndex: number,
+  anchors: TrendAnchor[],
+) {
+  const series: Array<number | null> = Array(length).fill(null);
+  if (anchors.length !== 2) return series;
+  const [newer, older] = anchors;
+  if (newer.index === older.index) return series;
+  const slope = (newer.value - older.value) / (newer.index - older.index);
+  for (let index = startIndex; index <= endIndex; index++) {
+    series[index] = older.value + slope * (index - older.index);
   }
   return series;
 }
@@ -133,10 +199,58 @@ export function buildSupportResistanceLines(
   data: PriceData[],
   endIndex: number,
 ): SupportResistanceLines {
+  const shortStartIndex = Math.max(0, endIndex - 25 + 1);
+  const longStartIndex = Math.max(0, endIndex - 60 + 1);
+  const shortResistanceAnchors = adjustOlderAnchor(
+    data,
+    shortStartIndex,
+    endIndex,
+    "high",
+    true,
+    selectTrendAnchors(data, endIndex, 25, "high", true),
+  );
+  const shortSupportAnchors = adjustOlderAnchor(
+    data,
+    shortStartIndex,
+    endIndex,
+    "low",
+    false,
+    selectTrendAnchors(data, endIndex, 25, "low", false),
+  );
+  const longResistanceAnchors = selectExtremeAnchors(
+    data, endIndex, 60, "close", true,
+  );
+  const longSupportAnchors = selectExtremeAnchors(
+    data, endIndex, 60, "close", false,
+  );
   return {
-    shortResistance: backwardEnvelopeSeries(data, endIndex, 25, "high", true),
-    shortSupport: backwardEnvelopeSeries(data, endIndex, 25, "low", false),
-    longResistance: backwardEnvelopeSeries(data, endIndex, 60, "high", true),
-    longSupport: backwardEnvelopeSeries(data, endIndex, 60, "low", false),
+    shortResistance: extendedSeries(
+      data.length,
+      shortStartIndex,
+      endIndex,
+      shortResistanceAnchors,
+    ),
+    shortSupport: extendedSeries(
+      data.length,
+      shortStartIndex,
+      endIndex,
+      shortSupportAnchors,
+    ),
+    longResistance: extendedBoundarySeries(
+      data,
+      longStartIndex,
+      endIndex,
+      "close",
+      true,
+      longResistanceAnchors,
+    ),
+    longSupport: extendedBoundarySeries(
+      data,
+      longStartIndex,
+      endIndex,
+      "close",
+      false,
+      longSupportAnchors,
+    ),
   };
 }
