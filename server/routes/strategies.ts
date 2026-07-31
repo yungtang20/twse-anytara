@@ -10,6 +10,7 @@ import {
   type CloudInstitutionalRow,
   type CloudPriceRow,
 } from "../lib/cloudMarketData";
+import { buildSimulatedPriceProjection } from "../lib/priceProjection";
 
 const router = Router();
 
@@ -220,10 +221,18 @@ router.get("/api/stock/:id/pattern-analysis", async (req, res) => {
   }
 });
 
-router.get("/api/stock/:id/prediction-analysis", (_req, res) => res.status(410).json({
-  success: false,
-  error: "合成股價預測已停用",
-}));
+router.get("/api/stock/:id/prediction-analysis", async (req, res) => {
+  try {
+    const rows = await fetchCloudPrices(req.params.id, 60);
+    return res.json({
+      success: true,
+      data: buildSimulatedPriceProjection(rows),
+      source: "supabase",
+    });
+  } catch (error) {
+    return errorResponse(res, error);
+  }
+});
 
 async function scanCandidates(req: Request) {
   const minVolume = Math.max(0, Number.parseInt(String(req.query.min_volume || "500"), 10));

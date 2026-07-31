@@ -30,6 +30,8 @@ import { hasUsableLocalPriceRows } from "../server/lib/marketDataRepository";
 import { resolveDatabasePath } from "../server/db";
 import { listPendingCalendarDates } from "../scripts/lib/syncDates";
 import { sortTrustBuyByDays } from "../server/routes/dashboard";
+import { buildSimulatedPriceProjection } from "../server/lib/priceProjection";
+import { appViewHash, parseAppView } from "../src/lib/navigation";
 
 const rising = Array.from({ length: 20 }, (_, index) => 100 + index);
 const syncRouteSource = readFileSync(
@@ -46,6 +48,15 @@ const cloudSyncSource = readFileSync(
 );
 const retentionMigrationSource = readFileSync(
   path.join(process.cwd(), "supabase", "migrations", "20260731030000_align_market_retention.sql"),
+  "utf8",
+);
+const volumeUnitMigrationSource = readFileSync(
+  path.join(
+    process.cwd(),
+    "supabase",
+    "migrations",
+    "20260731043043_normalize_stock_price_volume_units.sql",
+  ),
   "utf8",
 );
 const chipsChartSource = readFileSync(
@@ -90,6 +101,16 @@ assert.deepEqual(
     { stock_id: "2886", trust_days: 10 },
   ],
 );
+assert.equal(parseAppView(""), "markets");
+assert.equal(parseAppView("#/ai-analysis"), "ai-analysis");
+assert.equal(parseAppView("#/unknown"), "markets");
+assert.equal(appViewHash("markets"), "#/markets");
+const simulatedProjection = buildSimulatedPriceProjection(
+  Array.from({ length: 20 }, (_, index) => ({ close: 100 + index })),
+);
+assert.equal(simulatedProjection.isSimulated, true);
+assert.equal(simulatedProjection.predictions.length, 5);
+assert.match(simulatedProjection.disclaimer, /不代表未來價格/);
 const mvpRouteSource = readFileSync(
   path.join(process.cwd(), "server", "mvpMcpRoutes.ts"),
   "utf8",
@@ -97,6 +118,8 @@ const mvpRouteSource = readFileSync(
 assert.match(mvpRouteSource, /return token && failed \? request\(""\) : first/);
 assert.doesNotMatch(mvpRouteSource, /error: "missing_api_key"/);
 assert.match(retentionMigrationSource, /offset \(price_rows - 1\)/);
+assert.match(volumeUnitMigrationSource, /set volume = volume \* 1000/);
+assert.match(volumeUnitMigrationSource, /volume < 1000000/);
 const finMindCacheMigrationSource = readFileSync(
   path.join(process.cwd(), "supabase", "migrations", "20260731040000_expand_finmind_cache.sql"),
   "utf8",

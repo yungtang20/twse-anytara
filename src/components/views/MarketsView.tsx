@@ -9,6 +9,7 @@ import { SRPanel } from "./SRPanel";
 import { MAPanel } from "./MAPanel";
 import { ChipsPanel } from "./ChipsPanel";
 import { PatternPanel } from "./PatternPanel";
+import { PredictionPanel } from "./PredictionPanel";
 
 const getPrevTradingDayStr = (dateStr: string) => {
   const d = new Date(dateStr);
@@ -138,14 +139,16 @@ export function MarketsView() {
         id: quote.stock_id,
         name: quote.name || '未知',
         source_type: 'raw',
-        close: quote.close,
+        price: Number(quote.close || 0),
         change: quote.change,
         changePercent: quote.changePercent,
-        volume: quote.volume,
-        prevClose: quote.prevClose,
-        prevVolume: null,
+        volume: Math.floor(Number(quote.volume || 0) / 1000),
+        prevPrice: Number(quote.prevClose || quote.close || 0),
+        prevVolume: 0,
         volDiff: 0,
         prevVolDiff: 0,
+        lastDate: quote.date || '',
+        histDate: '',
         chipHistory: [],
         predictions: [],
         integratedSupports: [],
@@ -158,22 +161,28 @@ export function MarketsView() {
           const priceData = histRes.data; // Note: API returns normalized volume
           setSupabaseLog(prev => prev + `\n[價格對接成功] 成功從 API 載入 ${priceData.length} 筆歷史交易資訊。`);
           
-          const latestPrice = priceData[0];
-          const prevPriceRec = priceData[1] || latestPrice;
-          const prev2PriceRec = priceData[2] || prevPriceRec;
+          const latestPrice = priceData.at(-1);
+          const prevPriceRec = priceData.at(-2) || latestPrice;
+          const prev2PriceRec = priceData.at(-3) || prevPriceRec;
+          if (!latestPrice || !prevPriceRec || !prev2PriceRec) {
+            throw new Error('歷史價格筆數不足');
+          }
 
           setSupabaseLog(prev => prev + `\n[對照載入] 最新交易日期: ${latestPrice.date}，收盤: ${latestPrice.close}，開盤: ${latestPrice.open}，最高: ${latestPrice.high}，最低: ${latestPrice.low}，成交量: ${latestPrice.volume}`);
 
-          const dateDiff = Math.abs((new Date(latestPrice.date).getTime() - new Date(prevPriceRec.date).getTime()) / (1000 * 60 * 60 * 24));
           const changePrev = Number(prevPriceRec.close || 0) - Number(prev2PriceRec.close || prevPriceRec.close);
-          
+
+          mergedData.price = Number(latestPrice.close || quote.close || 0);
+          mergedData.prevPrice = Number(prevPriceRec.close || latestPrice.close || 0);
+          mergedData.lastDate = String(latestPrice.date || quote.date || '');
+          mergedData.histDate = String(prevPriceRec.date || '');
           mergedData.prevChange = changePrev;
           mergedData.prevChangePercent = Number(prev2PriceRec.close || prevPriceRec.close) > 0 ? Number(((changePrev / Number(prev2PriceRec.close || prevPriceRec.close)) * 100).toFixed(2)) : 0;
-          
-          mergedData.volume = Math.floor(Number(latestPrice.volume || 0));
-          mergedData.prevVolume = Math.floor(Number(prevPriceRec.volume || 0));
-          const prev2Vol = Math.floor(Number(prev2PriceRec.volume || 0));
-          
+
+          mergedData.volume = Math.floor(Number(latestPrice.volume || 0) / 1000);
+          mergedData.prevVolume = Math.floor(Number(prevPriceRec.volume || 0) / 1000);
+          const prev2Vol = Math.floor(Number(prev2PriceRec.volume || 0) / 1000);
+
           mergedData.volDiff = mergedData.volume - mergedData.prevVolume;
           mergedData.prevVolDiff = mergedData.prevVolume - prev2Vol;
       }
@@ -467,6 +476,7 @@ export function MarketsView() {
           </div>
           <div className="space-y-3">
             <ChipsPanel stockId={stock.id} />
+            <PredictionPanel stockId={stock.id} />
           </div>
         </div>
 

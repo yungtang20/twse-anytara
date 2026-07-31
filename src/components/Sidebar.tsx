@@ -10,7 +10,7 @@ interface SidebarProps {
 export function Sidebar({ currentView, onViewChange }: SidebarProps) {
   return (
     <aside className="flex min-h-screen w-full min-w-0 flex-col overflow-hidden bg-slate-900 border-r border-slate-800">
-      <div className="h-12 flex items-center px-3 border-b border-slate-800 cursor-pointer" onClick={() => onViewChange("dashboard")}>
+      <div className="h-12 flex items-center px-3 border-b border-slate-800 cursor-pointer" onClick={() => onViewChange("markets")}>
         <h1 className="text-lg font-bold bg-gradient-to-r from-blue-400 to-indigo-500 bg-clip-text text-transparent tracking-tight">
           TRINITY
         </h1>

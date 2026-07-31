@@ -253,6 +253,26 @@ export async function fetchPatternAnalysis(id: string): Promise<PatternAnalysis 
   return res.success ? res.data : null;
 }
 
+export interface PredictionAnalysis {
+  aiStrength: "看多" | "中性" | "看空";
+  aiScore: number;
+  volatility: number;
+  avgReturn: number;
+  aiReason: string;
+  aiOffset: string;
+  predictions: Array<{ day: string; price: number; pct: number }>;
+  isSimulated: true;
+  disclaimer: string;
+}
+
+export async function fetchPredictionAnalysis(id: string): Promise<PredictionAnalysis> {
+  const res = await get<{ success: boolean; data: PredictionAnalysis }>(
+    `/api/stock/${id}/prediction-analysis`,
+  );
+  if (!res.success || !res.data) throw new Error("無法取得技術模擬資料");
+  return res.data;
+}
+
 // ── Strategy Scan Types ──────────────────────────────────
 
 export interface SRScanItem {
