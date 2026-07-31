@@ -10,9 +10,12 @@ import type {
   ShareholdingPoint,
 } from '../lib/integratedMarketData';
 import { buildSupportResistanceLines } from '../lib/trendLines';
-import { formatPriceAxisTick } from '../lib/chartFormatting';
+import {
+  formatPriceAxisTick,
+  formatTrendLegendLabel,
+} from '../lib/chartFormatting';
 
-const TREND_LINE_ALGORITHM_VERSION = 3;
+const TREND_LINE_ALGORITHM_VERSION = 6;
 
 export interface KlineOverlay {
   hLines?: { value: number; color: string; label?: string; dash?: boolean }[];
@@ -31,6 +34,10 @@ interface CandleDatum extends PriceData {
   candleRange: [number, number];
   previousClose: number;
   vwap: number | null;
+  shortResistance: number | null;
+  shortSupport: number | null;
+  longResistance: number | null;
+  longSupport: number | null;
 }
 
 interface CandlestickShapeProps {
@@ -479,10 +486,22 @@ export function KlineChart({
                     { label: 'MA200', color: '#f472b6' },
                   ] : []),
                   ...(showSupportResistance ? [
-                    { label: '短壓25', color: '#ef4444' },
-                    { label: '短撐25', color: '#10b981' },
-                    { label: '長壓60', color: '#dc2626' },
-                    { label: '長撐60', color: '#059669' },
+                    {
+                      label: formatTrendLegendLabel('短壓25', displayDatum?.shortResistance),
+                      color: '#22c55e',
+                    },
+                    {
+                      label: formatTrendLegendLabel('短撐25', displayDatum?.shortSupport),
+                      color: '#ef4444',
+                    },
+                    {
+                      label: formatTrendLegendLabel('長壓60', displayDatum?.longResistance),
+                      color: '#15803d',
+                    },
+                    {
+                      label: formatTrendLegendLabel('長撐60', displayDatum?.longSupport),
+                      color: '#dc2626',
+                    },
                   ] : []),
                 ]}
               />
@@ -557,8 +576,7 @@ export function KlineChart({
                   <Line
                     type="linear"
                     dataKey="shortResistance"
-                    stroke="#ef4444"
-                    strokeDasharray="4 3"
+                    stroke="#22c55e"
                     strokeWidth={1}
                     dot={false}
                     name="短期壓力（25日高點連線）"
@@ -567,8 +585,7 @@ export function KlineChart({
                   <Line
                     type="linear"
                     dataKey="shortSupport"
-                    stroke="#10b981"
-                    strokeDasharray="4 3"
+                    stroke="#ef4444"
                     strokeWidth={1}
                     dot={false}
                     name="短期支撐（25日低點連線）"
@@ -577,8 +594,7 @@ export function KlineChart({
                   <Line
                     type="linear"
                     dataKey="longResistance"
-                    stroke="#dc2626"
-                    strokeDasharray="1 3"
+                    stroke="#15803d"
                     strokeWidth={1.5}
                     dot={false}
                     name="長期壓力（60日高點連線）"
@@ -587,8 +603,7 @@ export function KlineChart({
                   <Line
                     type="linear"
                     dataKey="longSupport"
-                    stroke="#059669"
-                    strokeDasharray="1 3"
+                    stroke="#dc2626"
                     strokeWidth={1.5}
                     dot={false}
                     name="長期支撐（60日低點連線）"

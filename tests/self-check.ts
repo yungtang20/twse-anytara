@@ -37,7 +37,10 @@ import {
   buildSupportResistanceLines,
   selectTrendAnchors,
 } from "../src/lib/trendLines";
-import { formatPriceAxisTick } from "../src/lib/chartFormatting";
+import {
+  formatPriceAxisTick,
+  formatTrendLegendLabel,
+} from "../src/lib/chartFormatting";
 
 const rising = Array.from({ length: 20 }, (_, index) => 100 + index);
 const syncRouteSource = readFileSync(
@@ -172,32 +175,24 @@ const trendRows: PriceData[] = Array.from({ length: 60 }, (_, index) => ({
 const trendLines = buildSupportResistanceLines(trendRows, 59);
 assert.deepEqual(
   trendLines.shortResistance.slice(35, 60),
-  [
-    ...Array(5).fill(null),
-    ...Array.from({ length: 20 }, (_, offset) => 180 - offset),
-  ],
+  Array.from({ length: 25 }, (_, offset) => 185 - offset),
 );
 assert.deepEqual(
   trendLines.shortSupport.slice(35, 60),
-  [
-    ...Array(6).fill(null),
-    ...Array.from({ length: 19 }, (_, offset) => 50 + offset * 0.5),
-  ],
+  Array.from({ length: 25 }, (_, offset) => 47 + offset * 0.5),
 );
-assert.deepEqual(
-  trendLines.longResistance,
-  [
-    ...Array(5).fill(null),
-    ...Array.from({ length: 55 }, (_, offset) => 200 - offset * 2),
-  ],
-);
-assert.deepEqual(
-  trendLines.longSupport,
-  [
-    ...Array(6).fill(null),
-    ...Array.from({ length: 54 }, (_, offset) => 40 + offset),
-  ],
-);
+trendRows.forEach((row, index) => {
+  assert.ok(
+    trendLines.longResistance[index] !== null
+      && trendLines.longResistance[index] >= row.high,
+    `long resistance must stay above the high at index ${index}`,
+  );
+  assert.ok(
+    trendLines.longSupport[index] !== null
+      && trendLines.longSupport[index] <= row.low,
+    `long support must stay below the low at index ${index}`,
+  );
+});
 const adjacentExtremes: PriceData[] = Array.from({ length: 60 }, (_, index) => ({
   date: `A${index + 1}`,
   open: 300,
@@ -208,27 +203,46 @@ const adjacentExtremes: PriceData[] = Array.from({ length: 60 }, (_, index) => (
 }));
 assert.deepEqual(
   selectTrendAnchors(adjacentExtremes, 59, 60, "high", true).map(({ index }) => index),
-  [40, 46],
+  [59, 40],
 );
 assert.deepEqual(
   selectTrendAnchors(adjacentExtremes, 59, 60, "low", false).map(({ index }) => index),
   [10, 30],
 );
-const singleSwing: PriceData[] = Array.from({ length: 25 }, (_, index) => ({
+const edgeAwareSwings: PriceData[] = Array.from({ length: 30 }, (_, index) => ({
   date: `S${index + 1}`,
   open: 100,
-  high: index === 12 ? 150 : 100 + index,
-  low: 80 + index,
+  high: index === 12 ? 150 : index === 29 ? 140 : 100 + index * 0.01,
+  low: index === 4 ? 30 : index === 5 ? 40 : index === 15 ? 50 : index === 29 ? 45 : 80 + index * 0.01,
   close: 100,
   volume: 1_000,
 }));
 assert.deepEqual(
-  selectTrendAnchors(singleSwing, 24, 25, "high", true),
-  [],
-  "a trend line must not fall back to adjacent candles when two confirmed swing points do not exist",
+  selectTrendAnchors(edgeAwareSwings, 29, 25, "high", true).map(({ index }) => index),
+  [12, 29],
+  "the latest candle may be a visually confirmed one-sided swing",
+);
+assert.deepEqual(
+  selectTrendAnchors(edgeAwareSwings, 29, 25, "low", false).map(({ index }) => index),
+  [29, 15],
+  "the window start must use earlier candles for confirmation while the latest low remains selectable",
+);
+const plateauSwings: PriceData[] = Array.from({ length: 25 }, (_, index) => ({
+  date: `P${index + 1}`,
+  open: 100,
+  high: index === 10 || index === 11 ? 150 : index === 18 ? 140 : 100 + index * 0.01,
+  low: 80 + index * 0.01,
+  close: 100,
+  volume: 1_000,
+}));
+assert.deepEqual(
+  selectTrendAnchors(plateauSwings, 24, 25, "high", true).map(({ index }) => index),
+  [10, 18],
+  "adjacent candles on the same plateau must count as one swing high",
 );
 assert.equal(formatPriceAxisTick(49.999999999), "50.00");
 assert.equal(formatPriceAxisTick(277.5), "277.50");
+assert.equal(formatTrendLegendLabel("長壓60", 81.6), "長壓60 81.60");
 assert.match(klineChartSource, /label: '均線'/);
 assert.doesNotMatch(klineChartSource, /均線 MA25\/60\/200/);
 assert.match(klineChartSource, /\(\[26, 61, 201\] as const\)/);
@@ -247,6 +261,10 @@ assert.match(klineChartSource, /aria-live="polite"/);
 assert.match(klineChartSource, /onMouseMove=\{handleChartMouseMove\}/);
 assert.match(klineChartSource, /domain=\{priceDomain\}/);
 assert.match(klineChartSource, /tickFormatter=\{formatPriceAxisTick\}/);
+assert.match(
+  klineChartSource,
+  /formatTrendLegendLabel\('短壓25', displayDatum\?\.shortResistance\)/,
+);
 assert.match(klineChartSource, /allowDataOverflow/);
 assert.doesNotMatch(klineChartSource, /dataKey="wickRange"/);
 assert.doesNotMatch(klineChartSource, /dataKey="boxRange"/);
