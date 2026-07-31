@@ -5,8 +5,9 @@ import { downloadTdccCSV, parseTdccCSV } from "../server/lib/tdccDownload";
 const supabase = createSupabaseAdminClient();
 const UPSERT_BATCH = 500;
 const PRICE_RETENTION = 512;
-const INSTITUTIONAL_RETENTION = 90;
-const TDCC_RETENTION = 104;
+const INSTITUTIONAL_RETENTION = 512;
+const TDCC_RETENTION = 512;
+const INITIAL_INSTITUTIONAL_DATES = 60;
 const HARD_BUDGET_BYTES = 500 * 1024 * 1024;
 const WRITE_CEILING_BYTES = 450 * 1024 * 1024;
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -53,12 +54,6 @@ interface InstitutionalRecord {
   foreign_net: number;
   trust_net: number;
   dealer_net: number;
-  foreign_buy: number;
-  foreign_sell: number;
-  trust_buy: number;
-  trust_sell: number;
-  dealer_buy: number;
-  dealer_sell: number;
   institutional_net: number;
   source: string;
 }
@@ -67,6 +62,11 @@ interface StorageStatus {
   database_bytes: number;
   public_tables_bytes: number;
   budget_bytes: number;
+}
+
+interface RetentionStatus {
+  price_dates: number;
+  price_min_date: string | null;
 }
 
 interface DailyRecords {
@@ -198,12 +198,6 @@ function parseTwseInstitutional(row: unknown[], date: string): InstitutionalReco
     foreign_net: foreignBuy - foreignSell,
     trust_net: trustBuy - trustSell,
     dealer_net: dealerBuy - dealerSell,
-    foreign_buy: foreignBuy,
-    foreign_sell: foreignSell,
-    trust_buy: trustBuy,
-    trust_sell: trustSell,
-    dealer_buy: dealerBuy,
-    dealer_sell: dealerSell,
     institutional_net: parseNumber(row[18]),
     source: "twse",
   };
@@ -212,24 +206,12 @@ function parseTwseInstitutional(row: unknown[], date: string): InstitutionalReco
 function parseTpexInstitutional(row: unknown[], date: string): InstitutionalRecord | null {
   const stockId = String(row[0] ?? "").trim();
   if (!isCommonStock(stockId)) return null;
-  const foreignBuy = parseNumber(row[8]);
-  const foreignSell = parseNumber(row[9]);
-  const trustBuy = parseNumber(row[11]);
-  const trustSell = parseNumber(row[12]);
-  const dealerBuy = parseNumber(row[20]);
-  const dealerSell = parseNumber(row[21]);
   return {
     stock_id: stockId,
     date,
     foreign_net: parseNumber(row[10]),
     trust_net: parseNumber(row[13]),
     dealer_net: parseNumber(row[22]),
-    foreign_buy: foreignBuy,
-    foreign_sell: foreignSell,
-    trust_buy: trustBuy,
-    trust_sell: trustSell,
-    dealer_buy: dealerBuy,
-    dealer_sell: dealerSell,
     institutional_net: parseNumber(row[24]),
     source: "tpex",
   };
@@ -309,6 +291,16 @@ async function getStorageStatus(): Promise<StorageStatus> {
   };
 }
 
+async function getRetentionStatus(): Promise<RetentionStatus> {
+  const { data, error } = await supabase.rpc("market_retention_status");
+  if (error) throw new Error(`Cannot read market retention status: ${error.message}`);
+  const result = Array.isArray(data) ? data[0] : data;
+  return {
+    price_dates: Number(result?.price_dates || 0),
+    price_min_date: result?.price_min_date || null,
+  };
+}
+
 async function upsertRows(table: string, rows: object[]): Promise<void> {
   for (let offset = 0; offset < rows.length; offset += UPSERT_BATCH) {
     const { error } = await supabase
@@ -363,6 +355,54 @@ async function syncDate(date: string): Promise<DailyRecords> {
   return records;
 }
 
+function previousIsoDate(date: string): string {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() - 1);
+  return value.toISOString().slice(0, 10);
+}
+
+async function syncPriceDate(date: string): Promise<{ prices: number; meta: number }> {
+  const [twse, tpex] = await Promise.all([fetchTwsePrice(date), fetchTpexPrice(date)]);
+  const prices = [...new Map([...twse.prices, ...tpex.prices].map((row) => [row.stock_id, row])).values()];
+  const meta = [...new Map([...twse.meta, ...tpex.meta].map((row) => [row.stock_id, row])).values()];
+  if (prices.length === 0) return { prices: 0, meta: 0 };
+  if (!DRY_RUN) {
+    await upsertMeta(meta);
+    await upsertRows("stock_price", prices);
+    const { error } = await supabase
+      .from("trading_calendar")
+      .upsert({ date, is_open: true, source: "twse_tpex" }, { onConflict: "date" });
+    if (error) throw new Error(`trading_calendar upsert failed: ${error.message}`);
+  }
+  console.log(`[Sync] Price backfill ${date}: ${DRY_RUN ? "validated" : "uploaded"} ${prices.length} rows.`);
+  return { prices: prices.length, meta: meta.length };
+}
+
+async function backfillPriceHistory(): Promise<{ prices: number; meta: number }> {
+  const status = await getRetentionStatus();
+  let missingDates = Math.max(0, PRICE_RETENTION - status.price_dates);
+  if (missingDates === 0) return { prices: 0, meta: 0 };
+  if (!status.price_min_date) throw new Error("Cannot backfill prices without an existing minimum date");
+  console.log(`[Sync] Price history has ${status.price_dates} dates; backfilling ${missingDates} to reach 512.`);
+  let candidate = previousIsoDate(status.price_min_date);
+  let attemptsRemaining = missingDates * 3 + 14;
+  const totals = { prices: 0, meta: 0 };
+  while (missingDates > 0 && attemptsRemaining > 0) {
+    const records = await syncPriceDate(candidate);
+    if (records.prices > 0) {
+      totals.prices += records.prices;
+      totals.meta += records.meta;
+      missingDates -= 1;
+    }
+    candidate = previousIsoDate(candidate);
+    attemptsRemaining -= 1;
+  }
+  if (missingDates > 0) {
+    throw new Error(`Price backfill stopped before reaching 512 trading dates; ${missingDates} still missing`);
+  }
+  return totals;
+}
+
 async function enforceRetention(): Promise<number> {
   if (DRY_RUN) return 0;
   const { data, error } = await supabase.rpc("enforce_cloud_retention", {
@@ -374,6 +414,48 @@ async function enforceRetention(): Promise<number> {
   if (error) throw new Error(`Retention RPC failed: ${error.message}`);
   const result = Array.isArray(data) ? data[0] : data;
   return Number(result?.deleted_rows || 0);
+}
+
+async function getMissingInstitutionalDates(): Promise<string[]> {
+  const { data, error } = await supabase.rpc("market_missing_institutional_dates", {
+    target_dates: INITIAL_INSTITUTIONAL_DATES,
+  });
+  if (error) throw new Error(`Cannot find institutional backfill dates: ${error.message}`);
+  return (data || []).map((row: { date: string }) => row.date);
+}
+
+async function syncInstitutionalDate(date: string): Promise<number> {
+  const [twse, tpex] = await Promise.all([
+    fetchTwseInstitutional(date),
+    fetchTpexInstitutional(date),
+  ]);
+  const records = [...new Map([...twse, ...tpex].map((row) => [row.stock_id, row])).values()];
+  if (records.length === 0) {
+    console.log(`[Sync] Institutional ${date}: no official market file available; skipped.`);
+    return 0;
+  }
+  if (!DRY_RUN) await upsertRows("stock_institutional", records);
+  console.log(
+    `[Sync] Institutional ${date}: ${DRY_RUN ? "validated" : "uploaded"} ${records.length} rows.`,
+  );
+  return records.length;
+}
+
+async function backfillInstitutionalHistory(): Promise<number> {
+  const dates = await getMissingInstitutionalDates();
+  if (dates.length === 0) return 0;
+  console.log(`[Sync] Backfilling ${dates.length} institutional trading dates (target ${INITIAL_INSTITUTIONAL_DATES}).`);
+  let uploaded = 0;
+  for (let index = 0; index < dates.length; index += 1) {
+    if (!DRY_RUN && index % 5 === 0) {
+      const storage = await getStorageStatus();
+      if (storage.database_bytes >= WRITE_CEILING_BYTES) {
+        throw new Error("Supabase reached the 450 MiB write ceiling during institutional backfill");
+      }
+    }
+    uploaded += await syncInstitutionalDate(dates[index]);
+  }
+  return uploaded;
 }
 
 async function syncTdccCloud(): Promise<number> {
@@ -488,8 +570,12 @@ async function run(): Promise<void> {
   console.log(`[Sync] Supabase latest date before sync: ${latestBefore || "none"}`);
 
   if (!DRY_RUN) {
+    const preDeleted = await enforceRetention();
     const before = await getStorageStatus();
-    console.log(`[Sync] Database size before sync: ${(before.database_bytes / 1024 / 1024).toFixed(1)} MiB.`);
+    console.log(
+      `[Sync] Pre-sync retention deleted ${preDeleted} rows; database size ` +
+      `${(before.database_bytes / 1024 / 1024).toFixed(1)} MiB.`,
+    );
     if (before.database_bytes >= WRITE_CEILING_BYTES) {
       throw new Error("Supabase is at or above the 450 MiB write ceiling; prune before uploading");
     }
@@ -504,6 +590,10 @@ async function run(): Promise<void> {
       totals.institutional += records.institutional.length;
       totals.meta += records.meta.length;
     }
+    const priceBackfill = await backfillPriceHistory();
+    totals.prices += priceBackfill.prices;
+    totals.meta += priceBackfill.meta;
+    totals.institutional += await backfillInstitutionalHistory();
     await syncTdccCloud();
     await syncDividendsCloud();
     const deletedRows = await enforceRetention();

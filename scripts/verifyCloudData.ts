@@ -41,6 +41,12 @@ async function run() {
     tableStatus("tdcc_shareholding"),
     tableStatus("stock_meta", "last_trade_date"),
   ]);
+  const { data: retentionData, error: retentionError } = await admin.rpc("market_retention_status");
+  if (retentionError) throw new Error(`market_retention_status: ${retentionError.message}`);
+  const retention = Array.isArray(retentionData) ? retentionData[0] : retentionData;
+  if (Number(retention?.price_dates || 0) > 512) {
+    throw new Error(`Price retention exceeded 512 trading dates: ${retention?.price_dates}`);
+  }
 
   const { data: publicPrice, error: publicReadError } = await publicClient
     .from("stock_price")
@@ -89,6 +95,8 @@ async function run() {
     for (const [name, path] of [
       ["quote", "/api/stock/2330/quote"],
       ["history", "/api/stock/2330/history?days=3"],
+      ["institutional", "/api/stock/2330/institutional"],
+      ["shareholding", "/api/stock/2330/shareholding"],
       ["ma", "/api/stock/2330/ma-analysis"],
       ["dashboard", "/api/dashboard/trust-buy-2day"],
     ]) {
@@ -113,6 +121,7 @@ async function run() {
     databaseMiB: Number((databaseBytes / 1024 / 1024).toFixed(1)),
     budgetMiB: Number((budgetBytes / 1024 / 1024).toFixed(1)),
     tables,
+    retention,
     anonymousRead: true,
     anonymousWriteBlocked: true,
     dashboardCards,

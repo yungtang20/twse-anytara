@@ -270,7 +270,7 @@ async function run() {
         i.source || "supabase"
       );
     },
-    "stock_id,date,foreign_net,trust_net,dealer_net,foreign_buy,foreign_sell,trust_buy,trust_sell,dealer_buy,dealer_sell,institutional_net,source"
+    "stock_id,date,foreign_net,trust_net,dealer_net,institutional_net,source"
   );
 
   // 4. Sync canonical tdcc_shareholding -> SQLite

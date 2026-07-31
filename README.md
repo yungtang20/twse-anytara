@@ -309,8 +309,9 @@ Supabase 存取分工：
 - `SUPABASE_ANON_KEY`／`VITE_SUPABASE_ANON_KEY`：前端與一般唯讀查詢。
 - `SUPABASE_SERVICE_ROLE_KEY`：僅限伺服器與同步腳本寫入，禁止使用 `VITE_` 前綴。
 - 部署時依序套用 `supabase/migrations/`；市場表啟用 RLS 公開唯讀，私有快取與同步紀錄只允許 service role。
-- `npm run sync` 直接從 TWSE、TPEX、TDCC 官方來源寫入 Supabase；`SUPABASE_SYNC_MAX_DAYS` 限制單次追補範圍。
-- 保留策略約為股價 512 個交易日、法人 90 個交易日、TDCC 104 週、股利 10 年；衍生指標即時計算、不另存資料表。
+- `npm run sync` 直接從 TWSE、TPEX、TDCC 官方來源寫入 Supabase；`SUPABASE_SYNC_MAX_DAYS` 限制股價單次追補範圍。
+- 股價固定保留最新 512 個交易日；法人首次補齊最新 60 個交易日後持續累積，TDCC 每週持續累積。三者最後都以股價第 512 個交易日為共同截止日，一起刪除更舊資料。
+- TDCC 官方整批開放資料只提供最新一週；一年歷史需逐股查詢，因此全市場資料會由每週同步逐步累積，不能把本機資料庫當成雲端回補來源。
 - `npm run verify:cloud` 可檢查容量、最新日期、RLS、儀表板與主要 API。
 
 ---

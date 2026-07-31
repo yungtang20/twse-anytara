@@ -43,16 +43,16 @@ const WhaleTooltip = ({ active, payload, label }: any) => {
 };
 
 export function ChipsBarChart({ chipHistory, shareholding, viewMode = 'all' }: ChipsBarChartProps) {
-  // 法人資料：限 20 天，由舊到新排列（圖由左到右）
-  const institutionalData = [...chipHistory].reverse().slice(-20).map(r => ({
+  // 使用 API 回傳的完整共同保留區間，由舊到新排列。
+  const institutionalData = [...chipHistory].reverse().map(r => ({
     ...r,
-    date: r.date.slice(5), // MM-DD
+    date: r.date.slice(2), // YY-MM-DD
   }));
 
   // 集保資料
   const whaleData = shareholding
-    ? [...shareholding].reverse().slice(-20).map(r => ({
-        date: r.date.slice(5),
+    ? [...shareholding].reverse().map(r => ({
+        date: r.date.slice(2),
         ratio: r.ratio,
       }))
     : [];
@@ -69,7 +69,7 @@ export function ChipsBarChart({ chipHistory, shareholding, viewMode = 'all' }: C
       {viewMode !== 'shareholding' && (
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-bold text-white">法人買賣超（近 20 日）</h4>
+            <h4 className="text-sm font-bold text-white">法人買賣超（{institutionalData.length} 個交易日）</h4>
             <div className="flex items-center gap-3 text-[10px] font-mono">
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-blue-400 inline-block" />外資</span>
               <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-amber-400 inline-block" />投信</span>
@@ -82,7 +82,8 @@ export function ChipsBarChart({ chipHistory, shareholding, viewMode = 'all' }: C
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={institutionalData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }} barGap={2} barCategoryGap="25%">
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.6} />
-                <XAxis dataKey="date" tick={{ fill: '#475569', fontSize: 9 }} tickLine={false} axisLine={false} />
+                <XAxis dataKey="date" interval="preserveStartEnd" minTickGap={24}
+                  tick={{ fill: '#475569', fontSize: 9 }} tickLine={false} axisLine={false} />
                 <YAxis domain={yDomain} tick={{ fill: '#475569', fontSize: 9 }} tickLine={false} axisLine={false} width={52}
                   tickFormatter={v => v >= 1000 || v <= -1000 ? `${(v / 1000).toFixed(0)}K` : `${v}`} />
                 <Tooltip content={<InstitutionalTooltip />} />
@@ -109,13 +110,14 @@ export function ChipsBarChart({ chipHistory, shareholding, viewMode = 'all' }: C
       {viewMode !== 'institutional' && whaleData.length > 0 && (
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
-            <h4 className="text-sm font-bold text-white">千戶大戶持股比例（集保）</h4>
+            <h4 className="text-sm font-bold text-white">千戶大戶持股比例（集保，{whaleData.length} 週）</h4>
             <span className="text-[10px] text-slate-500 font-mono">持有 1,000 張以上</span>
           </div>
           <ResponsiveContainer width="100%" height={160}>
             <BarChart data={whaleData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }} barCategoryGap="25%">
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.6} />
-              <XAxis dataKey="date" tick={{ fill: '#475569', fontSize: 9 }} tickLine={false} axisLine={false} />
+              <XAxis dataKey="date" interval="preserveStartEnd" minTickGap={24}
+                tick={{ fill: '#475569', fontSize: 9 }} tickLine={false} axisLine={false} />
               <YAxis domain={[0, 100]} tick={{ fill: '#475569', fontSize: 9 }} tickLine={false} axisLine={false} width={32}
                 tickFormatter={v => `${v}%`} />
               <Tooltip content={<WhaleTooltip />} />

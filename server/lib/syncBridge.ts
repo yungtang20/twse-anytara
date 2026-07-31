@@ -154,7 +154,7 @@ export async function pushInstitutionalToSupabase(days: number = 30): Promise<{ 
     
     // Pull from local SQLite stock_institutional
     const rows = getDb()
-      .prepare(`SELECT stock_id, date, foreign_net, trust_net, dealer_net, foreign_buy, foreign_sell, trust_buy, trust_sell, dealer_buy, dealer_sell FROM stock_institutional WHERE date >= ? ORDER BY date DESC LIMIT 30000`)
+      .prepare(`SELECT stock_id, date, foreign_net, trust_net, dealer_net FROM stock_institutional WHERE date >= ? ORDER BY date DESC LIMIT 30000`)
       .all(cutoffDate) as any[];
 
     let pushed = 0;
@@ -165,12 +165,6 @@ export async function pushInstitutionalToSupabase(days: number = 30): Promise<{ 
         foreign_net: r.foreign_net || 0,
         trust_net: r.trust_net || 0,
         dealer_net: r.dealer_net || 0,
-        foreign_buy: r.foreign_buy || 0,
-        foreign_sell: r.foreign_sell || 0,
-        trust_buy: r.trust_buy || 0,
-        trust_sell: r.trust_sell || 0,
-        dealer_buy: r.dealer_buy || 0,
-        dealer_sell: r.dealer_sell || 0,
         institutional_net: (r.foreign_net || 0) + (r.trust_net || 0) + (r.dealer_net || 0),
         source: "sqlite_push",
       }));
@@ -233,7 +227,7 @@ export async function pullInstitutionalFromSupabase(days: number = 30): Promise<
     // Fetch from Supabase
     const { data, error } = await sb
       .from("stock_institutional")
-      .select("stock_id,date,foreign_net,trust_net,dealer_net,foreign_buy,foreign_sell,trust_buy,trust_sell,dealer_buy,dealer_sell,source")
+      .select("stock_id,date,foreign_net,trust_net,dealer_net,source")
       .gte("date", cutoffDate)
       .order("date", { ascending: false });
 
@@ -254,12 +248,12 @@ export async function pullInstitutionalFromSupabase(days: number = 30): Promise<
           i.foreign_net || 0,
           i.trust_net || 0,
           i.dealer_net || 0,
-          i.foreign_buy || 0,
-          i.foreign_sell || 0,
-          i.trust_buy || 0,
-          i.trust_sell || 0,
-          i.dealer_buy || 0,
-          i.dealer_sell || 0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
           (i.foreign_net || 0) + (i.trust_net || 0) + (i.dealer_net || 0),
           i.source || "supabase_pull"
         );

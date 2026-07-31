@@ -367,12 +367,7 @@ async function run() {
           foreign_net: i.foreign_net,
           trust_net: i.trust_net,
           dealer_net: i.dealer_net,
-          foreign_buy: i.foreign_buy,
-          foreign_sell: i.foreign_sell,
-          trust_buy: i.trust_buy,
-          trust_sell: i.trust_sell,
-          dealer_buy: i.dealer_buy,
-          dealer_sell: i.dealer_sell,
+          institutional_net: i.foreign_net + i.trust_net + i.dealer_net,
           source: i.source
         }));
         await supabase.from("stock_institutional").upsert(batch);

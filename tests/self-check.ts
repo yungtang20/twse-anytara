@@ -38,6 +38,18 @@ const settingsRouteSource = readFileSync(
   path.join(process.cwd(), "server", "routes", "settings.ts"),
   "utf8",
 );
+const cloudSyncSource = readFileSync(
+  path.join(process.cwd(), "scripts", "syncData.ts"),
+  "utf8",
+);
+const retentionMigrationSource = readFileSync(
+  path.join(process.cwd(), "supabase", "migrations", "20260731030000_align_market_retention.sql"),
+  "utf8",
+);
+const chipsChartSource = readFileSync(
+  path.join(process.cwd(), "src", "components", "ChipsBarChart.tsx"),
+  "utf8",
+);
 const triggerUpdateSource = syncRouteSource.split('router.post("/api/trigger-update"')[1]
   ?.split('// GET Endpoint to poll sync progress')[0] || "";
 assert.match(
@@ -55,6 +67,19 @@ assert.match(
   /router\.post\("\/api\/settings\/sync-bridge"[\s\S]*?status\(410\)/,
   "the retired bidirectional bridge must not mix Supabase and local SQLite",
 );
+assert.match(cloudSyncSource, /INITIAL_INSTITUTIONAL_DATES = 60/);
+assert.match(cloudSyncSource, /INSTITUTIONAL_RETENTION = 512/);
+assert.match(cloudSyncSource, /TDCC_RETENTION = 512/);
+assert.match(cloudSyncSource, /PRICE_RETENTION - status\.price_dates/);
+assert.match(retentionMigrationSource, /offset \(price_rows - 1\)/);
+for (const table of ["stock_price", "stock_institutional", "tdcc_shareholding"]) {
+  assert.match(
+    retentionMigrationSource,
+    new RegExp(`delete from public\\.${table} where date < shared_cutoff`),
+    `${table} must use the shared 512-price-date cutoff`,
+  );
+}
+assert.doesNotMatch(chipsChartSource, /slice\(-20\)/, "chip charts must use the full retained API range");
 assert.deepEqual(
   listPendingCalendarDates("2026-07-24", "2026-07-31"),
   [

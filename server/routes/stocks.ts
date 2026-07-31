@@ -295,7 +295,7 @@ router.get("/api/stock/:id/institutional", async (req: Request, res: Response) =
         .select("date, foreign_net, trust_net, dealer_net, institutional_net")
         .eq("stock_id", id)
         .order("date", { ascending: false })
-        .limit(1000);
+        .limit(512);
 
       if (instErr) throw instErr;
 
@@ -334,7 +334,7 @@ router.get("/api/stock/:id/shareholding", async (req: Request, res: Response) =>
         .select("date, whale_ratio, total_shares")
         .eq("stock_id", id)
         .order("date", { ascending: false })
-        .limit(104);
+        .limit(512);
       if (error) throw error;
       const rows = (data || []).map((row) => ({
         date: row.date,
