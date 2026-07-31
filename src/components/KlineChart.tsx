@@ -12,7 +12,7 @@ import type {
 import { buildSupportResistanceLines } from '../lib/trendLines';
 import { formatPriceAxisTick } from '../lib/chartFormatting';
 
-const TREND_LINE_ALGORITHM_VERSION = 2;
+const TREND_LINE_ALGORITHM_VERSION = 3;
 
 export interface KlineOverlay {
   hLines?: { value: number; color: string; label?: string; dash?: boolean }[];

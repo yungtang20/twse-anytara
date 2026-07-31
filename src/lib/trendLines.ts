@@ -49,8 +49,8 @@ export function selectTrendAnchors(
         : left.value - right.value;
       return priceOrder || left.index - right.index;
   };
-  const pool = pivots.length >= 2 ? pivots : candidates;
-  return pool.sort(byPrice).slice(0, 2);
+  if (pivots.length < 2) return [];
+  return pivots.sort(byPrice).slice(0, 2);
 }
 
 function extendedSeries(

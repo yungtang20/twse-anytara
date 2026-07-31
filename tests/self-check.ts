@@ -214,6 +214,19 @@ assert.deepEqual(
   selectTrendAnchors(adjacentExtremes, 59, 60, "low", false).map(({ index }) => index),
   [10, 30],
 );
+const singleSwing: PriceData[] = Array.from({ length: 25 }, (_, index) => ({
+  date: `S${index + 1}`,
+  open: 100,
+  high: index === 12 ? 150 : 100 + index,
+  low: 80 + index,
+  close: 100,
+  volume: 1_000,
+}));
+assert.deepEqual(
+  selectTrendAnchors(singleSwing, 24, 25, "high", true),
+  [],
+  "a trend line must not fall back to adjacent candles when two confirmed swing points do not exist",
+);
 assert.equal(formatPriceAxisTick(49.999999999), "50.00");
 assert.equal(formatPriceAxisTick(277.5), "277.50");
 assert.match(klineChartSource, /label: '均線'/);
