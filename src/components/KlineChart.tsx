@@ -20,9 +20,26 @@ interface KlineChartProps {
   overlay?: KlineOverlay;
   institutional?: InstitutionalPoint[];
   shareholding?: ShareholdingPoint[];
+  simulationPoints?: Array<{ day: string; price: number; pct: number }>;
 }
 
 const KRONOS_SIMULATION_DAYS = 5;
+
+function LineLegend({ items }: { items: Array<{ label: string; color: string }> }) {
+  return (
+    <div className="pointer-events-none absolute right-2 top-1 z-10 flex flex-wrap items-center gap-2 rounded bg-slate-950/80 px-2 py-1 font-mono text-[9px] text-slate-300">
+      {items.map((item) => (
+        <span key={item.label} className="flex items-center gap-1">
+          <span
+            className="inline-block h-0.5 w-4"
+            style={{ backgroundColor: item.color }}
+          />
+          {item.label}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 // Custom Tooltip with Lots conversion
 const CustomTooltip = ({ active, payload }: any) => {
@@ -111,6 +128,7 @@ export function KlineChart({
   overlay,
   institutional = [],
   shareholding = [],
+  simulationPoints = [],
 }: KlineChartProps) {
   const [windowSize, setWindowSize] = useState<number>(61);
   const [windowOffset, setWindowOffset] = useState(0);
@@ -123,7 +141,8 @@ export function KlineChart({
   const [showRecentHighLow, setShowRecentHighLow] = useState(true);
   const [showPOC, setShowPOC] = useState(true);
   const [showPredictions, setShowPredictions] = useState(true);
-  const [institutionalLayer, setInstitutionalLayer] = useState<"foreign" | "trust">("foreign");
+  const [showForeign, setShowForeign] = useState(true);
+  const [showTrust, setShowTrust] = useState(false);
   const [showShareholding, setShowShareholding] = useState(true);
 
   const aggregatedData = data;
@@ -295,41 +314,30 @@ export function KlineChart({
 
   // 7. Append Kronos 5-day prediction to the end of the chart dataset if requested
   const chartData = useMemo(() => {
-    if (!showPredictions || visibleChartData.length === 0 || windowOffset > 0) {
+    if (
+      !showPredictions
+      || visibleChartData.length === 0
+      || windowOffset > 0
+      || simulationPoints.length !== KRONOS_SIMULATION_DAYS
+    ) {
       return visibleChartData;
     }
 
     const lastReal = visibleChartData[visibleChartData.length - 1];
-    const lastPrice = lastReal.close;
-
-    // Estimate drift based on recent standard deviation
-    const recentCloses = visibleChartData.map(d => d.close);
-    const isUpTrend = recentCloses.length >= 2 ? recentCloses[recentCloses.length - 1] >= recentCloses[recentCloses.length - 2] : true;
-    const stdDev = recentCloses.length >= 5 
-      ? Math.sqrt(recentCloses.slice(-5).reduce((sq, val) => sq + Math.pow(val - (recentCloses.reduce((a, b) => a + b, 0) / recentCloses.length), 2), 0) / 5) 
-      : lastPrice * 0.015;
-    const drift = isUpTrend ? (stdDev * 0.35) : -(stdDev * 0.35);
-
-    // Always simulate exactly the next five trading sessions.
-    const predictions = [];
-    for (let i = 1; i <= KRONOS_SIMULATION_DAYS; i++) {
-      const predPrice = parseFloat((lastPrice + drift * i * (i === 3 ? 1.5 : i === 4 ? 1.2 : 1)).toFixed(2));
-      const predPct = parseFloat(((predPrice - lastPrice) / lastPrice * 100).toFixed(2));
-      predictions.push({
-        date: `T+${i}`,
+    const predictions = simulationPoints.map((point) => ({
+        date: point.day,
         open: null,
         high: null,
         low: null,
-        close: predPrice,
+        close: point.price,
         volume: 0,
         color: '#a855f7',
         boxRange: null,
         wickRange: null,
         isPrediction: true,
-        predPct,
-        kronosPrediction: predPrice,
-      });
-    }
+        predPct: point.pct,
+        kronosPrediction: point.price,
+      }));
 
     // Connect last real item to the first prediction item
     const connectedReal = {
@@ -342,7 +350,7 @@ export function KlineChart({
       connectedReal,
       ...predictions
     ];
-  }, [visibleChartData, showPredictions, windowOffset]);
+  }, [visibleChartData, showPredictions, windowOffset, simulationPoints]);
 
   // Calculate maximum volume of the visible dataset to guarantee 100% correct scaling of Y-Axis in Recharts
   const maxVolume = useMemo(() => {
@@ -395,25 +403,27 @@ export function KlineChart({
           </button>
         ))}
 
-        <div className="flex items-center rounded border border-slate-700 bg-slate-950 p-0.5">
+        <div className="flex items-center gap-0.5 rounded border border-slate-700 bg-slate-950 p-0.5">
+          <span className="px-1 text-slate-600">法人</span>
           {([
-            { value: 'foreign', label: '外資', color: 'text-blue-400' },
-            { value: 'trust', label: '投信', color: 'text-amber-400' },
+            { label: '外資', state: showForeign, set: setShowForeign, color: 'text-blue-400' },
+            { label: '投信', state: showTrust, set: setShowTrust, color: 'text-amber-400' },
           ] as const).map((item) => {
-            const selected = institutionalLayer === item.value;
             return (
               <button
-                key={item.value}
+                key={item.label}
                 type="button"
-                aria-pressed={selected}
-                onClick={() => setInstitutionalLayer(item.value)}
+                aria-pressed={item.state}
+                onClick={() => item.set(!item.state)}
                 className={`flex items-center gap-1 rounded px-2 py-1 transition-all ${
-                  selected
+                  item.state
                     ? 'bg-slate-800 text-slate-100 shadow-sm'
                     : 'text-slate-600 hover:text-slate-300'
                 }`}
               >
-                <Eye size={10} className={selected ? item.color : 'text-slate-600'} />
+                {item.state
+                  ? <Eye size={10} className={item.color} />
+                  : <EyeOff size={10} className="text-slate-600" />}
                 {item.label}
               </button>
             );
@@ -479,6 +489,15 @@ export function KlineChart({
       <div className="p-3 select-none flex-1 min-h-[420px] flex flex-col gap-2">
         {/* Main Price Chart */}
         <div className="h-[320px] relative shrink-0">
+          {showMAs && (
+            <LineLegend
+              items={[
+                { label: 'MA25', color: '#fb923c' },
+                { label: 'MA60', color: '#60a5fa' },
+                { label: 'MA200', color: '#f472b6' },
+              ]}
+            />
+          )}
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart syncId="integrated-stock-cockpit" data={chartData} margin={{ top: 12, right: 8, left: 0, bottom: 4 }} barGap="-100%">
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.5} />
@@ -617,6 +636,14 @@ export function KlineChart({
 
         {/* Volume Sub-Chart */}
         <div className="h-[100px] border-t border-slate-850/60 pt-2 relative shrink-0">
+          {showVolMAs && (
+            <LineLegend
+              items={[
+                { label: 'VolMA5', color: '#22d3ee' },
+                { label: 'VolMA60', color: '#f59e0b' },
+              ]}
+            />
+          )}
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart syncId="integrated-stock-cockpit" data={chartData} margin={{ top: 2, right: 8, left: 0, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.3} />
@@ -653,7 +680,8 @@ export function KlineChart({
         visibleDates={chartData.map((row) => row.date)}
         institutional={institutional}
         shareholding={shareholding}
-        institutionalLayer={institutionalLayer}
+        showForeign={showForeign}
+        showTrust={showTrust}
         showShareholding={showShareholding}
       />
     </div>

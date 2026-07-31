@@ -21,7 +21,8 @@ interface IntegratedMarketPanelsProps {
   visibleDates: string[];
   institutional: InstitutionalPoint[];
   shareholding: ShareholdingPoint[];
-  institutionalLayer: "foreign" | "trust";
+  showForeign: boolean;
+  showTrust: boolean;
   showShareholding: boolean;
 }
 
@@ -78,7 +79,8 @@ export function IntegratedMarketPanels({
   visibleDates,
   institutional,
   shareholding,
-  institutionalLayer,
+  showForeign,
+  showTrust,
   showShareholding,
 }: IntegratedMarketPanelsProps) {
   const data = useMemo(
@@ -86,53 +88,75 @@ export function IntegratedMarketPanels({
     [visibleDates, institutional, shareholding],
   );
   const institutionalDomain = signedDomain(
-    data.map((row) => row[institutionalLayer]),
+    data.flatMap((row) => [
+      showForeign ? row.foreign : null,
+      showTrust ? row.trust : null,
+    ]),
   );
   const ratios = data
     .map((row) => row.whaleRatio)
     .filter((value): value is number => value != null);
   const ratioMin = ratios.length ? Math.max(0, Math.floor(Math.min(...ratios) - 1)) : 0;
   const ratioMax = ratios.length ? Math.min(100, Math.ceil(Math.max(...ratios) + 1)) : 100;
+  const showInstitutional = showForeign || showTrust;
+
+  if (!showInstitutional && !showShareholding) return null;
+
   return (
     <div className="border-t border-slate-800/80 bg-slate-950/30">
-      <section className="border-b border-slate-800/70 px-3 py-2">
-        <div className="mb-1 flex flex-wrap items-center gap-3 text-[10px] font-mono">
-          <strong className="text-slate-300">法人買賣超</strong>
-          <span className={institutionalLayer === "foreign" ? "text-blue-300" : "text-amber-300"}>
-            ■ {institutionalLayer === "foreign" ? "外資" : "投信"}
-          </span>
-          <span className="ml-auto text-slate-500">紅＝買超、綠＝賣超（張）</span>
-        </div>
-        <ResponsiveContainer width="100%" height={118}>
-          <ComposedChart
-            syncId="integrated-stock-cockpit"
-            data={data}
-            margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.35} />
-            <XAxis dataKey="date" tick={false} tickLine={false} axisLine={false} />
-            <YAxis
-              domain={institutionalDomain}
-              width={48}
-              tick={{ fill: "#64748b", fontSize: 8 }}
-              tickLine={false}
-              axisLine={false}
-              tickFormatter={(value) => Math.abs(value) >= 1000 ? `${(value / 1000).toFixed(0)}K` : `${value}`}
-            />
-            <Tooltip content={<PanelTooltip />} />
-            <ReferenceLine y={0} stroke="#64748b" />
-            <Bar dataKey={institutionalLayer} name={layerLabels[institutionalLayer]} maxBarSize={12}>
-              {data.map((row) => (
-                <Cell
-                  key={`${institutionalLayer}-${row.date}`}
-                  fill={(row[institutionalLayer] || 0) >= 0 ? "#f87171" : "#34d399"}
-                  opacity={0.9}
-                />
-              ))}
-            </Bar>
-          </ComposedChart>
-        </ResponsiveContainer>
-      </section>
+      {showInstitutional && (
+        <section className="border-b border-slate-800/70 px-3 py-2">
+          <div className="mb-1 flex flex-wrap items-center gap-3 text-[10px] font-mono">
+            <strong className="text-slate-300">法人買賣超</strong>
+            {showForeign && <span className="text-blue-300">■ 外資</span>}
+            {showTrust && <span className="text-amber-300">■ 投信</span>}
+            <span className="ml-auto text-slate-500">紅＝買超、綠＝賣超（張）</span>
+          </div>
+          <ResponsiveContainer width="100%" height={118}>
+            <ComposedChart
+              syncId="integrated-stock-cockpit"
+              data={data}
+              margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
+              barGap={2}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.35} />
+              <XAxis dataKey="date" tick={false} tickLine={false} axisLine={false} />
+              <YAxis
+                domain={institutionalDomain}
+                width={48}
+                tick={{ fill: "#64748b", fontSize: 8 }}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(value) => Math.abs(value) >= 1000 ? `${(value / 1000).toFixed(0)}K` : `${value}`}
+              />
+              <Tooltip content={<PanelTooltip />} />
+              <ReferenceLine y={0} stroke="#64748b" />
+              {showForeign && (
+                <Bar dataKey="foreign" name="外資" maxBarSize={12}>
+                  {data.map((row) => (
+                    <Cell
+                      key={`foreign-${row.date}`}
+                      fill={(row.foreign || 0) >= 0 ? "#f87171" : "#34d399"}
+                      opacity={0.9}
+                    />
+                  ))}
+                </Bar>
+              )}
+              {showTrust && (
+                <Bar dataKey="trust" name="投信" maxBarSize={12}>
+                  {data.map((row) => (
+                    <Cell
+                      key={`trust-${row.date}`}
+                      fill={(row.trust || 0) >= 0 ? "#fb923c" : "#10b981"}
+                      opacity={0.9}
+                    />
+                  ))}
+                </Bar>
+              )}
+            </ComposedChart>
+          </ResponsiveContainer>
+        </section>
+      )}
 
       {showShareholding && (
         <section className="px-3 py-2">

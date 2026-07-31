@@ -138,14 +138,21 @@ assert.deepEqual(
 );
 assert.match(klineChartSource, /\(\[26, 61, 201\] as const\)/);
 assert.doesNotMatch(klineChartSource, /\[30, 60, 120, 250, 512\]/);
-assert.match(klineChartSource, /institutionalLayer/);
-assert.match(klineChartSource, /aria-pressed=\{selected\}/);
-assert.doesNotMatch(klineChartSource, /showForeign/);
-assert.doesNotMatch(klineChartSource, /showTrust/);
+assert.doesNotMatch(klineChartSource, /institutionalLayer/);
+assert.match(klineChartSource, /aria-pressed=\{item\.state\}/);
+assert.match(klineChartSource, /showForeign/);
+assert.match(klineChartSource, /showTrust/);
 assert.match(klineChartSource, /showShareholding/);
 assert.match(klineChartSource, /const KRONOS_SIMULATION_DAYS = 5/);
 assert.match(klineChartSource, /visibleDates=\{chartData\.map/);
 assert.doesNotMatch(klineChartSource, /Kronos 預測/);
+assert.match(klineChartSource, /simulationPoints\.length !== KRONOS_SIMULATION_DAYS/);
+assert.doesNotMatch(klineChartSource, /const drift =/);
+assert.match(klineChartSource, /label: 'MA25', color: '#fb923c'/);
+assert.match(klineChartSource, /label: 'MA60', color: '#60a5fa'/);
+assert.match(klineChartSource, /label: 'MA200', color: '#f472b6'/);
+assert.match(klineChartSource, /label: 'VolMA5', color: '#22d3ee'/);
+assert.match(klineChartSource, /label: 'VolMA60', color: '#f59e0b'/);
 const mvpRouteSource = readFileSync(
   path.join(process.cwd(), "server", "mvpMcpRoutes.ts"),
   "utf8",

@@ -5,8 +5,10 @@ import {
   fetchStockHistory,
   fetchStockInstitutional,
   fetchStockShareholding,
+  fetchPredictionAnalysis,
   type DataQuality,
   type InstitutionalRow,
+  type PredictionAnalysis,
   type PriceData,
   type ShareholdingRow,
 } from '../lib/api';
@@ -20,6 +22,7 @@ export function MarketDetailDashboard({ stockId }: MarketDetailDashboardProps) {
   const [priceData, setPriceData] = useState<PriceData[]>([]);
   const [instData, setInstData] = useState<InstitutionalRow[]>([]);
   const [shareholding, setShareholding] = useState<ShareholdingRow[]>([]);
+  const [simulation, setSimulation] = useState<PredictionAnalysis | null>(null);
   const [loading, setLoading] = useState(false);
   const [hasDataIssue, setHasDataIssue] = useState(false);
   const [quality, setQuality] = useState<DataQuality | null>(null);
@@ -47,10 +50,11 @@ export function MarketDetailDashboard({ stockId }: MarketDetailDashboardProps) {
 
     const loadData = async () => {
       try {
-        const [prices, insts, whales] = await Promise.all([
+        const [prices, insts, whales, projection] = await Promise.all([
           fetchStockHistory(stockId, 1000),
           fetchStockInstitutional(stockId),
-          fetchStockShareholding(stockId)
+          fetchStockShareholding(stockId),
+          fetchPredictionAnalysis(stockId).catch(() => null),
         ]);
 
         setPriceData(prices.data);
@@ -58,6 +62,7 @@ export function MarketDetailDashboard({ stockId }: MarketDetailDashboardProps) {
         setQuality(prices.quality);
         setInstData(insts.data);
         setShareholding(whales.data);
+        setSimulation(projection);
       } catch (err) {
         console.error("Failed to load stock data in MarketDetailDashboard via API:", err);
       } finally {
@@ -127,6 +132,7 @@ export function MarketDetailDashboard({ stockId }: MarketDetailDashboardProps) {
               data={priceData}
               institutional={instData}
               shareholding={shareholding}
+              simulationPoints={simulation?.predictions}
             />
             {!hasDataIssue && (
               <div className="flex items-center justify-end gap-1.5 pr-1 font-mono text-[10px] text-slate-500">
