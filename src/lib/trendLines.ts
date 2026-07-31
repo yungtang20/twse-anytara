@@ -55,7 +55,6 @@ export function selectTrendAnchors(
 
 function extendedSeries(
   length: number,
-  startIndex: number,
   endIndex: number,
   points: Array<{ index: number; value: number }>,
 ) {
@@ -64,7 +63,7 @@ function extendedSeries(
   const [first, second] = [...points].sort((left, right) => left.index - right.index);
   if (first.index === second.index) return series;
   const slope = (second.value - first.value) / (second.index - first.index);
-  for (let index = startIndex; index <= endIndex; index++) {
+  for (let index = first.index; index <= endIndex; index++) {
     series[index] = first.value + slope * (index - first.index);
   }
   return series;
@@ -74,30 +73,24 @@ export function buildSupportResistanceLines(
   data: PriceData[],
   endIndex: number,
 ): SupportResistanceLines {
-  const shortStartIndex = Math.max(0, endIndex - 25 + 1);
-  const longStartIndex = Math.max(0, endIndex - 60 + 1);
   return {
     shortResistance: extendedSeries(
       data.length,
-      shortStartIndex,
       endIndex,
       selectTrendAnchors(data, endIndex, 25, "high", true),
     ),
     shortSupport: extendedSeries(
       data.length,
-      shortStartIndex,
       endIndex,
       selectTrendAnchors(data, endIndex, 25, "low", false),
     ),
     longResistance: extendedSeries(
       data.length,
-      longStartIndex,
       endIndex,
       selectTrendAnchors(data, endIndex, 60, "high", true),
     ),
     longSupport: extendedSeries(
       data.length,
-      longStartIndex,
       endIndex,
       selectTrendAnchors(data, endIndex, 60, "low", false),
     ),

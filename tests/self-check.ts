@@ -171,19 +171,31 @@ const trendRows: PriceData[] = Array.from({ length: 60 }, (_, index) => ({
 const trendLines = buildSupportResistanceLines(trendRows, 59);
 assert.deepEqual(
   trendLines.shortResistance.slice(35, 60),
-  Array.from({ length: 25 }, (_, offset) => 185 - offset),
+  [
+    ...Array(5).fill(null),
+    ...Array.from({ length: 20 }, (_, offset) => 180 - offset),
+  ],
 );
 assert.deepEqual(
   trendLines.shortSupport.slice(35, 60),
-  Array.from({ length: 25 }, (_, offset) => 47 + offset * 0.5),
+  [
+    ...Array(6).fill(null),
+    ...Array.from({ length: 19 }, (_, offset) => 50 + offset * 0.5),
+  ],
 );
 assert.deepEqual(
   trendLines.longResistance,
-  Array.from({ length: 60 }, (_, offset) => 210 - offset * 2),
+  [
+    ...Array(5).fill(null),
+    ...Array.from({ length: 55 }, (_, offset) => 200 - offset * 2),
+  ],
 );
 assert.deepEqual(
   trendLines.longSupport,
-  Array.from({ length: 60 }, (_, offset) => 34 + offset),
+  [
+    ...Array(6).fill(null),
+    ...Array.from({ length: 54 }, (_, offset) => 40 + offset),
+  ],
 );
 const adjacentExtremes: PriceData[] = Array.from({ length: 60 }, (_, index) => ({
   date: `A${index + 1}`,
