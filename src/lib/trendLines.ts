@@ -9,13 +9,18 @@ export interface SupportResistanceLines {
 
 type PriceField = "high" | "low";
 
-function extremePoints(
+export interface TrendAnchor {
+  index: number;
+  value: number;
+}
+
+export function selectTrendAnchors(
   data: PriceData[],
   endIndex: number,
   period: number,
   field: PriceField,
   highest: boolean,
-) {
+): TrendAnchor[] {
   const startIndex = Math.max(0, endIndex - period + 1);
   const candidates = data
     .slice(startIndex, endIndex + 1)
@@ -24,13 +29,28 @@ function extremePoints(
       value: Number(row[field]),
     }))
     .filter((point) => Number.isFinite(point.value) && point.value > 0);
+  const pivotRadius = 2;
+  const pivots = candidates.filter((point, candidateIndex) => {
+    if (
+      candidateIndex < pivotRadius
+      || candidateIndex >= candidates.length - pivotRadius
+    ) return false;
+    const neighbors = candidates.slice(
+      candidateIndex - pivotRadius,
+      candidateIndex + pivotRadius + 1,
+    );
+    return neighbors.every((neighbor) => highest
+      ? point.value >= neighbor.value
+      : point.value <= neighbor.value);
+  });
   const byPrice = (left: { index: number; value: number }, right: { index: number; value: number }) => {
       const priceOrder = highest
         ? right.value - left.value
         : left.value - right.value;
       return priceOrder || left.index - right.index;
   };
-  return candidates.sort(byPrice).slice(0, 2);
+  const pool = pivots.length >= 2 ? pivots : candidates;
+  return pool.sort(byPrice).slice(0, 2);
 }
 
 function extendedSeries(
@@ -61,25 +81,25 @@ export function buildSupportResistanceLines(
       data.length,
       shortStartIndex,
       endIndex,
-      extremePoints(data, endIndex, 25, "high", true),
+      selectTrendAnchors(data, endIndex, 25, "high", true),
     ),
     shortSupport: extendedSeries(
       data.length,
       shortStartIndex,
       endIndex,
-      extremePoints(data, endIndex, 25, "low", false),
+      selectTrendAnchors(data, endIndex, 25, "low", false),
     ),
     longResistance: extendedSeries(
       data.length,
       longStartIndex,
       endIndex,
-      extremePoints(data, endIndex, 60, "high", true),
+      selectTrendAnchors(data, endIndex, 60, "high", true),
     ),
     longSupport: extendedSeries(
       data.length,
       longStartIndex,
       endIndex,
-      extremePoints(data, endIndex, 60, "low", false),
+      selectTrendAnchors(data, endIndex, 60, "low", false),
     ),
   };
 }

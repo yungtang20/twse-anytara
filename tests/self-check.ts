@@ -33,7 +33,10 @@ import { sortTrustBuyByDays } from "../server/routes/dashboard";
 import { buildSimulatedPriceProjection } from "../server/lib/priceProjection";
 import { appViewHash, parseAppView } from "../src/lib/navigation";
 import { buildIntegratedMarketData } from "../src/lib/integratedMarketData";
-import { buildSupportResistanceLines } from "../src/lib/trendLines";
+import {
+  buildSupportResistanceLines,
+  selectTrendAnchors,
+} from "../src/lib/trendLines";
 
 const rising = Array.from({ length: 20 }, (_, index) => 100 + index);
 const syncRouteSource = readFileSync(
@@ -185,16 +188,19 @@ assert.deepEqual(
 const adjacentExtremes: PriceData[] = Array.from({ length: 60 }, (_, index) => ({
   date: `A${index + 1}`,
   open: 300,
-  high: index === 40 ? 500 : index === 41 ? 490 : 400,
-  low: index === 10 ? 100 : index === 11 ? 105 : 200,
+  high: index === 59 ? 550 : index === 40 ? 500 : index === 46 ? 490 : 400 + index * 0.1,
+  low: index === 0 ? 90 : index === 10 ? 100 : index === 30 ? 150 : 300 + index * 0.1,
   close: 300,
   volume: 1_000,
 }));
-const adjacentLines = buildSupportResistanceLines(adjacentExtremes, 59);
-assert.equal(adjacentLines.longResistance[40], 500);
-assert.equal(adjacentLines.longResistance[41], 490);
-assert.equal(adjacentLines.longSupport[10], 100);
-assert.equal(adjacentLines.longSupport[11], 105);
+assert.deepEqual(
+  selectTrendAnchors(adjacentExtremes, 59, 60, "high", true).map(({ index }) => index),
+  [40, 46],
+);
+assert.deepEqual(
+  selectTrendAnchors(adjacentExtremes, 59, 60, "low", false).map(({ index }) => index),
+  [10, 30],
+);
 assert.match(klineChartSource, /label: '均線'/);
 assert.doesNotMatch(klineChartSource, /均線 MA25\/60\/200/);
 assert.match(klineChartSource, /\(\[26, 61, 201\] as const\)/);
