@@ -1,0 +1,39 @@
+name: Supabase TDCC sync
+
+on:
+  schedule:
+    # Saturday 18:00 Asia/Taipei (UTC+8, no DST).
+    - cron: "0 10 * * 6"
+  workflow_dispatch:
+
+concurrency:
+  group: supabase-cloud-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync-tdcc:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SYNC_SCOPE: tdcc
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/supabase-sync-hardening
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Validate cloud credentials
+        shell: bash
+        run: |
+          test -n "$SUPABASE_URL" || { echo "Missing SUPABASE_URL"; exit 1; }
+          test -n "$SUPABASE_SERVICE_ROLE_KEY" || { echo "Missing SUPABASE_SERVICE_ROLE_KEY"; exit 1; }
+      - name: Sync the official TDCC web file
+        run: npx tsx scripts/syncData.ts
