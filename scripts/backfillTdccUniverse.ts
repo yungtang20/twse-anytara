@@ -14,6 +14,11 @@ interface StorageStatus {
   database_bytes?: number | string;
 }
 
+interface StockMetaRow {
+  stock_id: string;
+  industry_category: string | null;
+}
+
 function positiveInteger(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
@@ -42,20 +47,25 @@ async function storageBytes(): Promise<number> {
   return Number(status?.database_bytes || 0);
 }
 
-async function activeStockIds(): Promise<string[]> {
-  const stockIds: string[] = [];
+function isOrdinaryStock(row: StockMetaRow): boolean {
+  return /^[1-9]\d{3}$/.test(row.stock_id)
+    && row.industry_category !== "存託憑證";
+}
+
+async function activeOrdinaryStockIds(): Promise<string[]> {
+  const stocks: StockMetaRow[] = [];
   for (let offset = 0; ; offset += 1_000) {
     const { data, error } = await supabaseAdmin!
       .from("stock_meta")
-      .select("stock_id")
+      .select("stock_id,industry_category")
       .eq("status", "active")
       .order("stock_id")
       .range(offset, offset + 999);
     if (error) throw new Error(`Cannot read active stocks: ${error.message}`);
-    stockIds.push(...(data || []).map((row) => row.stock_id));
+    stocks.push(...((data || []) as StockMetaRow[]));
     if (!data || data.length < 1_000) break;
   }
-  return stockIds.filter((stockId) => /^\d{4}$/.test(stockId));
+  return stocks.filter(isOrdinaryStock).map((row) => row.stock_id);
 }
 
 async function tdccCoverage(): Promise<Map<string, number>> {
@@ -77,7 +87,10 @@ async function tdccCoverage(): Promise<Map<string, number>> {
 async function run(): Promise<void> {
   if (!supabaseAdmin) throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required");
   const options = parseOptions(process.argv.slice(2));
-  const [stockIds, coverage] = await Promise.all([activeStockIds(), tdccCoverage()]);
+  const [stockIds, coverage] = await Promise.all([activeOrdinaryStockIds(), tdccCoverage()]);
+  if (options.stockId && !stockIds.includes(options.stockId)) {
+    throw new Error(`${options.stockId} is not an active ordinary stock`);
+  }
   const candidates = options.stockId
     ? [options.stockId]
     : stockIds
