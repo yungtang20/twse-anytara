@@ -12,6 +12,7 @@ import {
 } from "../lib/marketDataRepository";
 
 const router = Router();
+const useLocalMarketData = process.env.MARKET_DATA_MODE === "local";
 
 function dataQuality(source: string, asOf?: string | null, warnings: string[] = []) {
   // ponytail: seven calendar days is a conservative stale-data heuristic; use the exchange calendar if holiday precision becomes necessary.
@@ -31,7 +32,7 @@ router.get("/api/stock/search", async (req: Request, res: Response) => {
   const q = String(req.query.q || "").trim().replace(/[%,()\"']/g, "");
   if (!q) return res.json({ success: true, data: [] });
 
-  try {
+  if (useLocalMarketData) try {
     const localRows = searchLocalStocks(q);
     if (localRows.length > 0) {
       return res.json({ success: true, data: localRows, source: "sqlite" });
@@ -55,9 +56,12 @@ router.get("/api/stock/search", async (req: Request, res: Response) => {
     }
   }
 
+  if (!useLocalMarketData) {
+    return res.status(503).json({ success: false, error: "Supabase stock metadata is unavailable" });
+  }
   const db = getDb();
   if (!db) return res.json({ success: false, error: "DB not connected" });
-  try {
+  if (useLocalMarketData) try {
     const rows = db.prepare(
       "SELECT stock_id, stock_name, market, industry_category FROM stock_meta WHERE (stock_id LIKE ? OR stock_name LIKE ?) AND length(stock_id) = 4 AND stock_id NOT GLOB '*[A-Z]*' LIMIT 10"
     ).all(`%${q}%`, `%${q}%`);
@@ -72,7 +76,7 @@ router.get("/api/stock/:id/history", async (req: Request, res: Response) => {
   const id = req.params.id;
   const days = Math.min(parseInt(String(req.query.days || "120")), 1000);
 
-  try {
+  if (useLocalMarketData) try {
     const localPrices = readLocalPriceRows(id, Math.max(days, 30));
     if (hasUsableLocalPriceRows(localPrices)) {
       const prices = localPrices.slice(0, days);
@@ -136,9 +140,12 @@ router.get("/api/stock/:id/history", async (req: Request, res: Response) => {
     }
   }
 
+  if (!useLocalMarketData) {
+    return res.status(503).json({ success: false, error: "Supabase price history is unavailable" });
+  }
   const db = getDb();
   if (!db) return res.json({ success: false, error: "DB not connected" });
-  try {
+  if (useLocalMarketData) try {
     let meta = db.prepare("SELECT stock_id, stock_name, market FROM stock_meta WHERE stock_id = ?").get(id) as any;
     if (!meta) {
       meta = { stock_id: id, stock_name: id, market: '' };
@@ -206,7 +213,7 @@ router.get("/api/stock/:id/history", async (req: Request, res: Response) => {
 router.get("/api/stock/:id/indicators", async (req: Request, res: Response) => {
   const id = req.params.id;
 
-  try {
+  if (useLocalMarketData) try {
     const prices = readLocalPriceRows(id, 1_000);
     if (hasUsableLocalPriceRows(prices)) {
       const indicators = calcIndicators([...prices].reverse());
@@ -238,9 +245,12 @@ router.get("/api/stock/:id/indicators", async (req: Request, res: Response) => {
     }
   }
 
+  if (!useLocalMarketData) {
+    return res.status(503).json({ success: false, error: "Supabase indicator source data is unavailable" });
+  }
   const db = getDb();
   if (!db) return res.json({ success: false, error: "DB not connected" });
-  try {
+  if (useLocalMarketData) try {
     const rows = db.prepare(
       "SELECT date, open, high, low, close, volume FROM stock_price WHERE stock_id = ? ORDER BY date DESC LIMIT 1000"
     ).all(id) as any[];
@@ -260,7 +270,7 @@ router.get("/api/stock/:id/indicators", async (req: Request, res: Response) => {
 router.get("/api/stock/:id/institutional", async (req: Request, res: Response) => {
   const id = req.params.id;
 
-  try {
+  if (useLocalMarketData) try {
     const institutional = readLocalInstitutionalRows(id);
     if (institutional.length > 0) {
       const warnings = institutional.length < 10
@@ -298,6 +308,9 @@ router.get("/api/stock/:id/institutional", async (req: Request, res: Response) =
     }
   }
 
+  if (!useLocalMarketData) {
+    return res.status(503).json({ success: false, error: "Supabase institutional data is unavailable" });
+  }
   const db = getDb();
   if (!db) return res.json({ success: false, error: "DB not connected" });
   try {
@@ -313,7 +326,37 @@ router.get("/api/stock/:id/institutional", async (req: Request, res: Response) =
 
 router.get("/api/stock/:id/shareholding", async (req: Request, res: Response) => {
   const id = req.params.id;
-  
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from("tdcc_shareholding")
+        .select("date, whale_ratio, total_shares")
+        .eq("stock_id", id)
+        .order("date", { ascending: false })
+        .limit(104);
+      if (error) throw error;
+      const rows = (data || []).map((row) => ({
+        date: row.date,
+        ratio: row.whale_ratio,
+        count: null,
+        shares: row.total_shares,
+      }));
+      const quality = dataQuality(
+        "supabase",
+        rows[0]?.date,
+        rows.length === 0 ? ["shareholding_data_missing"] : rows.length < 10 ? [`insufficient_history:${rows.length}`] : [],
+      );
+      return res.json({ success: true, data: rows, ...quality, dataQuality: quality });
+    } catch (err: unknown) {
+      console.error("[Supabase Shareholding Error]:", err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  if (!useLocalMarketData) {
+    return res.status(503).json({ success: false, error: "Supabase shareholding data is unavailable" });
+  }
+
   const db = getDb();
   if (db) {
     try {
@@ -335,7 +378,7 @@ router.get("/api/stock/:id/shareholding", async (req: Request, res: Response) =>
 router.get("/api/stock/:id/quote", async (req: Request, res: Response) => {
   const id = req.params.id;
 
-  try {
+  if (useLocalMarketData) try {
     const local = readLocalStockData(id);
     const latest = local.prices[0];
     if (latest && hasUsableLocalPriceRows(local.prices)) {
@@ -407,16 +450,21 @@ router.get("/api/stock/:id/quote", async (req: Request, res: Response) => {
         .order("date", { ascending: false })
         .limit(10);
 
-      let shareholding = null;
-      const db = getDb();
-      if (db) {
-        try {
-          shareholding = db.prepare("SELECT date, whale_ratio, retail_ratio FROM tdcc_shareholding WHERE stock_id = ? ORDER BY date DESC LIMIT 1").get(id);
-        } catch (_) {}
-      }
+      const { data: shareholdingRows } = await supabase
+        .from("tdcc_shareholding")
+        .select("date, whale_ratio, retail_ratio")
+        .eq("stock_id", id)
+        .order("date", { ascending: false })
+        .limit(1);
+      const shareholding = shareholdingRows?.[0] || null;
 
       const change = prev ? parseFloat((latest.close - prev.close).toFixed(2)) : 0;
       const changePercent = prev && prev.close > 0 ? parseFloat(((change / prev.close) * 100).toFixed(2)) : 0;
+      const quality = dataQuality(
+        "supabase",
+        latest.date,
+        meta.stock_name === id ? ["metadata_missing"] : [],
+      );
 
       return res.json({
         success: true,
@@ -437,11 +485,17 @@ router.get("/api/stock/:id/quote", async (req: Request, res: Response) => {
           indicators,
           institutional: instData || [],
           shareholding: shareholding || null,
-        }
+        },
+        ...quality,
+        dataQuality: quality,
       });
     } catch (err: any) {
       console.error("[Supabase Quote Error]:", err.message);
     }
+  }
+
+  if (!useLocalMarketData) {
+    return res.status(503).json({ success: false, error: "Supabase quote data is unavailable" });
   }
 
   const db = getDb();

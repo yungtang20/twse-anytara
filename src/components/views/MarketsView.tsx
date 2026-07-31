@@ -61,8 +61,8 @@ export function MarketsView() {
         const res = await fetch("/api/sync-status").then(r => r.json());
         if (disposed) return;
         if (res.success) {
-          if (res.latestDbDate) {
-            setLatestDate(res.latestDbDate);
+          if (res.latestSupabaseDate) {
+            setLatestDate(res.latestSupabaseDate);
           }
           if (res.running) {
             setIsUpdating(true);
@@ -79,8 +79,8 @@ export function MarketsView() {
                     setUpdateLogs(pollRes.logs);
                   }
                   if (!pollRes.running) {
-                    if (pollRes.latestDbDate) {
-                      setLatestDate(pollRes.latestDbDate);
+                    if (pollRes.latestSupabaseDate) {
+                      setLatestDate(pollRes.latestSupabaseDate);
                     }
                     setIsUpdating(false);
                     if (activeInterval) {
@@ -219,7 +219,7 @@ export function MarketsView() {
     
     setIsUpdating(true);
     setShowConsole(true);
-    setUpdateLogs(['[系統] 正在送達大盤實時同步指令...']);
+    setUpdateLogs(['[系統] 正在送達 Supabase 雲端同步指令...']);
 
     try {
       const res = await fetch("/api/trigger-update", { method: "POST" }).then(r => r.json());
@@ -234,8 +234,8 @@ export function MarketsView() {
             }
             if (!pollRes.running) {
               clearInterval(pollInterval);
-              if (pollRes.latestDbDate) {
-                setLatestDate(pollRes.latestDbDate);
+              if (pollRes.latestSupabaseDate) {
+                setLatestDate(pollRes.latestSupabaseDate);
               }
               setIsUpdating(false);
               setTimeout(() => setShowConsole(false), 3000);
@@ -310,8 +310,8 @@ export function MarketsView() {
                 <AlertTriangle size={20} />
               </div>
               <div className="space-y-0.5">
-                <p className="text-sm font-semibold text-amber-300">資料庫最新日期為 {latestDate || '尚無資料'}</p>
-                <p className="text-xs text-amber-400">目前數據與官方交易所今日最新交易盤後資訊存有落差，建議先執行更新。</p>
+                <p className="text-sm font-semibold text-amber-300">Supabase 最新日期為 {latestDate || '尚無資料'}</p>
+                <p className="text-xs text-amber-400">雲端行情落後官方交易所；此操作不會讀寫本地 SQLite。</p>
               </div>
             </div>
             <button
@@ -321,7 +321,7 @@ export function MarketsView() {
               id="btn-daily-update"
             >
               <RotateCw className={`w-3.5 h-3.5 ${isUpdating ? 'animate-spin' : ''}`} />
-              執行每日更新
+              更新 Supabase
             </button>
           </div>
         ) : (
@@ -331,9 +331,9 @@ export function MarketsView() {
                 <CheckCircle size={20} />
               </div>
               <div className="space-y-0.5">
-                <p className="text-sm font-semibold text-emerald-300">資料庫最新日期已同步至 {latestDate}（今日盤後）</p>
+                <p className="text-sm font-semibold text-emerald-300">Supabase 最新日期已同步至 {latestDate}</p>
                 <p className="text-xs text-emerald-400/80">
-                  全盤日終開放數據、法人持股日報、均線交叉指標已校對至最新。
+                  雲端行情已直接由 TWSE／TPEX 更新；本地 SQLite 維持獨立。
                 </p>
               </div>
             </div>

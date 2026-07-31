@@ -3,16 +3,8 @@ import fs from "fs";
 import path from "path";
 import { isLoopbackRequest, normalizeLongcatBaseUrl, validateEnvValue } from "../lib/security";
 import { describeSupabaseError } from "../lib/supabaseDiagnostics";
-import {
-  pushTdccToSupabase,
-  pushPriceToSupabase,
-  pushInstitutionalToSupabase,
-  pullPriceFromSupabase,
-  pullInstitutionalFromSupabase,
-  pullTdccFromSupabase,
-  pruneSupabaseData,
-} from "../lib/syncBridge";
-import { debugState, addLog, pushSyncLog, supabase, supabaseAdmin } from "../services";
+import { pruneSupabaseData } from "../lib/syncBridge";
+import { debugState, addLog, pushSyncLog, supabase } from "../services";
 
 const router = Router();
 
@@ -172,85 +164,12 @@ router.post("/api/settings/cleanup", json(), async (req: Request, res: Response)
   });
 });
 
-// API to trigger bidirectional data sync bridge (push/pull)
-router.post("/api/settings/sync-bridge", json(), async (req: Request, res: Response) => {
-  const { mode, days = 30, dataType = "price" } = req.body;
-  if (!supabase) {
-    return res.status(400).json({ success: false, error: "Supabase 尚未連線，無法使用同步橋功能" });
-  }
-  if (mode === "push" && !supabaseAdmin) {
-    return res.status(400).json({
-      success: false,
-      error: "Supabase 上傳需要伺服器端 SUPABASE_SERVICE_ROLE_KEY",
-    });
-  }
-
-  if (debugState.activeSyncProcess.running) {
-    return res.status(400).json({ success: false, error: "另一個背景工作（爬蟲、清理或同步）仍在運行中" });
-  }
-
-  debugState.activeSyncProcess.running = true;
-  debugState.activeSyncProcess.startTime = new Date().toISOString();
-  debugState.activeSyncProcess.error = null;
-  debugState.activeSyncProcess.logs = [];
-
-  const addSyncLog = (msg: string) => {
-    const time = new Date().toLocaleTimeString("zh-TW", { hour12: false });
-    pushSyncLog(`[${time}] ${msg}`);
-  };
-
-  (async () => {
-    try {
-      const isPush = mode === "push";
-      addSyncLog(`🌉 啟動 雙向同步大橋 - [${isPush ? "SQLite → Supabase (上傳)" : "Supabase → SQLite (還原)"}] (指定天數: ${days} 天)`);
-      
-      const targetTypes = dataType === "all" ? ["price", "institutional", "tdcc"] : [dataType];
-
-      for (const type of targetTypes) {
-        if (type === "price") {
-          addSyncLog(`📦 正在進行 [日K線收盤價] 資料組同步處理...`);
-          if (isPush) {
-            const { pushed } = await pushPriceToSupabase(days);
-            addSyncLog(`   ✅ 日K線收盤價已成功上傳: ${pushed} 筆`);
-          } else {
-            const { pulled } = await pullPriceFromSupabase(days);
-            addSyncLog(`   ✅ 日K線收盤價已成功還原: ${pulled} 筆`);
-          }
-        }
-        else if (type === "institutional") {
-          addSyncLog(`📦 正在進行 [三大法人籌碼] 資料組同步處理...`);
-          if (isPush) {
-            const { pushed } = await pushInstitutionalToSupabase(days);
-            addSyncLog(`   ✅ 三大法人籌碼已成功上傳: ${pushed} 筆`);
-          } else {
-            const { pulled } = await pullInstitutionalFromSupabase(days);
-            addSyncLog(`   ✅ 三大法人籌碼已成功還原: ${pulled} 筆`);
-          }
-        }
-        else if (type === "tdcc") {
-          addSyncLog(`📦 正在進行 [TDCC 集保股權分布] 資料組同步處理...`);
-          const tdccDays = dataType === "all" ? 365 : days; // TDCC is weekly, sync 1 year when overall
-          if (isPush) {
-            const { pushed } = await pushTdccToSupabase(tdccDays);
-            addSyncLog(`   ✅ TDCC 集保股權已成功上傳: ${pushed} 筆`);
-          } else {
-            const { pulled } = await pullTdccFromSupabase(tdccDays);
-            addSyncLog(`   ✅ TDCC 集保股權已成功還原: ${pulled} 筆`);
-          }
-        }
-      }
-
-      addSyncLog(`\n🎉 本次雙向同步請求已完成；尚未執行全量一致性驗證。`);
-    } catch (e: any) {
-      debugState.activeSyncProcess.error = e.message;
-      addSyncLog(`\n❌ 同步大橋遭遇阻礙: ${e.message}`);
-      addLog('SYNC_BRIDGE', 'ERROR', e.message);
-    } finally {
-      debugState.activeSyncProcess.running = false;
-    }
-  })();
-
-  res.json({ success: true, message: "雙向同步橋接工作已於背景啟動，日誌將即時串流" });
+// Kept as an explicit tombstone so older clients cannot silently mix cloud and local data.
+router.post("/api/settings/sync-bridge", json(), (_req: Request, res: Response) => {
+  res.status(410).json({
+    success: false,
+    error: "雙向同步橋已停用；Supabase 與本地 SQLite 現為獨立資料來源",
+  });
 });
 
 // Public diagnostics expose presence only; secret values never leave the server.

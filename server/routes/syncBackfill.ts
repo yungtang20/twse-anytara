@@ -3,20 +3,32 @@ import { Router, json, type Request, type Response } from "express";
 import { getDb } from "../db";
 import { isLoopbackRequest } from "../lib/security";
 import { scrapePriceFromYahoo } from "../lib/yahooPrice";
-import { addLog, debugState, pushSyncLog } from "../services";
+import { addLog, debugState, pushSyncLog, supabase } from "../services";
 
 const router = Router();
+
+async function getLatestSupabasePriceDate(): Promise<string | null> {
+  if (!supabase) return null;
+  const { data, error } = await supabase
+    .from("stock_price")
+    .select("date")
+    .order("date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.date || null;
+}
 
 // Daily sync and backfill routes remain here until the dedicated sync-router phase.
 router.post("/api/sync-daily", (req: Request, res: Response) => {
   if (!isLoopbackRequest(req)) return res.status(403).json({ success: false, error: "同步只能從本機觸發" });
   const node = JSON.stringify(process.execPath);
-  exec(`${node} node_modules/tsx/dist/cli.mjs scripts/syncData.ts && ${node} scripts/complete_and_fetch_today.js`, (error, stdout) => {
+  exec(`${node} node_modules/tsx/dist/cli.mjs scripts/syncData.ts`, (error, stdout) => {
     if (error) {
       console.error(`Sync error: ${error}`);
       return res.status(500).json({ success: false, error: error.message });
     }
-    addLog('SYNC', 'OK', `Supabase TS sync and Local SQLite sync complete.`);
+    addLog("SYNC", "OK", "Supabase direct market-file sync complete.");
     res.json({ success: true, log: stdout });
   });
 });
@@ -62,11 +74,14 @@ router.post("/api/trigger-update", async (req: Request, res: Response) => {
       }
     }
 
-    pushSyncLog(`[系統] 啟動本地 Python/Node.js 爬蟲對接。`);
-    pushSyncLog(`[系統] 目標工作流程：從 Supabase 擷取並對接本地補登...`);
+    pushSyncLog(`[系統] 啟動 Supabase 官方行情檔同步。`);
+    pushSyncLog(`[系統] 目標工作流程：TWSE/TPEX → Supabase；不讀寫本地 SQLite。`);
 
     const node = JSON.stringify(process.execPath);
-    const child = spawn(`${node} scripts/pull_from_supabase.js && ${node} scripts/complete_and_fetch_today.js`, { shell: true, windowsHide: true });
+    const child = spawn(
+      `${node} node_modules/tsx/dist/cli.mjs scripts/syncData.ts`,
+      { shell: true, windowsHide: true },
+    );
 
     child.stdout.on("data", (data) => {
       const text = data.toString();
@@ -94,31 +109,36 @@ router.post("/api/trigger-update", async (req: Request, res: Response) => {
       }
     });
 
-    child.on("close", (code) => {
-      debugState.activeSyncProcess.running = false;
+    child.on("close", async (code) => {
       const time = new Date().toLocaleTimeString("zh-TW", { hour12: false });
       if (code !== 0) {
         debugState.activeSyncProcess.error = `處理程序異常終止 (代碼: ${code})`;
         pushSyncLog(`\n[${time}] ❌ 行程異常結束。錯誤代碼: ${code}`);
         addLog('SYNC', 'ERROR', `Background sync process exited with code ${code}`);
       } else {
-        pushSyncLog(`\n[${time}] ✅ 大盤實時爬蟲同步完成！本地 SQLite 資料庫已同步至最新。`);
-        addLog('SYNC', 'OK', 'Database synchronized successfully with raw crawling stream.');
+        try {
+          const latestCloudDate = await getLatestSupabasePriceDate();
+          pushSyncLog(`\n[${time}] ✅ 同步完成；Supabase 最新行情日期：${latestCloudDate || "無資料"}。`);
+          addLog("SYNC", "OK", `Supabase latest price date: ${latestCloudDate || "none"}`);
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          debugState.activeSyncProcess.error = `同步完成，但 Supabase 驗證失敗: ${message}`;
+          pushSyncLog(`\n[${time}] ⚠️ 同步完成，但無法驗證 Supabase 最新日期：${message}`);
+        }
       }
+      debugState.activeSyncProcess.running = false;
     });
   })();
 });
 
 // GET Endpoint to poll sync progress
-router.get("/api/sync-status", (req: Request, res: Response) => {
+router.get("/api/sync-status", async (req: Request, res: Response) => {
   if (!isLoopbackRequest(req)) return res.status(403).json({ success: false, error: "同步狀態只能從本機讀取" });
-  const db = getDb();
-  let latestDbDate = "";
-  if (db) {
-    try {
-      const latestDbRow = db.prepare("SELECT MAX(date) as max_date FROM stock_price").get() as { max_date: string | null };
-      latestDbDate = latestDbRow?.max_date || "";
-    } catch { /* ignore */ }
+  let latestSupabaseDate: string | null = null;
+  try {
+    latestSupabaseDate = await getLatestSupabasePriceDate();
+  } catch {
+    // The background task logs connection failures in detail.
   }
   res.json({
     success: true,
@@ -126,12 +146,12 @@ router.get("/api/sync-status", (req: Request, res: Response) => {
     logs: debugState.activeSyncProcess.logs,
     startTime: debugState.activeSyncProcess.startTime,
     error: debugState.activeSyncProcess.error,
-    latestDbDate
+    latestSupabaseDate,
   });
 });
 
 
-router.post("/api/backfill-finmind", json(), async (req: Request, res: Response) => {
+router.post("/api/local/backfill-finmind", json(), async (req: Request, res: Response) => {
   if (!isLoopbackRequest(req)) return res.status(403).json({ success: false, error: "資料回補只能從本機觸發" });
   const db = getDb();
   if (!db) return res.status(500).json({ success: false, error: "Database not connected" });

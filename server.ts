@@ -72,8 +72,8 @@ async function startServer() {
   // Initialize SQLite Database
   const db = initDb();
 
-  // Trigger background sync if DB lacks historical data or is stale
-  if (db && process.env.STARTUP_SYNC_ENABLED !== "false") {
+  // Local restoration is opt-in. Web market data uses Supabase by default.
+  if (db && process.env.MARKET_DATA_MODE === "local" && process.env.STARTUP_SYNC_ENABLED !== "false") {
     try {
       const row = db.prepare("SELECT COUNT(DISTINCT date) as c FROM stock_price").get() as { c: number };
       const latestDbRow = db.prepare("SELECT MAX(date) as max_date FROM stock_price").get() as { max_date: string | null };

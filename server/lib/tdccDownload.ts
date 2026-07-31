@@ -1,7 +1,7 @@
 // Pure-Node TDCC open-data downloader.  No Python dependency.
 // Weekly CSV source: https://opendata.tdcc.com.tw/getOD.ashx?id=1-5  (~2.3MB)
 import { getDb } from "../db";
-import { supabase, addLog } from "../services";
+import { supabaseAdmin, addLog } from "../services";
 import { fetchWithOneRetry } from "./fetchRetry";
 
 export interface TdccRecord {
@@ -153,7 +153,7 @@ export async function saveTdccToSQLite(records: TdccRecord[], source = "opendata
 }
 
 export async function saveTdccToSupabase(records: TdccRecord[], source = "opendata"): Promise<TdccCloudResult> {
-  if (!supabase) return { attempted: false, synced: false };
+  if (!supabaseAdmin) return { attempted: false, synced: false };
   try {
     const rows = records.map((r) => ({
       stock_id: r.stock_id,
@@ -165,7 +165,7 @@ export async function saveTdccToSupabase(records: TdccRecord[], source = "openda
     }));
     const CHUNK = 500;
     for (let i = 0; i < rows.length; i += CHUNK) {
-      const { error } = await supabase.from("tdcc_shareholding").upsert(rows.slice(i, i + CHUNK), {
+      const { error } = await supabaseAdmin.from("tdcc_shareholding").upsert(rows.slice(i, i + CHUNK), {
         onConflict: "stock_id,date",
       });
       if (error) throw error;
@@ -194,7 +194,7 @@ export async function ingestTdccCSV(
   opts: { toSqlite?: boolean; toSupabase?: boolean; source?: string; log?: (m: string) => void } = {},
 ): Promise<{ count: number; date: string; parsedRows: number; cloud: TdccCloudResult }> {
   const log = opts.log || ((m: string) => console.log("[tdcc]", m));
-  const toSqlite = opts.toSqlite !== false;
+  const toSqlite = opts.toSqlite === true;
   const toSupabase = opts.toSupabase !== false;
   const source = opts.source || "opendata";
   const { records, date, parsedRows } = parseTdccCSV(csvText);

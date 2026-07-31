@@ -1,10 +1,11 @@
 import { calcMA, calcMACD, calcRSI } from "../../src/lib/indicators";
 
 export type SnapshotRow = Record<string, unknown>;
+export type SnapshotSource = "finmind" | "sqlite" | "tdcc_sqlite" | "supabase" | "tdcc_supabase";
 
 export interface SnapshotSeries {
   dataset: string;
-  source: "finmind" | "sqlite" | "tdcc_sqlite";
+  source: SnapshotSource;
   asOf: string | null;
   retrievedAt: string;
   rowCount: number;
@@ -54,7 +55,7 @@ export interface StockSnapshot {
 
 export interface SnapshotDatasetInput {
   dataset: string;
-  source?: "finmind" | "sqlite" | "tdcc_sqlite";
+  source?: SnapshotSource;
   rows: SnapshotRow[];
   error?: string;
 }

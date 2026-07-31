@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
+import path from "node:path";
 import Database from "better-sqlite3";
 import express from "express";
 import { calcATR, calcRSI, type PriceData } from "../src/lib/indicators";
@@ -25,8 +27,42 @@ import { describeSupabaseError } from "../server/lib/supabaseDiagnostics";
 import { ensureCanonicalSchema } from "../server/lib/sqliteSchema";
 import { hasUsableLocalPriceRows } from "../server/lib/marketDataRepository";
 import { resolveDatabasePath } from "../server/db";
+import { listPendingCalendarDates } from "../scripts/lib/syncDates";
 
 const rising = Array.from({ length: 20 }, (_, index) => 100 + index);
+const syncRouteSource = readFileSync(
+  path.join(process.cwd(), "server", "routes", "syncBackfill.ts"),
+  "utf8",
+);
+const settingsRouteSource = readFileSync(
+  path.join(process.cwd(), "server", "routes", "settings.ts"),
+  "utf8",
+);
+const triggerUpdateSource = syncRouteSource.split('router.post("/api/trigger-update"')[1]
+  ?.split('// GET Endpoint to poll sync progress')[0] || "";
+assert.match(
+  triggerUpdateSource,
+  /scripts[\\/]syncData\.ts/,
+  "the web update action must upload the latest market data to Supabase",
+);
+assert.doesNotMatch(
+  triggerUpdateSource,
+  /complete_and_fetch_today|pull_from_supabase/,
+  "the Supabase web update action must remain independent from local SQLite sync",
+);
+assert.match(
+  settingsRouteSource,
+  /router\.post\("\/api\/settings\/sync-bridge"[\s\S]*?status\(410\)/,
+  "the retired bidirectional bridge must not mix Supabase and local SQLite",
+);
+assert.deepEqual(
+  listPendingCalendarDates("2026-07-24", "2026-07-31"),
+  [
+    "2026-07-25", "2026-07-26", "2026-07-27", "2026-07-28",
+    "2026-07-29", "2026-07-30", "2026-07-31",
+  ],
+  "Supabase catch-up must not skip dates between the cloud maximum and today",
+);
 assert.equal(
   resolveDatabasePath("D:\\app", "fixtures\\smoke.db"),
   "D:\\app\\fixtures\\smoke.db",
@@ -43,12 +79,12 @@ const freshLocalRows = Array.from({ length: 30 }, (_, index) => ({
 assert.equal(
   hasUsableLocalPriceRows(freshLocalRows, new Date("2026-08-01T00:00:00+08:00").getTime()),
   true,
-  "fresh local prices must win over remote providers",
+  "explicit local mode may use sufficiently fresh local prices",
 );
 assert.equal(
   hasUsableLocalPriceRows(freshLocalRows, new Date("2026-08-15T00:00:00+08:00").getTime()),
   false,
-  "stale local prices must allow a remote fallback",
+  "explicit local mode must reject stale local prices",
 );
 assert.equal(clampSidebarWidth(100, 1200), 132, "sidebar width must keep navigation usable");
 assert.equal(clampSidebarWidth(500, 800), 288, "sidebar width must preserve responsive content space");
@@ -333,7 +369,7 @@ for (const route of [
   "POST /api/sync-daily",
   "POST /api/trigger-update",
   "GET /api/sync-status",
-  "POST /api/backfill-finmind",
+  "POST /api/local/backfill-finmind",
   "GET /api/health",
   "GET /api/twse-stats",
   "GET /api/otc-stats",

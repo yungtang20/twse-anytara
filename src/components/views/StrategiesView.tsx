@@ -157,36 +157,24 @@ export function StrategiesView() {
     if (!activeSid) return;
     setSyncing(true);
     setSyncError(null);
-    setSyncLogs(['[INFO] 正在連線 FinMind API，啟動日 K 與籌碼批次下載...', '[INFO] 本回補程序將寫入 SQLite 實體資料庫...']);
-
-    // 動態計算 280 曆日前，約等於 200 交易日
-    const syncDate = new Date();
-    syncDate.setDate(syncDate.getDate() - 280);
-    const dynamicStart = syncDate.toISOString().split('T')[0];
+    setSyncLogs([
+      "[INFO] 正在啟動 TWSE／TPEX 雲端同步...",
+      "[INFO] 行情與法人資料將直接寫入 Supabase，不會修改本地 SQLite。",
+    ]);
 
     try {
-      const response = await fetch('/api/backfill-finmind', {
+      const response = await fetch("/api/trigger-update", {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          stockId: activeSid,
-          startDate: dynamicStart,
-          types: ['price', 'institutional']
-        })
       });
 
       const resData = await response.json();
       if (resData.success) {
         setSyncLogs(prev => [
           ...prev,
-          ...(resData.logs || []),
-          '🟢 數據同步成功！正在重載實體數據...'
+          "🟢 Supabase 更新已在背景啟動；完成後重新載入雲端資料。",
         ]);
-        
-        // Dynamic wait to let user read success log
-        setTimeout(() => {
+        setTimeout(async () => {
           loadStockData(activeSid);
-          // Reload strategy specific overlays
           if (selectedStrategy === 'support-resistance') {
             fetchSRAnalysis(activeSid).then(setSrData).catch(() => setSrData(null));
           }
@@ -195,9 +183,9 @@ export function StrategiesView() {
           }
           setSyncing(false);
           setSyncLogs([]);
-        }, 1500);
+        }, 3000);
       } else {
-        throw new Error(resData.error || 'FinMind 同步回補失敗');
+        throw new Error(resData.error || "Supabase 同步啟動失敗");
       }
     } catch (err: any) {
       setSyncError(err.message || String(err));

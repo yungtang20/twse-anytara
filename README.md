@@ -62,8 +62,7 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 ```
 
 **數據來源**：
-- 加權指數/櫃買指數：Supabase + FinMind 即時數據
-- 漲跌幅排行：Supabase stock_history
+- 加權指數/櫃買指數、漲跌幅排行：Supabase 雲端市場資料
 
 ---
 
@@ -89,11 +88,10 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 ```
 
 **數據來源**：
-- 個股報價／K 線／成交量：SQLite → Supabase → Yahoo fallback
-- AI 價格快照：新鮮 SQLite → FinMind fallback
-- AI 財務與估值資料：FinMind（僅依分析框架抓取必要資料集）
-- 法人/外資：SQLite → Supabase fallback
-- 千張大戶/集保人數：SQLite TDCC
+- 個股報價／K 線／成交量、法人、TDCC、股利：Supabase
+- AI 價格快照：Supabase
+- AI 財務與估值資料：FinMind（僅抓分析需要的資料集，短期快取於私有 Supabase 表）
+- SQLite 是獨立的選用部署模式；只有 `MARKET_DATA_MODE=local` 才會讀寫本機資料庫
 
 ---
 
@@ -159,7 +157,7 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 ├─────────────────────────────────────────────────────────────────┤
 │  數據源狀態                                                        │
 │  Supabase: 2,041 檔股票                                          │
-│  SQLite: 2,041 檔股票, 1,016,849 筆歷史數據                      │
+│  雲端容量: 273.2 MiB / 500 MiB（範例）                            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -167,14 +165,16 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 
 ## 3. 數據來源
 
-### 3.1 數據來源優先級
+### 3.1 雲端與本機模式
 
 ```
-優先級 1：SQLite 本地資料庫（資料新鮮且足夠）
-  ↓ 如果過期、資料不足或無數據
-優先級 2：Supabase
-  ↓ 如果失敗或無數據
-優先級 3：FinMind / Yahoo 外部資料源
+預設 MARKET_DATA_MODE=cloud
+瀏覽器 → Express API → Supabase
+「更新資料」→ 官方 TWSE／TPEX／TDCC 檔案或 API → Supabase
+
+選用 MARKET_DATA_MODE=local
+瀏覽器 → Express API → SQLite
+本機同步與雲端同步互不覆寫
 ```
 
 ### 3.2 FinMind API 數據集（12 個免費）
@@ -206,13 +206,13 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 ### 4.1 數據收集策略
 
 **數據來源優先級**：
-1. SQLite 本地資料庫（價格與 TDCC）
-2. Supabase（雲端備援）
-3. FinMind / Yahoo（外部補充與回補）
+1. Supabase（價格、公司資料、法人、TDCC 與股利）
+2. FinMind（分析框架要求的財務、估值與營收資料）
+3. LongCat／Gemini（根據上述結構化資料生成分析）
 
-**FinMind API 數據集**：12 個免費數據集
+**FinMind API 數據集**：依分析模板按需讀取，不再固定下載全部資料
 
-**日期範圍**：2015-01-01 至今日（最大化）
+**日期範圍**：依各資料集保留期限控制；不以完整歷史最大化為目標
 
 ### 4.2 單一報告生成流程
 
@@ -300,14 +300,18 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 | 限制 | 說明 |
 |------|------|
 | 儲存容量 | 500MB |
-| `stock_price` 目前使用 | 228MB（2026-07-31 盤點） |
+| 目前資料庫使用 | 273.2 MiB（2026-07-31 驗證） |
+| 同步寫入警戒線 | 450 MiB |
+| AI 快取寫入警戒線 | 400 MiB |
 
 Supabase 存取分工：
 
 - `SUPABASE_ANON_KEY`／`VITE_SUPABASE_ANON_KEY`：前端與一般唯讀查詢。
 - `SUPABASE_SERVICE_ROLE_KEY`：僅限伺服器與同步腳本寫入，禁止使用 `VITE_` 前綴。
-- 首次部署先套用 `supabase/migrations/20260731000000_harden_stock_price_access.sql`。
-- `scripts/prune_supabase.ts` 與 `scripts/bulk_load_512.ts` 預設只 dry-run；必須明確加上 `--execute` 才會修改雲端資料。
+- 部署時依序套用 `supabase/migrations/`；市場表啟用 RLS 公開唯讀，私有快取與同步紀錄只允許 service role。
+- `npm run sync` 直接從 TWSE、TPEX、TDCC 官方來源寫入 Supabase；`SUPABASE_SYNC_MAX_DAYS` 限制單次追補範圍。
+- 保留策略約為股價 512 個交易日、法人 90 個交易日、TDCC 104 週、股利 10 年；衍生指標即時計算、不另存資料表。
+- `npm run verify:cloud` 可檢查容量、最新日期、RLS、儀表板與主要 API。
 
 ---
 
@@ -324,7 +328,7 @@ Supabase 存取分工：
 ### 6.2 後端
 - **運行時**：Node.js + tsx
 - **框架**：Express
-- **資料庫**：SQLite（better-sqlite3）+ Supabase
+- **資料庫**：Supabase（預設雲端）或 SQLite（獨立本機模式）
 
 ### 6.3 外部 API
 - **FinMind**：台股數據

@@ -5,12 +5,12 @@ import { startJob, getJob, listJobs, cancelJob, deleteJob, deleteAllJobs } from 
 import { syncTdcc, getTdccSqliteStatus } from "./lib/tdccDownload";
 import { GoogleGenAI } from "@google/genai";
 import { resolveLongcatCompletionsUrl } from "./lib/security";
-import { getDb } from "./db";
 import { buildStockSnapshot, formatSnapshotForPrompt, type SnapshotRow, type StockSnapshot } from "./lib/stockSnapshot";
 import { validateEvidenceReport, type EvidenceSummary, type ReportClaim } from "./lib/evidenceReport";
 import { fetchWithOneRetry } from "./lib/fetchRetry";
 import { evaluateFrameworkEligibility, FRAMEWORK_CONTRACTS } from "./lib/frameworkEligibility";
-import { hasUsableLocalPriceRows, readLocalPriceRows } from "./lib/marketDataRepository";
+import { fetchCloudMeta, fetchCloudPrices, fetchCloudShareholding } from "./lib/cloudMarketData";
+import { readFinMindCache, writeFinMindCache } from "./lib/finmindCache";
 
 const FINMIND = "https://api.finmindtrade.com/api/v4/data";
 
@@ -84,6 +84,8 @@ interface FinMindResult {
 }
 
 const fetchFinMind = async (ds: string, stockId: string, sd: string, ed: string, finmindApiKey: string, signal?: AbortSignal): Promise<FinMindResult> => {
+  const cached = await readFinMindCache(stockId, ds, sd, ed);
+  if (cached) return { dataset: ds, rows: cached.length, text: `[${ds}] rows=${cached.length} cache=supabase`, data: cached };
   if (!finmindApiKey) return { dataset: ds, rows: 0, text: `[${ds}: 未設 FINMIND_API_KEY]`, data: [], error: "missing_api_key" };
   try {
     const query = new URLSearchParams({ dataset: ds, data_id: stockId, start_date: sd, end_date: ed });
@@ -99,6 +101,7 @@ const fetchFinMind = async (ds: string, stockId: string, sd: string, ed: string,
     const data = Array.isArray(j.data) ? j.data as SnapshotRow[] : [];
     const rows = data.length;
     if (rows === 0) return { dataset: ds, rows: 0, text: `[${ds}: 0 rows]`, data: [], error: "no_rows" };
+    await writeFinMindCache(stockId, ds, data);
     return { dataset: ds, rows, text: `[${ds}] rows=${rows}`, data };
   } catch (e: any) {
     if (signal?.aborted || e?.name === "AbortError") throw e;
@@ -124,41 +127,39 @@ export function selectFinMindDatasetNames(frameworkIds: string[] = []): string[]
 export async function fetchAnalysisSnapshot(stockId: string, signal?: AbortSignal, frameworkIds: string[] = []): Promise<AnalysisSnapshot> {
   const settings = await getDynamicSettings();
   const selectedDatasets = new Set(selectFinMindDatasetNames(frameworkIds));
-  let localPriceRows: SnapshotRow[] = [];
+  let cloudPriceRows: SnapshotRow[] = [];
   try {
-    const rows = readLocalPriceRows(stockId, 1_000);
-    if (hasUsableLocalPriceRows(rows)) {
-      localPriceRows = rows.map((row) => ({ ...row }));
+    const rows = await fetchCloudPrices(stockId, 512);
+    if (rows.length >= 30) {
+      cloudPriceRows = rows.map((row) => ({ ...row }));
       selectedDatasets.delete("TaiwanStockPrice");
     }
-  } catch { /* local price data is optional; FinMind remains the fallback */ }
+  } catch { /* Supabase price data is optional; FinMind remains the fallback */ }
   const results = await Promise.all(FINMIND_DATASETS.filter(({ ds }) => selectedDatasets.has(ds)).map(async (dataset) => {
     const { sd, ed } = dataset.getDates();
     return { ...dataset, result: await fetchFinMind(dataset.ds, stockId, sd, ed, settings.finmindApiKey, signal) };
   }));
   const datasetRows = Object.fromEntries(results.map(({ ds, result }) => [ds, result.rows]));
-  if (localPriceRows.length > 0) datasetRows.TaiwanStockPrice = localPriceRows.length;
+  if (cloudPriceRows.length > 0) datasetRows.TaiwanStockPrice = cloudPriceRows.length;
   if (!datasetRows.TaiwanStockPrice) throw new Error("insufficient_data: TaiwanStockPrice");
 
   signal?.throwIfAborted();
   let tdccRows: SnapshotRow[] = [];
   try {
-    tdccRows = getDb().prepare(
-      "SELECT date, total_shares, whale_ratio, retail_ratio, source FROM tdcc_shareholding WHERE stock_id = ? ORDER BY date DESC LIMIT 12"
-    ).all(stockId);
-  } catch { /* table may not exist in a legacy database */ }
+    tdccRows = (await fetchCloudShareholding(stockId, 12)).map((row) => ({ ...row }));
+  } catch { /* TDCC is optional */ }
   datasetRows.TDCCShareholding = tdccRows.length;
   let identity: { companyName?: string | null; market?: string | null; industry?: string | null } = {};
   try {
-    const row = getDb().prepare("SELECT stock_name, market, industry_category FROM stock_meta WHERE stock_id = ?").get(stockId) as any;
+    const row = await fetchCloudMeta(stockId);
     identity = { companyName: row?.stock_name || null, market: row?.market || null, industry: row?.industry_category || null };
   } catch { /* metadata is optional */ }
   const snapshot = buildStockSnapshot(stockId, [
-    ...(localPriceRows.length > 0
-      ? [{ dataset: "TaiwanStockPrice", source: "sqlite" as const, rows: localPriceRows }]
+    ...(cloudPriceRows.length > 0
+      ? [{ dataset: "TaiwanStockPrice", source: "supabase" as const, rows: cloudPriceRows }]
       : []),
     ...results.map(({ ds, result }) => ({ dataset: ds, rows: result.data, error: result.error })),
-    { dataset: "TDCCShareholding", source: "tdcc_sqlite" as const, rows: tdccRows },
+    { dataset: "TDCCShareholding", source: "tdcc_supabase" as const, rows: tdccRows },
   ], identity);
   const canonicalBlock = formatSnapshotForPrompt(snapshot);
   return {
@@ -503,7 +504,7 @@ export async function jobDeleteAllHandler(_req: Request, res: Response) {
 // POST /api/tdcc/sync  — manual TDCC fetch (best-effort Supabase)
 export async function tdccSyncHandler(req: Request, res: Response) {
   try {
-    const r = await syncTdcc({ toSqlite: true, toSupabase: true, log: (m) => console.log("[tdcc-api]", m) });
+    const r = await syncTdcc({ toSqlite: false, toSupabase: true, log: (m) => console.log("[tdcc-api]", m) });
     res.json({
       success: true,
       count: r.count,
