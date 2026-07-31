@@ -2,6 +2,8 @@ import { Router, type Request, type Response } from "express";
 import { scrapePriceFromYahoo } from "../lib/yahooPrice";
 import { getDb } from "../db";
 import { calcIndicators, supabase } from "../services";
+import { backfillTdccHistory } from "../lib/tdccHistory";
+import { isLoopbackRequest } from "../lib/security";
 import {
   hasUsableLocalPriceRows,
   readLocalInstitutionalRows,
@@ -372,6 +374,19 @@ router.get("/api/stock/:id/shareholding", async (req: Request, res: Response) =>
 
   const quality = dataQuality("tdcc_sqlite", null, ["shareholding_data_missing"]);
   res.json({ success: true, data: [], ...quality, dataQuality: quality });
+});
+
+router.post("/api/stock/:id/shareholding/backfill", async (req: Request, res: Response) => {
+  if (!isLoopbackRequest(req)) {
+    return res.status(403).json({ success: false, error: "TDCC 歷史回補只能從本機觸發" });
+  }
+  try {
+    const result = await backfillTdccHistory(req.params.id, 52);
+    return res.json({ success: true, data: result });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    return res.status(502).json({ success: false, error: message });
+  }
 });
 
 // Get full quote (price + indicators + institutional)

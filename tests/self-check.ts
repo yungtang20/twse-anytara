@@ -71,7 +71,20 @@ assert.match(cloudSyncSource, /INITIAL_INSTITUTIONAL_DATES = 60/);
 assert.match(cloudSyncSource, /INSTITUTIONAL_RETENTION = 512/);
 assert.match(cloudSyncSource, /TDCC_RETENTION = 512/);
 assert.match(cloudSyncSource, /PRICE_RETENTION - status\.price_dates/);
+const mvpRouteSource = readFileSync(
+  path.join(process.cwd(), "server", "mvpMcpRoutes.ts"),
+  "utf8",
+);
+assert.match(mvpRouteSource, /return token && failed \? request\(""\) : first/);
+assert.doesNotMatch(mvpRouteSource, /error: "missing_api_key"/);
 assert.match(retentionMigrationSource, /offset \(price_rows - 1\)/);
+const finMindCacheMigrationSource = readFileSync(
+  path.join(process.cwd(), "supabase", "migrations", "20260731040000_expand_finmind_cache.sql"),
+  "utf8",
+);
+for (const dataset of ["institutional", "margin", "dividend", "foreign_shareholding"]) {
+  assert.match(finMindCacheMigrationSource, new RegExp(`'${dataset}'`));
+}
 for (const table of ["stock_price", "stock_institutional", "tdcc_shareholding"]) {
   assert.match(
     retentionMigrationSource,
@@ -315,11 +328,11 @@ try {
     "資料日期,證券代號,持股分級,人數,股數,占集保庫存數比例%",
     '"1150718","2330","1","10","100","10"',
     "20260718,2330,6,20,200,20",
-    "2026-07-18,2330,12,5,300,30",
+    "2026-07-18,2330,15,5,300,30",
     "2026/07/18,2330,16,1,100,10",
     '20260718,2330,17,36,"1,000",100',
     "20260718,2317,1,10,100,25",
-    "20260718,2317,12,2,300,75",
+    "20260718,2317,15,2,300,75",
     "20261340,9999,1,1,100,100",
     "20260718,9999,1,1,-10,100",
   ].join("\n");
@@ -328,7 +341,7 @@ try {
   assert.equal(parsedTdcc.parsedRows, 7);
   assert.equal(parsedTdcc.records.length, 2);
   assert.deepEqual(parsedTdcc.records.find((record) => record.stock_id === "2330"), {
-    stock_id: "2330", date: "2026-07-18", total_shares: 1_000, whale_ratio: 40, retail_ratio: 30,
+    stock_id: "2330", date: "2026-07-18", total_shares: 1_000, whale_ratio: 30, retail_ratio: 30,
   });
   assert.deepEqual(parsedTdcc.records.find((record) => record.stock_id === "2317"), {
     stock_id: "2317", date: "2026-07-18", total_shares: 400, whale_ratio: 75, retail_ratio: 25,
@@ -386,6 +399,7 @@ for (const route of [
   "GET /api/stock/:id/indicators",
   "GET /api/stock/:id/institutional",
   "GET /api/stock/:id/shareholding",
+  "POST /api/stock/:id/shareholding/backfill",
   "GET /api/stock/:id/quote",
   "GET /api/stock/:id/valuation",
   "GET /api/stock/:id/margin",

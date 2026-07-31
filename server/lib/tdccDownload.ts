@@ -42,7 +42,7 @@ export async function downloadTdccCSV(): Promise<string> {
 
 // Parse CSV with columns: 資料日期,證券代號,持股分級,人數,股數,占集保庫存數比例%
 // Aggregate by (stock_id, date):  total_shares = all-whare (level 17 if present, else sum of 1..17)
-// whale_shares = sum of shares where level >= 12 (1000+張大股東 level)
+// whale_shares = level 15 (1,000,001 shares and above = 1,000+ lots)
 // retail_shares = sum of shares where level <= 6
 function normalizeTdccDate(value: string): string | null {
   const raw = value.trim().replace(/^['"]|['"]$/g, "");
@@ -109,12 +109,12 @@ export function parseTdccCSV(csvText: string): TdccParseResult {
       // fallback: sum all levels
       totalShares = Object.values(sharesByLevel).reduce((a, b) => a + b, 0);
     }
-    // whale = level 12-16 (大型持碼人 + 1000+張); level 15 in some APIs is 1000+
+    // Level 15 is 1,000,001 shares and above. Level 16 is an adjustment row.
     let whaleShares = 0;
     let retailShares = 0;
     for (const [lvlStr, shares] of Object.entries(sharesByLevel)) {
       const lvl = parseInt(lvlStr, 10);
-      if (lvl >= 12 && lvl <= 16) whaleShares += shares;
+      if (lvl === 15) whaleShares += shares;
       if (lvl >= 1 && lvl <= 6) retailShares += shares;
     }
     if (!totalShares || whaleShares > totalShares || retailShares > totalShares) continue;

@@ -38,25 +38,25 @@ export async function fetchCloudPrices(stockId: string, limit = 512): Promise<Cl
 
 export async function fetchCloudInstitutional(
   stockId: string,
-  limit = 90,
+  limit = 512,
 ): Promise<CloudInstitutionalRow[]> {
   const { data, error } = await client()
     .from("stock_institutional")
     .select("stock_id,date,foreign_net,trust_net,dealer_net,institutional_net")
     .eq("stock_id", stockId)
     .order("date", { ascending: false })
-    .limit(Math.min(limit, 90));
+    .limit(Math.min(limit, 512));
   if (error) throw new Error(error.message);
   return (data || []) as CloudInstitutionalRow[];
 }
 
-export async function fetchCloudShareholding(stockId: string, limit = 104) {
+export async function fetchCloudShareholding(stockId: string, limit = 512) {
   const { data, error } = await client()
     .from("tdcc_shareholding")
     .select("stock_id,date,total_shares,whale_ratio,retail_ratio")
     .eq("stock_id", stockId)
     .order("date", { ascending: false })
-    .limit(Math.min(limit, 104));
+    .limit(Math.min(limit, 512));
   if (error) throw new Error(error.message);
   return data || [];
 }

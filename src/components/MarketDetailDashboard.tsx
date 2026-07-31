@@ -1,8 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { KlineChart } from './KlineChart';
-import { fetchStockHistory, fetchStockInstitutional, fetchStockShareholding, type DataQuality } from '../lib/api';
+import {
+  backfillStockShareholding,
+  fetchStockHistory,
+  fetchStockInstitutional,
+  fetchStockShareholding,
+  type DataQuality,
+} from '../lib/api';
 import { ChipsBarChart } from './ChipsBarChart';
-import { BarChart3, TrendingUp, Users, ShieldAlert, CheckCircle2, ShieldCheck } from 'lucide-react';
+import { TrendingUp, Users, ShieldAlert, CheckCircle2, ShieldCheck, RefreshCw } from 'lucide-react';
 
 interface MarketDetailDashboardProps {
   stockId: string;
@@ -16,6 +22,23 @@ export function MarketDetailDashboard({ stockId }: MarketDetailDashboardProps) {
   const [loading, setLoading] = useState(false);
   const [hasDataIssue, setHasDataIssue] = useState(false);
   const [quality, setQuality] = useState<DataQuality | null>(null);
+  const [tdccBackfilling, setTdccBackfilling] = useState(false);
+  const [tdccMessage, setTdccMessage] = useState('');
+
+  const backfillTdcc = async () => {
+    setTdccBackfilling(true);
+    setTdccMessage('正在從集保官方網頁回補 52 週...');
+    try {
+      const inserted = await backfillStockShareholding(stockId);
+      const whales = await fetchStockShareholding(stockId);
+      setShareholding(whales.data);
+      setTdccMessage(inserted > 0 ? `已新增 ${inserted} 週集保資料` : '集保一年資料已完整');
+    } catch (error) {
+      setTdccMessage(error instanceof Error ? error.message : '集保歷史回補失敗');
+    } finally {
+      setTdccBackfilling(false);
+    }
+  };
 
   useEffect(() => {
     if (!stockId) return;
@@ -140,11 +163,25 @@ export function MarketDetailDashboard({ stockId }: MarketDetailDashboardProps) {
         )}
 
         {activeTab === 'shareholding' && (
-          <ChipsBarChart
-            chipHistory={[]}
-            shareholding={shareholding}
-            viewMode="shareholding"
-          />
+          <div className="space-y-2">
+            <div className="flex items-center justify-end gap-2">
+              {tdccMessage && <span className="text-[10px] text-slate-400">{tdccMessage}</span>}
+              <button
+                type="button"
+                onClick={backfillTdcc}
+                disabled={tdccBackfilling}
+                className="flex items-center gap-1.5 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1.5 text-[10px] font-bold text-cyan-300 disabled:opacity-50"
+              >
+                <RefreshCw size={12} className={tdccBackfilling ? 'animate-spin' : ''} />
+                {tdccBackfilling ? '回補中' : '從集保網頁補一年'}
+              </button>
+            </div>
+            <ChipsBarChart
+              chipHistory={[]}
+              shareholding={shareholding}
+              viewMode="shareholding"
+            />
+          </div>
         )}
       </div>
     </div>

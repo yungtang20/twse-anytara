@@ -11,6 +11,10 @@ const DATASET_NAMES: Record<string, string> = {
   TaiwanStockFinancialStatements: "financial_statements",
   TaiwanStockBalanceSheet: "balance_sheet",
   TaiwanStockCashFlowsStatement: "cash_flow",
+  TaiwanStockInstitutionalInvestorsBuySell: "institutional",
+  TaiwanStockMarginPurchaseShortSale: "margin",
+  TaiwanStockDividend: "dividend",
+  TaiwanStockShareholding: "foreign_shareholding",
 };
 
 export async function readFinMindCache(
@@ -33,7 +37,11 @@ export async function readFinMindCache(
   if (error || !data || data.length === 0) return null;
   const newestCacheTime = Math.max(...data.map((row) => new Date(row.cached_at).getTime()));
   if (!Number.isFinite(newestCacheTime) || Date.now() - newestCacheTime > CACHE_TTL_MS) return null;
-  return data.map((row) => row.payload as SnapshotRow);
+  return data.flatMap((row) => (
+    Array.isArray(row.payload)
+      ? row.payload as SnapshotRow[]
+      : [row.payload as SnapshotRow]
+  ));
 }
 
 async function cacheWritesAllowed(): Promise<boolean> {
@@ -52,10 +60,15 @@ export async function writeFinMindCache(
   const dataset = DATASET_NAMES[finmindDataset];
   if (!supabaseAdmin || !dataset || rows.length === 0 || !(await cacheWritesAllowed())) return;
   const now = new Date().toISOString();
-  const records = rows.flatMap((payload) => {
+  const grouped = new Map<string, SnapshotRow[]>();
+  for (const payload of rows) {
     const periodDate = String(payload.date || "").slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(periodDate)) return [];
-    return [{
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(periodDate)) continue;
+    const values = grouped.get(periodDate) || [];
+    values.push(payload);
+    grouped.set(periodDate, values);
+  }
+  const records = [...grouped.entries()].map(([periodDate, payload]) => ({
       stock_id: stockId,
       dataset,
       period_date: periodDate,
@@ -63,8 +76,7 @@ export async function writeFinMindCache(
       source: "finmind",
       cached_at: now,
       last_accessed_at: now,
-    }];
-  });
+  }));
   for (let offset = 0; offset < records.length; offset += BATCH_SIZE) {
     const { error } = await supabaseAdmin
       .from("stock_dataset_cache")

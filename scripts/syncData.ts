@@ -43,9 +43,17 @@ interface MetaRecord {
   market: "TSE" | "OTC";
   type: "stock";
   status: "active";
+  industry_category?: string | null;
   source: string;
-  last_trade_date: string;
+  last_trade_date: string | null;
   updated_at: string;
+}
+
+interface FinMindInfoRow {
+  stock_id: string;
+  stock_name: string;
+  industry_category: string;
+  type: "twse" | "tpex" | "emerging";
 }
 
 interface InstitutionalRecord {
@@ -317,6 +325,62 @@ async function upsertMeta(rows: MetaRecord[]): Promise<void> {
       .upsert(rows.slice(offset, offset + UPSERT_BATCH), { onConflict: "stock_id" });
     if (error) throw new Error(`stock_meta upsert failed: ${error.message}`);
   }
+}
+
+function preferIndustry(current: string | undefined, candidate: string): string {
+  if (!current) return candidate;
+  const generic = /^(其他|電子工業|一般業|ETF)$/;
+  if (generic.test(current) && !generic.test(candidate)) return candidate;
+  return candidate.length > current.length ? candidate : current;
+}
+
+async function readCloudMeta(): Promise<MetaRecord[]> {
+  const rows: MetaRecord[] = [];
+  for (let offset = 0; ; offset += 1_000) {
+    const { data, error } = await supabase
+      .from("stock_meta")
+      .select("stock_id,stock_name,market,type,status,industry_category,source,last_trade_date,updated_at")
+      .order("stock_id")
+      .range(offset, offset + 999);
+    if (error) throw new Error(`Cannot read cloud metadata: ${error.message}`);
+    rows.push(...((data || []) as MetaRecord[]));
+    if (!data || data.length < 1_000) break;
+  }
+  return rows;
+}
+
+async function syncFinMindMetadata(): Promise<number> {
+  const query = new URLSearchParams({ dataset: "TaiwanStockInfo" });
+  const response = await fetch(`https://api.finmindtrade.com/api/v4/data?${query}`, {
+    headers: { "User-Agent": "TWSE-AnyTara/1.0" },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) throw new Error(`FinMind TaiwanStockInfo HTTP ${response.status}`);
+  const payload = await response.json() as {
+    status?: number;
+    msg?: string;
+    data?: FinMindInfoRow[];
+  };
+  if (payload.status !== 200 || !Array.isArray(payload.data)) {
+    throw new Error(`FinMind TaiwanStockInfo: ${payload.msg || "invalid response"}`);
+  }
+  const industries = new Map<string, string>();
+  for (const row of payload.data) {
+    if (!isCommonStock(row.stock_id) || !["twse", "tpex"].includes(row.type)) continue;
+    const industry = String(row.industry_category || "").trim();
+    if (!industry) continue;
+    industries.set(
+      row.stock_id,
+      preferIndustry(industries.get(row.stock_id), industry),
+    );
+  }
+  const now = new Date().toISOString();
+  const updates = (await readCloudMeta())
+    .filter((row) => industries.has(row.stock_id) && row.industry_category !== industries.get(row.stock_id))
+    .map((row) => ({ ...row, industry_category: industries.get(row.stock_id), updated_at: now }));
+  if (!DRY_RUN && updates.length > 0) await upsertMeta(updates);
+  console.log(`[Sync] FinMind metadata: ${DRY_RUN ? "validated" : "updated"} ${updates.length} stocks.`);
+  return updates.length;
 }
 
 async function fetchDailyRecords(date: string): Promise<DailyRecords> {
@@ -593,6 +657,7 @@ async function run(): Promise<void> {
     const priceBackfill = await backfillPriceHistory();
     totals.prices += priceBackfill.prices;
     totals.meta += priceBackfill.meta;
+    totals.meta += await syncFinMindMetadata();
     totals.institutional += await backfillInstitutionalHistory();
     await syncTdccCloud();
     await syncDividendsCloud();

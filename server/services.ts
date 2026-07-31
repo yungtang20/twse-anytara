@@ -759,7 +759,7 @@ export const syncPopularDividendsIfNeeded = async (database: any) => {
 
     console.log("⏳ Local dividend_events is empty for 2026. Syncing from FinMind...");
     const popularStocks = ['2330', '2454', '2317', '2308', '2881', '2882', '2382', '2324', '3231', '2357'];
-    const token = process.env.FINMIND_API_KEY || process.env.VITE_FINMIND_API_KEY || '';
+    const token = process.env.FINMIND_API_KEY || '';
 
     for (const sid of popularStocks) {
       const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockDividend&data_id=${sid}&start_date=2026-01-01&token=${token}`;

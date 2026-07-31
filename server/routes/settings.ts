@@ -177,7 +177,7 @@ router.get("/api/settings", (_req: Request, res: Response) => {
   res.json({
     success: true,
     hasLongcatKey: Boolean(process.env.LONGCAT_API_KEY || process.env.VITE_LONGCAT_API_KEY),
-    hasFinmindKey: Boolean(process.env.FINMIND_API_KEY || process.env.VITE_FINMIND_API_KEY),
+    hasFinmindKey: Boolean(process.env.FINMIND_API_KEY),
     hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
     longcatModel: process.env.LONGCAT_MODEL || process.env.VITE_LONGCAT_MODEL || "LongCat-2.0",
   });

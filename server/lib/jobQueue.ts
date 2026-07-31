@@ -71,7 +71,7 @@ const pickCandidateName = (row: Record<string, unknown>): string => {
 };
 
 async function resolveStockNameFromFinmind(stockId: string): Promise<string> {
-  const finmindApiKey = process.env.FINMIND_API_KEY || process.env.VITE_FINMIND_API_KEY || "";
+  const finmindApiKey = process.env.FINMIND_API_KEY || "";
   if (!finmindApiKey) return "";
 
   try {

@@ -164,7 +164,7 @@ router.post("/api/local/backfill-finmind", json(), async (req: Request, res: Res
     return res.status(400).json({ success: false, error: "缺少 startDate (開始日期, 格式: YYYY-MM-DD)" });
   }
 
-  const token = process.env.FINMIND_API_KEY || process.env.VITE_FINMIND_API_KEY || "";
+  const token = process.env.FINMIND_API_KEY || "";
   
   let targetStockIds: string[] = [];
   if (Array.isArray(stockId)) {

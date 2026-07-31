@@ -26,7 +26,7 @@ export async function getDynamicSettings(): Promise<DynamicSettings> {
     longcatApiKey: process.env.LONGCAT_API_KEY || process.env.VITE_LONGCAT_API_KEY || "",
     longcatBaseUrl: process.env.LONGCAT_BASE_URL || process.env.VITE_LONGCAT_BASE_URL || "",
     longcatModel: process.env.LONGCAT_MODEL || process.env.VITE_LONGCAT_MODEL || "LongCat-2.0",
-    finmindApiKey: process.env.FINMIND_API_KEY || process.env.VITE_FINMIND_API_KEY || "",
+    finmindApiKey: process.env.FINMIND_API_KEY || "",
   };
 }
 
@@ -83,17 +83,32 @@ interface FinMindResult {
   error?: string;
 }
 
+async function requestFinMind(
+  url: string,
+  token: string,
+  signal?: AbortSignal,
+): Promise<{ response: globalThis.Response; payload: any }> {
+  const request = async (apiToken: string) => {
+    const response = await fetchWithOneRetry(url, {
+      headers: apiToken ? { Authorization: `Bearer ${apiToken}` } : {},
+    }, signal, 20_000);
+    let payload: any = {};
+    try { payload = await response.json(); } catch { /* handled by caller */ }
+    return { response, payload };
+  };
+  const first = await request(token);
+  const failed = !first.response.ok
+    || (first.payload.status !== undefined && Number(first.payload.status) !== 200);
+  return token && failed ? request("") : first;
+}
+
 const fetchFinMind = async (ds: string, stockId: string, sd: string, ed: string, finmindApiKey: string, signal?: AbortSignal): Promise<FinMindResult> => {
   const cached = await readFinMindCache(stockId, ds, sd, ed);
   if (cached) return { dataset: ds, rows: cached.length, text: `[${ds}] rows=${cached.length} cache=supabase`, data: cached };
-  if (!finmindApiKey) return { dataset: ds, rows: 0, text: `[${ds}: 未設 FINMIND_API_KEY]`, data: [], error: "missing_api_key" };
   try {
     const query = new URLSearchParams({ dataset: ds, data_id: stockId, start_date: sd, end_date: ed });
-    const r = await fetchWithOneRetry(`${FINMIND}?${query}`, {
-      headers: { Authorization: `Bearer ${finmindApiKey}` },
-    }, signal, 20_000);
+    const { response: r, payload: j } = await requestFinMind(`${FINMIND}?${query}`, finmindApiKey, signal);
     if (!r.ok) return { dataset: ds, rows: 0, text: `[${ds}: HTTP ${r.status}]`, data: [], error: `http_${r.status}` };
-    const j = await r.json() as any;
     if (j.status !== undefined && Number(j.status) !== 200) {
       const error = String(j.msg || j.message || `status ${j.status}`).slice(0, 200);
       return { dataset: ds, rows: 0, text: `[${ds}: ${error}]`, data: [], error };

@@ -338,3 +338,17 @@ export async function fetchStockShareholding(id: string): Promise<DataSeries<Sha
   const res = await get<DataEnvelope<ShareholdingRow[]>>(`/api/stock/${id}/shareholding`);
   return { data: res.success ? res.data : [], quality: readQuality(res) };
 }
+
+export async function backfillStockShareholding(id: string): Promise<number> {
+  const res = await fetch(`${BASE}/api/stock/${encodeURIComponent(id)}/shareholding/backfill`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  const payload = await res.json() as {
+    success: boolean;
+    data?: { insertedWeeks: number };
+    error?: string;
+  };
+  if (!res.ok || !payload.success) throw new Error(payload.error || `HTTP error: ${res.status}`);
+  return payload.data?.insertedWeeks || 0;
+}
