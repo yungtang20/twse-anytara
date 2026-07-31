@@ -20,6 +20,17 @@ async function readDashboardCard(card: DashboardCard, limit: number): Promise<un
   return data;
 }
 
+export function sortTrustBuyByDays(data: unknown): unknown {
+  if (!Array.isArray(data)) return data;
+  return [...data].sort((left, right) => {
+    const leftRow = left as Record<string, unknown>;
+    const rightRow = right as Record<string, unknown>;
+    const daysDifference = Number(leftRow.trust_days || 0) - Number(rightRow.trust_days || 0);
+    if (daysDifference !== 0) return daysDifference;
+    return String(leftRow.stock_id || "").localeCompare(String(rightRow.stock_id || ""));
+  });
+}
+
 function cardRoute(card: DashboardCard, limit: number) {
   return async (_req: Request, res: Response) => {
     try {
@@ -33,6 +44,9 @@ function cardRoute(card: DashboardCard, limit: number) {
           date: String(row.event_date || "").slice(5),
         }));
         return res.json({ success: true, data: rows, source: "supabase" });
+      }
+      if (card === "trust_buy_2day") {
+        return res.json({ success: true, data: sortTrustBuyByDays(data), source: "supabase" });
       }
       return res.json({ success: true, data, source: "supabase" });
     } catch (error: unknown) {

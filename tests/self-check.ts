@@ -29,6 +29,7 @@ import { ensureCanonicalSchema } from "../server/lib/sqliteSchema";
 import { hasUsableLocalPriceRows } from "../server/lib/marketDataRepository";
 import { resolveDatabasePath } from "../server/db";
 import { listPendingCalendarDates } from "../scripts/lib/syncDates";
+import { sortTrustBuyByDays } from "../server/routes/dashboard";
 
 const rising = Array.from({ length: 20 }, (_, index) => 100 + index);
 const syncRouteSource = readFileSync(
@@ -77,6 +78,18 @@ assert.equal(isOrdinaryStockId("9910"), true);
 assert.equal(isOrdinaryStockId("0050"), false);
 assert.equal(isOrdinaryStockId("9103"), false);
 assert.equal(isOrdinaryStockId("2881A"), false);
+assert.deepEqual(
+  sortTrustBuyByDays([
+    { stock_id: "2886", trust_days: 10 },
+    { stock_id: "2027", trust_days: 6 },
+    { stock_id: "1326", trust_days: 6 },
+  ]),
+  [
+    { stock_id: "1326", trust_days: 6 },
+    { stock_id: "2027", trust_days: 6 },
+    { stock_id: "2886", trust_days: 10 },
+  ],
+);
 const mvpRouteSource = readFileSync(
   path.join(process.cwd(), "server", "mvpMcpRoutes.ts"),
   "utf8",
