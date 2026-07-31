@@ -71,59 +71,60 @@ export function selectTrendAnchors(
   return distinctPivots.sort(byPrice).slice(0, 2);
 }
 
-export function selectEnvelopeAnchors(
+function backwardEnvelopeSeries(
   data: PriceData[],
   endIndex: number,
   period: number,
   field: PriceField,
   highest: boolean,
-): TrendAnchor[] {
+) {
   const startIndex = Math.max(0, endIndex - period + 1);
   const points = data.slice(startIndex, endIndex + 1)
     .map((row, offset) => ({
       index: startIndex + offset,
-      value: Number(row[field]),
+      high: Number(row.high),
+      low: Number(row.low),
     }))
-    .filter((point) => Number.isFinite(point.value) && point.value > 0);
-  let best: { anchors: TrendAnchor[]; averageGap: number } | null = null;
-  for (let firstIndex = 0; firstIndex < points.length - 1; firstIndex++) {
-    for (let secondIndex = firstIndex + 1; secondIndex < points.length; secondIndex++) {
-      const first = points[firstIndex];
-      const second = points[secondIndex];
-      const slope = (second.value - first.value) / (second.index - first.index);
-      let totalGap = 0;
-      let valid = true;
-      for (const point of points) {
-        const projected = first.value + slope * (point.index - first.index);
-        const gap = highest ? projected - point.value : point.value - projected;
-        if (gap < -1e-8) {
-          valid = false;
-          break;
-        }
-        totalGap += gap;
-      }
-      const averageGap = totalGap / points.length;
-      if (valid && (!best || averageGap < best.averageGap - 1e-8)) {
-        best = { anchors: [first, second], averageGap };
-      }
-    }
-  }
-  return best?.anchors ?? [];
-}
+    .filter((point) => (
+      Number.isFinite(point.high)
+      && Number.isFinite(point.low)
+      && point.high > 0
+      && point.low > 0
+    ));
+  const series: Array<number | null> = Array(data.length).fill(null);
+  if (points.length < 2) return series;
 
-function extendedSeries(
-  length: number,
-  startIndex: number,
-  endIndex: number,
-  points: Array<{ index: number; value: number }>,
-) {
-  const series: Array<number | null> = Array(length).fill(null);
-  if (points.length !== 2) return series;
-  const [first, second] = [...points].sort((left, right) => left.index - right.index);
-  if (first.index === second.index) return series;
-  const slope = (second.value - first.value) / (second.index - first.index);
+  const meanIndex = points.reduce((sum, point) => sum + point.index, 0) / points.length;
+  const meanMidpoint = points.reduce(
+    (sum, point) => sum + (point.high + point.low) / 2,
+    0,
+  ) / points.length;
+  const denominator = points.reduce(
+    (sum, point) => sum + (point.index - meanIndex) ** 2,
+    0,
+  );
+  const slope = denominator === 0
+    ? 0
+    : points.reduce(
+      (sum, point) => sum
+        + (point.index - meanIndex)
+        * (((point.high + point.low) / 2) - meanMidpoint),
+      0,
+    ) / denominator;
+  const intercept = meanMidpoint - slope * meanIndex;
+
+  // The active window is anchored at its newest candle. Walk backwards so an
+  // older high/low can only push the corresponding boundary outwards.
+  let correction = highest ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY;
+  for (let position = points.length - 1; position >= 0; position--) {
+    const point = points[position];
+    const residual = point[field] - (intercept + slope * point.index);
+    correction = highest
+      ? Math.max(correction, residual)
+      : Math.min(correction, residual);
+  }
   for (let index = startIndex; index <= endIndex; index++) {
-    series[index] = first.value + slope * (index - first.index);
+    series[index] = intercept + slope * index + correction;
   }
   return series;
 }
@@ -132,32 +133,10 @@ export function buildSupportResistanceLines(
   data: PriceData[],
   endIndex: number,
 ): SupportResistanceLines {
-  const shortStartIndex = Math.max(0, endIndex - 25 + 1);
-  const longStartIndex = Math.max(0, endIndex - 60 + 1);
   return {
-    shortResistance: extendedSeries(
-      data.length,
-      shortStartIndex,
-      endIndex,
-      selectTrendAnchors(data, endIndex, 25, "high", true),
-    ),
-    shortSupport: extendedSeries(
-      data.length,
-      shortStartIndex,
-      endIndex,
-      selectTrendAnchors(data, endIndex, 25, "low", false),
-    ),
-    longResistance: extendedSeries(
-      data.length,
-      longStartIndex,
-      endIndex,
-      selectEnvelopeAnchors(data, endIndex, 60, "high", true),
-    ),
-    longSupport: extendedSeries(
-      data.length,
-      longStartIndex,
-      endIndex,
-      selectEnvelopeAnchors(data, endIndex, 60, "low", false),
-    ),
+    shortResistance: backwardEnvelopeSeries(data, endIndex, 25, "high", true),
+    shortSupport: backwardEnvelopeSeries(data, endIndex, 25, "low", false),
+    longResistance: backwardEnvelopeSeries(data, endIndex, 60, "high", true),
+    longSupport: backwardEnvelopeSeries(data, endIndex, 60, "low", false),
   };
 }

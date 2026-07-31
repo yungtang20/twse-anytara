@@ -173,15 +173,19 @@ const trendRows: PriceData[] = Array.from({ length: 60 }, (_, index) => ({
   volume: 1_000,
 }));
 const trendLines = buildSupportResistanceLines(trendRows, 59);
-assert.deepEqual(
-  trendLines.shortResistance.slice(35, 60),
-  Array.from({ length: 25 }, (_, offset) => 185 - offset),
-);
-assert.deepEqual(
-  trendLines.shortSupport.slice(35, 60),
-  Array.from({ length: 25 }, (_, offset) => 47 + offset * 0.5),
-);
 trendRows.forEach((row, index) => {
+  if (index >= 35) {
+    assert.ok(
+      trendLines.shortResistance[index] !== null
+        && trendLines.shortResistance[index] >= row.high,
+      `short resistance must stay above the high at index ${index}`,
+    );
+    assert.ok(
+      trendLines.shortSupport[index] !== null
+        && trendLines.shortSupport[index] <= row.low,
+      `short support must stay below the low at index ${index}`,
+    );
+  }
   assert.ok(
     trendLines.longResistance[index] !== null
       && trendLines.longResistance[index] >= row.high,
@@ -244,6 +248,11 @@ assert.equal(formatPriceAxisTick(49.999999999), "50.00");
 assert.equal(formatPriceAxisTick(277.5), "277.50");
 assert.equal(formatTrendLegendLabel("長壓60", 81.6), "長壓60 81.60");
 assert.match(klineChartSource, /label: '均線'/);
+assert.doesNotMatch(
+  klineChartSource,
+  /useState\(true\)/,
+  "chart indicators must be opt-in rather than enabled on first load",
+);
 assert.doesNotMatch(klineChartSource, /均線 MA25\/60\/200/);
 assert.match(klineChartSource, /\(\[26, 61, 201\] as const\)/);
 assert.doesNotMatch(klineChartSource, /\[30, 60, 120, 250, 512\]/);

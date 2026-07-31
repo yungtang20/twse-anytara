@@ -15,7 +15,7 @@ import {
   formatTrendLegendLabel,
 } from '../lib/chartFormatting';
 
-const TREND_LINE_ALGORITHM_VERSION = 6;
+const TREND_LINE_ALGORITHM_VERSION = 7;
 
 export interface KlineOverlay {
   hLines?: { value: number; color: string; label?: string; dash?: boolean }[];
@@ -158,15 +158,15 @@ export function KlineChart({
   const [windowOffset, setWindowOffset] = useState(0);
 
   // Filter or feature toggle states
-  const [showMAs, setShowMAs] = useState(true);
-  const [showVolMAs, setShowVolMAs] = useState(true);
-  const [showVWAP, setShowVWAP] = useState(true);
-  const [showSupportResistance, setShowSupportResistance] = useState(true);
-  const [showRecentHighLow, setShowRecentHighLow] = useState(true);
-  const [showPOC, setShowPOC] = useState(true);
-  const [showForeign, setShowForeign] = useState(true);
+  const [showMAs, setShowMAs] = useState(false);
+  const [showVolMAs, setShowVolMAs] = useState(false);
+  const [showVWAP, setShowVWAP] = useState(false);
+  const [showSupportResistance, setShowSupportResistance] = useState(false);
+  const [showRecentHighLow, setShowRecentHighLow] = useState(false);
+  const [showPOC, setShowPOC] = useState(false);
+  const [showForeign, setShowForeign] = useState(false);
   const [showTrust, setShowTrust] = useState(false);
-  const [showShareholding, setShowShareholding] = useState(true);
+  const [showShareholding, setShowShareholding] = useState(false);
   const [hoveredDatum, setHoveredDatum] = useState<CandleDatum | null>(null);
 
   const aggregatedData = data;
@@ -375,6 +375,7 @@ export function KlineChart({
           <button
             key={item.label}
             type="button"
+            aria-pressed={item.state}
             onClick={() => item.set(!item.state)}
             className={`flex items-center gap-1 rounded border px-2 py-1 transition-all ${
               item.state
