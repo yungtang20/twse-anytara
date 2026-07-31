@@ -118,7 +118,7 @@ assert.equal(simulatedProjection.predictions.length, 5);
 assert.match(simulatedProjection.disclaimer, /不代表未來價格/);
 assert.deepEqual(
   buildIntegratedMarketData(
-    ["2026-07-23", "2026-07-24", "2026-07-27"],
+    ["2026-07-23", "2026-07-24", "2026-07-27", "T+1", "T+5"],
     [
       { date: "2026-07-24", foreign_net: 1_500_000, trust_net: -250_000 },
       { date: "2026-07-27", foreign_net: -500_000, trust_net: 100_000 },
@@ -132,6 +132,8 @@ assert.deepEqual(
     { date: "2026-07-23", foreign: null, trust: null, whaleRatio: 60.5 },
     { date: "2026-07-24", foreign: 1500, trust: -250, whaleRatio: 60.5 },
     { date: "2026-07-27", foreign: -500, trust: 100, whaleRatio: 61.25 },
+    { date: "T+1", foreign: null, trust: null, whaleRatio: null },
+    { date: "T+5", foreign: null, trust: null, whaleRatio: null },
   ],
 );
 assert.match(klineChartSource, /\(\[26, 61, 201\] as const\)/);
@@ -141,6 +143,9 @@ assert.match(klineChartSource, /aria-pressed=\{selected\}/);
 assert.doesNotMatch(klineChartSource, /showForeign/);
 assert.doesNotMatch(klineChartSource, /showTrust/);
 assert.match(klineChartSource, /showShareholding/);
+assert.match(klineChartSource, /const KRONOS_SIMULATION_DAYS = 5/);
+assert.match(klineChartSource, /visibleDates=\{chartData\.map/);
+assert.doesNotMatch(klineChartSource, /Kronos 預測/);
 const mvpRouteSource = readFileSync(
   path.join(process.cwd(), "server", "mvpMcpRoutes.ts"),
   "utf8",

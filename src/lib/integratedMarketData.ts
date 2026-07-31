@@ -33,6 +33,14 @@ export function buildIntegratedMarketData(
   let shareholdingIndex = -1;
 
   return visibleDates.map((date) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return {
+        date,
+        foreign: null,
+        trust: null,
+        whaleRatio: null,
+      };
+    }
     while (
       shareholdingIndex + 1 < weeklyShareholding.length
       && weeklyShareholding[shareholdingIndex + 1].date <= date

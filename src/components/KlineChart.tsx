@@ -22,6 +22,8 @@ interface KlineChartProps {
   shareholding?: ShareholdingPoint[];
 }
 
+const KRONOS_SIMULATION_DAYS = 5;
+
 // Custom Tooltip with Lots conversion
 const CustomTooltip = ({ active, payload }: any) => {
   if (!active || !payload?.length) return null;
@@ -31,7 +33,7 @@ const CustomTooltip = ({ active, payload }: any) => {
     return (
       <div className="bg-slate-950/95 border border-purple-500/40 p-3 rounded-lg shadow-2xl font-mono text-xs text-slate-300 space-y-1.5 min-w-[190px]">
         <div className="text-purple-400 font-bold border-b border-purple-950 pb-1 flex justify-between items-center">
-          <span>🔮 Kronos 預測 ({d.date})</span>
+          <span>🔮 Kronos 5日模擬 ({d.date})</span>
         </div>
         <div className="flex justify-between">
           <span className="text-slate-500">預估價格:</span>
@@ -308,9 +310,9 @@ export function KlineChart({
       : lastPrice * 0.015;
     const drift = isUpTrend ? (stdDev * 0.35) : -(stdDev * 0.35);
 
-    // Create 5 future points (T+1 to T+5)
+    // Always simulate exactly the next five trading sessions.
     const predictions = [];
-    for (let i = 1; i <= 5; i++) {
+    for (let i = 1; i <= KRONOS_SIMULATION_DAYS; i++) {
       const predPrice = parseFloat((lastPrice + drift * i * (i === 3 ? 1.5 : i === 4 ? 1.2 : 1)).toFixed(2));
       const predPct = parseFloat(((predPrice - lastPrice) / lastPrice * 100).toFixed(2));
       predictions.push({
@@ -351,7 +353,9 @@ export function KlineChart({
   }, [chartData]);
 
   // Bar sizes to align K-Line candle bodies and Volume bars perfectly
-  const currentWindowSize = showPredictions && windowOffset === 0 ? windowSize + 5 : windowSize;
+  const currentWindowSize = showPredictions && windowOffset === 0
+    ? windowSize + KRONOS_SIMULATION_DAYS
+    : windowSize;
   const calculatedBarSize = useMemo(() => {
     if (currentWindowSize <= 35) return 14;
     if (currentWindowSize <= 65) return 8;
@@ -371,7 +375,7 @@ export function KlineChart({
           { label: '最密成交價', state: showPOC, set: setShowPOC, color: 'text-rose-400' },
           { label: '長短期撐壓', state: showSupportResistance, set: setShowSupportResistance, color: 'text-emerald-400' },
           { label: '波段高低', state: showRecentHighLow, set: setShowRecentHighLow, color: 'text-sky-400' },
-          { label: '5日模擬', state: showPredictions, set: setShowPredictions, color: 'text-purple-400' },
+          { label: 'Kronos 5日模擬', state: showPredictions, set: setShowPredictions, color: 'text-purple-400' },
           { label: '千戶大戶', state: showShareholding, set: setShowShareholding, color: 'text-cyan-300' },
         ].map((item) => (
           <button
@@ -528,7 +532,7 @@ export function KlineChart({
                   strokeWidth={2} 
                   strokeDasharray="4 4" 
                   dot={{ r: 3, stroke: '#a855f7', fill: '#0f172a', strokeWidth: 1 }}
-                  name="Kronos 預測" 
+                  name="Kronos 5日模擬"
                   connectNulls={true} 
                 />
               )}
@@ -646,7 +650,7 @@ export function KlineChart({
         </div>
       </div>
       <IntegratedMarketPanels
-        visibleDates={visibleChartData.map((row) => row.date)}
+        visibleDates={chartData.map((row) => row.date)}
         institutional={institutional}
         shareholding={shareholding}
         institutionalLayer={institutionalLayer}
