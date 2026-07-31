@@ -136,8 +136,10 @@ assert.deepEqual(
 );
 assert.match(klineChartSource, /\(\[26, 61, 201\] as const\)/);
 assert.doesNotMatch(klineChartSource, /\[30, 60, 120, 250, 512\]/);
-assert.match(klineChartSource, /showForeign/);
-assert.match(klineChartSource, /showTrust/);
+assert.match(klineChartSource, /institutionalLayer/);
+assert.match(klineChartSource, /aria-pressed=\{selected\}/);
+assert.doesNotMatch(klineChartSource, /showForeign/);
+assert.doesNotMatch(klineChartSource, /showTrust/);
 assert.match(klineChartSource, /showShareholding/);
 const mvpRouteSource = readFileSync(
   path.join(process.cwd(), "server", "mvpMcpRoutes.ts"),

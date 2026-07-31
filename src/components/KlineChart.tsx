@@ -121,8 +121,7 @@ export function KlineChart({
   const [showRecentHighLow, setShowRecentHighLow] = useState(true);
   const [showPOC, setShowPOC] = useState(true);
   const [showPredictions, setShowPredictions] = useState(true);
-  const [showForeign, setShowForeign] = useState(true);
-  const [showTrust, setShowTrust] = useState(true);
+  const [institutionalLayer, setInstitutionalLayer] = useState<"foreign" | "trust">("foreign");
   const [showShareholding, setShowShareholding] = useState(true);
 
   const aggregatedData = data;
@@ -373,8 +372,6 @@ export function KlineChart({
           { label: '長短期撐壓', state: showSupportResistance, set: setShowSupportResistance, color: 'text-emerald-400' },
           { label: '波段高低', state: showRecentHighLow, set: setShowRecentHighLow, color: 'text-sky-400' },
           { label: '5日模擬', state: showPredictions, set: setShowPredictions, color: 'text-purple-400' },
-          { label: '外資', state: showForeign, set: setShowForeign, color: 'text-blue-400' },
-          { label: '投信', state: showTrust, set: setShowTrust, color: 'text-amber-400' },
           { label: '千戶大戶', state: showShareholding, set: setShowShareholding, color: 'text-cyan-300' },
         ].map((item) => (
           <button
@@ -393,6 +390,31 @@ export function KlineChart({
             {item.label}
           </button>
         ))}
+
+        <div className="flex items-center rounded border border-slate-700 bg-slate-950 p-0.5">
+          {([
+            { value: 'foreign', label: '外資', color: 'text-blue-400' },
+            { value: 'trust', label: '投信', color: 'text-amber-400' },
+          ] as const).map((item) => {
+            const selected = institutionalLayer === item.value;
+            return (
+              <button
+                key={item.value}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => setInstitutionalLayer(item.value)}
+                className={`flex items-center gap-1 rounded px-2 py-1 transition-all ${
+                  selected
+                    ? 'bg-slate-800 text-slate-100 shadow-sm'
+                    : 'text-slate-600 hover:text-slate-300'
+                }`}
+              >
+                <Eye size={10} className={selected ? item.color : 'text-slate-600'} />
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
 
         <div className="ml-auto flex items-center gap-1 rounded border border-slate-800 bg-slate-950 p-0.5">
           {([26, 61, 201] as const).map(w => (
@@ -627,8 +649,7 @@ export function KlineChart({
         visibleDates={visibleChartData.map((row) => row.date)}
         institutional={institutional}
         shareholding={shareholding}
-        showForeign={showForeign}
-        showTrust={showTrust}
+        institutionalLayer={institutionalLayer}
         showShareholding={showShareholding}
       />
     </div>
