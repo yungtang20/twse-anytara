@@ -90,6 +90,43 @@ const MIGRATIONS = [
       ensureCanonicalIndexes(db);
     },
   },
+  {
+    version: 5,
+    name: "ordinary_stocks_only",
+    apply(db: MigrationDb) {
+      const ordinary = "(stock_id GLOB '[1-8][0-9][0-9][0-9]' OR stock_id GLOB '9[02-9][0-9][0-9]')";
+      const objectType = (name: string) => (
+        db.prepare("SELECT type FROM sqlite_master WHERE name = ?").get(name) as { type?: string } | undefined
+      )?.type;
+      const priceTable = objectType("stock_history") === "table" ? "stock_history" : "stock_price";
+      const institutionalTable = objectType("institutional_data") === "table"
+        ? "institutional_data"
+        : "stock_institutional";
+      const tdccTable = objectType("shareholding_unified") === "table"
+        ? "shareholding_unified"
+        : "tdcc_shareholding";
+      for (const table of [priceTable, institutionalTable, tdccTable, "stock_meta", "dividend_events"]) {
+        db.exec(`DELETE FROM ${table} WHERE NOT ${ordinary};`);
+      }
+      for (const [trigger, table] of [
+        ["stock_history_ordinary_only", priceTable],
+        ["institutional_ordinary_only", institutionalTable],
+        ["shareholding_ordinary_only", tdccTable],
+        ["stock_meta_ordinary_only", "stock_meta"],
+        ["dividend_events_ordinary_only", "dividend_events"],
+      ]) {
+        db.exec(`
+          CREATE TRIGGER IF NOT EXISTS ${trigger}
+          BEFORE INSERT ON ${table}
+          WHEN NOT (NEW.stock_id GLOB '[1-8][0-9][0-9][0-9]'
+                    OR NEW.stock_id GLOB '9[02-9][0-9][0-9]')
+          BEGIN
+            SELECT RAISE(ABORT, 'only ordinary stock IDs are allowed');
+          END;
+        `);
+      }
+    },
+  },
 ] as const;
 
 export function runMigrations(db: MigrationDb): void {

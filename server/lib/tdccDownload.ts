@@ -3,6 +3,7 @@
 import { getDb } from "../db";
 import { supabaseAdmin, addLog } from "../services";
 import { fetchWithOneRetry } from "./fetchRetry";
+import { isOrdinaryStockId } from "./stockUniverse";
 
 export interface TdccRecord {
   stock_id: string;
@@ -93,7 +94,7 @@ export function parseTdccCSV(csvText: string): TdccParseResult {
     const stockId = parts[1].toUpperCase();
     const level = parseInt(parts[2], 10);
     const shares = Number(parts[4].replace(/,/g, ""));
-    if (!date || !/^[0-9A-Z]{4,10}$/.test(stockId) || !Number.isInteger(level) || level < 1 || level > 17 || !Number.isFinite(shares) || shares < 0) continue;
+    if (!date || !isOrdinaryStockId(stockId) || !Number.isInteger(level) || level < 1 || level > 17 || !Number.isFinite(shares) || shares < 0) continue;
     const key = `${stockId}_${date}`;
     if (!levelMap[key]) levelMap[key] = {};
     levelMap[key][level] = (levelMap[key][level] || 0) + shares;

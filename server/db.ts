@@ -44,7 +44,6 @@ export function initDb() {
         insertMeta.run('2330', '台積電', '半導體業', 'TSE', 'TSE', 'initial');
         insertMeta.run('2317', '鴻海', '其他電子業', 'TSE', 'TSE', 'initial');
         insertMeta.run('2454', '聯發科', '半導體業', 'TSE', 'TSE', 'initial');
-        insertMeta.run('0050', '元大台灣50', 'ETF', 'TSE', 'TSE', 'initial');
 
         // Add 2330 historical price data
         const insertHistory = tempDb.prepare(

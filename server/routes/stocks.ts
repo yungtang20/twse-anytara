@@ -12,6 +12,7 @@ import {
   readLocalStockData,
   searchLocalStocks,
 } from "../lib/marketDataRepository";
+import { isOrdinaryStockId } from "../lib/stockUniverse";
 
 const router = Router();
 const useLocalMarketData = process.env.MARKET_DATA_MODE === "local";
@@ -51,7 +52,7 @@ router.get("/api/stock/search", async (req: Request, res: Response) => {
         .or(`stock_id.ilike.%${q}%,stock_name.ilike.%${q}%`)
         .limit(30);
       if (error) throw error;
-      const filtered = (data || []).filter(item => /^\d{4}$/.test(item.stock_id));
+      const filtered = (data || []).filter((item) => isOrdinaryStockId(item.stock_id));
       return res.json({ success: true, data: filtered });
     } catch (err: any) {
       console.error("[Supabase Search Error]:", err.message);
@@ -67,7 +68,7 @@ router.get("/api/stock/search", async (req: Request, res: Response) => {
     const rows = db.prepare(
       "SELECT stock_id, stock_name, market, industry_category FROM stock_meta WHERE (stock_id LIKE ? OR stock_name LIKE ?) AND length(stock_id) = 4 AND stock_id NOT GLOB '*[A-Z]*' LIMIT 10"
     ).all(`%${q}%`, `%${q}%`);
-    res.json({ success: true, data: rows });
+    res.json({ success: true, data: rows.filter((row: any) => isOrdinaryStockId(row.stock_id)) });
   } catch (err: any) {
     res.json({ success: false, error: err.message });
   }

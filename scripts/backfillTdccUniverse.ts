@@ -1,5 +1,6 @@
 import { backfillTdccHistory } from "../server/lib/tdccHistory";
 import { supabaseAdmin } from "../server/lib/runtimeState";
+import { isOrdinaryStockId } from "../server/lib/stockUniverse";
 
 const MIB = 1024 * 1024;
 const STOP_AT_BYTES = 450 * MIB;
@@ -12,11 +13,6 @@ interface Options {
 
 interface StorageStatus {
   database_bytes?: number | string;
-}
-
-interface StockMetaRow {
-  stock_id: string;
-  industry_category: string | null;
 }
 
 function positiveInteger(value: string | undefined, fallback: number): number {
@@ -47,25 +43,20 @@ async function storageBytes(): Promise<number> {
   return Number(status?.database_bytes || 0);
 }
 
-function isOrdinaryStock(row: StockMetaRow): boolean {
-  return /^[1-9]\d{3}$/.test(row.stock_id)
-    && row.industry_category !== "存託憑證";
-}
-
 async function activeOrdinaryStockIds(): Promise<string[]> {
-  const stocks: StockMetaRow[] = [];
+  const stockIds: string[] = [];
   for (let offset = 0; ; offset += 1_000) {
     const { data, error } = await supabaseAdmin!
       .from("stock_meta")
-      .select("stock_id,industry_category")
+      .select("stock_id")
       .eq("status", "active")
       .order("stock_id")
       .range(offset, offset + 999);
     if (error) throw new Error(`Cannot read active stocks: ${error.message}`);
-    stocks.push(...((data || []) as StockMetaRow[]));
+    stockIds.push(...(data || []).map((row) => row.stock_id));
     if (!data || data.length < 1_000) break;
   }
-  return stocks.filter(isOrdinaryStock).map((row) => row.stock_id);
+  return stockIds.filter(isOrdinaryStockId);
 }
 
 async function tdccCoverage(): Promise<Map<string, number>> {

@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "./runtimeState";
 import type { SnapshotRow } from "./stockSnapshot";
+import { isOrdinaryStockId } from "./stockUniverse";
 
 const CACHE_WRITE_CEILING = 400 * 1024 * 1024;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -24,7 +25,7 @@ export async function readFinMindCache(
   endDate: string,
 ): Promise<SnapshotRow[] | null> {
   const dataset = DATASET_NAMES[finmindDataset];
-  if (!supabaseAdmin || !dataset) return null;
+  if (!supabaseAdmin || !dataset || !isOrdinaryStockId(stockId)) return null;
   const { data, error } = await supabaseAdmin
     .from("stock_dataset_cache")
     .select("payload,cached_at")
@@ -58,7 +59,13 @@ export async function writeFinMindCache(
   rows: SnapshotRow[],
 ): Promise<void> {
   const dataset = DATASET_NAMES[finmindDataset];
-  if (!supabaseAdmin || !dataset || rows.length === 0 || !(await cacheWritesAllowed())) return;
+  if (
+    !supabaseAdmin
+    || !dataset
+    || !isOrdinaryStockId(stockId)
+    || rows.length === 0
+    || !(await cacheWritesAllowed())
+  ) return;
   const now = new Date().toISOString();
   const grouped = new Map<string, SnapshotRow[]>();
   for (const payload of rows) {

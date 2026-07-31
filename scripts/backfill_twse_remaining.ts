@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { isOrdinaryStockId } from "../server/lib/stockUniverse";
 
 const supabase = createClient(
   (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL) as string,
@@ -68,7 +69,7 @@ async function backfill() {
             const close = parseNum(row[8]);
             const spread = parseSpread(row[9] + row[10]);
 
-            if (volume > 0 && close > 0 && /^\d{4}$/.test(id)) {
+            if (volume > 0 && close > 0 && isOrdinaryStockId(id)) {
               records.push({
                 stock_id: id,
                 date: isoDate,
@@ -96,7 +97,7 @@ async function backfill() {
               const amount = Math.min(parseNum(row[8]), 9999999999);
               const trade_count = parseNum(row[9]);
 
-              if (volume > 0 && close > 0 && /^\d{4}$/.test(id)) {
+              if (volume > 0 && close > 0 && isOrdinaryStockId(id)) {
                 records.push({
                   stock_id: id,
                   date: isoDate,

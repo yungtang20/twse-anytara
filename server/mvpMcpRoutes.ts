@@ -11,6 +11,7 @@ import { fetchWithOneRetry } from "./lib/fetchRetry";
 import { evaluateFrameworkEligibility, FRAMEWORK_CONTRACTS } from "./lib/frameworkEligibility";
 import { fetchCloudMeta, fetchCloudPrices, fetchCloudShareholding } from "./lib/cloudMarketData";
 import { readFinMindCache, writeFinMindCache } from "./lib/finmindCache";
+import { isOrdinaryStockId } from "./lib/stockUniverse";
 
 const FINMIND = "https://api.finmindtrade.com/api/v4/data";
 
@@ -464,7 +465,7 @@ export async function runFrameworkAnalysis(stockId: string, frameworkId: string,
 export async function jobBatchHandler(req: Request, res: Response) {
   const stockId = String(req.body?.stock_id || "").trim();
   const requestedFrameworks: string[] = Array.isArray(req.body?.frameworks) ? req.body.frameworks : [];
-  if (!/^\d{4}$/.test(stockId)) return res.status(400).json({ success: false, error: "股號格式錯誤 (需 4 位)" });
+  if (!isOrdinaryStockId(stockId)) return res.status(400).json({ success: false, error: "只支援普通股代號" });
 
   const settings = await getDynamicSettings();
   const hasLongcat = !!settings.longcatApiKey;

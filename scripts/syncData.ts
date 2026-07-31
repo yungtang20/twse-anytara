@@ -1,6 +1,7 @@
 import { createSupabaseAdminClient } from "./lib/supabaseAdmin";
 import { listPendingCalendarDates } from "./lib/syncDates";
 import { downloadTdccCSV, parseTdccCSV } from "../server/lib/tdccDownload";
+import { isOrdinaryStockId } from "../server/lib/stockUniverse";
 
 const supabase = createSupabaseAdminClient();
 const UPSERT_BATCH = 500;
@@ -131,10 +132,6 @@ function normalizeRocDate(value: unknown): string | null {
     : null;
 }
 
-function isCommonStock(stockId: string): boolean {
-  return /^\d{4}$/.test(stockId);
-}
-
 function makeMeta(
   stockId: string,
   stockName: unknown,
@@ -157,7 +154,7 @@ function parseTwsePrice(row: unknown[], date: string): PriceRecord | null {
   const stockId = String(row[0] ?? "").trim();
   const close = parseNumber(row[8]);
   const volume = Math.min(parseNumber(row[2]), 9_999_999_999);
-  if (!isCommonStock(stockId) || close <= 0 || volume <= 0) return null;
+  if (!isOrdinaryStockId(stockId) || close <= 0 || volume <= 0) return null;
   return {
     stock_id: stockId,
     date,
@@ -176,7 +173,7 @@ function parseTpexPrice(row: unknown[], date: string): PriceRecord | null {
   const stockId = String(row[0] ?? "").trim();
   const close = parseNumber(row[2]);
   const volume = Math.min(parseNumber(row[7]), 9_999_999_999);
-  if (!isCommonStock(stockId) || close <= 0 || volume <= 0) return null;
+  if (!isOrdinaryStockId(stockId) || close <= 0 || volume <= 0) return null;
   return {
     stock_id: stockId,
     date,
@@ -193,7 +190,7 @@ function parseTpexPrice(row: unknown[], date: string): PriceRecord | null {
 
 function parseTwseInstitutional(row: unknown[], date: string): InstitutionalRecord | null {
   const stockId = String(row[0] ?? "").trim();
-  if (!isCommonStock(stockId)) return null;
+  if (!isOrdinaryStockId(stockId)) return null;
   const foreignBuy = parseNumber(row[2]);
   const foreignSell = parseNumber(row[3]);
   const trustBuy = parseNumber(row[8]);
@@ -213,7 +210,7 @@ function parseTwseInstitutional(row: unknown[], date: string): InstitutionalReco
 
 function parseTpexInstitutional(row: unknown[], date: string): InstitutionalRecord | null {
   const stockId = String(row[0] ?? "").trim();
-  if (!isCommonStock(stockId)) return null;
+  if (!isOrdinaryStockId(stockId)) return null;
   return {
     stock_id: stockId,
     date,
@@ -242,7 +239,7 @@ async function fetchTwsePrice(date: string): Promise<{ prices: PriceRecord[]; me
   return {
     prices: rows.map((row) => parseTwsePrice(row, date)).filter((row): row is PriceRecord => row !== null),
     meta: rows
-      .filter((row) => isCommonStock(String(row[0] ?? "").trim()))
+      .filter((row) => isOrdinaryStockId(String(row[0] ?? "").trim()))
       .map((row) => makeMeta(String(row[0]).trim(), row[1], "TSE", date)),
   };
 }
@@ -254,7 +251,7 @@ async function fetchTpexPrice(date: string): Promise<{ prices: PriceRecord[]; me
   return {
     prices: rows.map((row) => parseTpexPrice(row, date)).filter((row): row is PriceRecord => row !== null),
     meta: rows
-      .filter((row) => isCommonStock(String(row[0] ?? "").trim()))
+      .filter((row) => isOrdinaryStockId(String(row[0] ?? "").trim()))
       .map((row) => makeMeta(String(row[0]).trim(), row[1], "OTC", date)),
   };
 }
@@ -366,7 +363,7 @@ async function syncFinMindMetadata(): Promise<number> {
   }
   const industries = new Map<string, string>();
   for (const row of payload.data) {
-    if (!isCommonStock(row.stock_id) || !["twse", "tpex"].includes(row.type)) continue;
+    if (!isOrdinaryStockId(row.stock_id) || !["twse", "tpex"].includes(row.type)) continue;
     const industry = String(row.industry_category || "").trim();
     if (!industry) continue;
     industries.set(
@@ -545,7 +542,7 @@ async function fetchTwseDividends(): Promise<DividendRecord[]> {
   return rows.flatMap((row) => {
     const stockId = String(row.Code ?? "").trim();
     const date = normalizeRocDate(row.Date);
-    if (!isCommonStock(stockId) || !date) return [];
+    if (!isOrdinaryStockId(stockId) || !date) return [];
     return [{
       stock_id: stockId,
       date,
@@ -572,7 +569,7 @@ async function fetchTpexDividends(): Promise<DividendRecord[]> {
   return rows.flatMap((row) => {
     const stockId = String(row[1] ?? "").trim();
     const date = normalizeRocDate(row[0]);
-    if (!isCommonStock(stockId) || !date) return [];
+    if (!isOrdinaryStockId(stockId) || !date) return [];
     return [{
       stock_id: stockId,
       date,

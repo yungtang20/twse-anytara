@@ -1,4 +1,5 @@
 import { getDb } from "../db";
+import { isOrdinaryStockId } from "./stockUniverse";
 
 export interface StockMetaRow {
   stock_id: string;
@@ -38,7 +39,7 @@ function fallbackMeta(stockId: string): StockMetaRow {
 export function searchLocalStocks(query: string, limit = 30): StockMetaRow[] {
   const db = getDb();
   const pattern = `%${query}%`;
-  return db.prepare(`
+  const rows = db.prepare(`
     SELECT stock_id, stock_name, market, industry_category
     FROM stock_meta
     WHERE (stock_id LIKE ? OR stock_name LIKE ?)
@@ -46,6 +47,7 @@ export function searchLocalStocks(query: string, limit = 30): StockMetaRow[] {
       AND stock_id NOT GLOB '*[A-Z]*'
     LIMIT ?
   `).all(pattern, pattern, limit) as StockMetaRow[];
+  return rows.filter((row) => isOrdinaryStockId(row.stock_id));
 }
 
 export function readLocalStockData(stockId: string, priceLimit = 1_000): LocalStockData {

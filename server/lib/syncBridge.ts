@@ -3,6 +3,7 @@
 import { getDb } from "../db";
 import { supabase, supabaseAdmin } from "./runtimeState";
 import { getTdccSqliteStatus } from "./tdccDownload";
+import { isOrdinaryStockId } from "./stockUniverse";
 
 const BATCH = 500;
 
@@ -58,9 +59,9 @@ export async function pushTdccToSupabase(days: number = 365): Promise<{ pushed: 
     const cutoffDate = getDateDaysAgo(days);
     
     // Pull recent weeks from SQLite
-    const rows = getDb()
+    const rows = (getDb()
       .prepare(`SELECT stock_id, date, total_shares, whale_ratio, retail_ratio FROM tdcc_shareholding WHERE date >= ? ORDER BY date DESC LIMIT 15000`)
-      .all(cutoffDate) as any[];
+      .all(cutoffDate) as any[]).filter((row) => isOrdinaryStockId(row.stock_id));
 
     let pushed = 0;
     for (let i = 0; i < rows.length; i += BATCH) {
@@ -114,13 +115,17 @@ export async function pushPriceToSupabase(days: number = 30): Promise<{ pushed: 
       LIMIT ? OFFSET ?
     `);
     let pushed = 0;
+    let offset = 0;
     while (true) {
-      const rows = selectRows.all(cutoffDate, BATCH, pushed) as PriceRow[];
+      const rows = selectRows.all(cutoffDate, BATCH, offset) as PriceRow[];
       if (rows.length === 0) break;
-      const batch = rows.map(serializePrice);
-      const { error } = await sb.from("stock_price").upsert(batch, { onConflict: "stock_id,date" });
-      if (error) throw error;
-      pushed += batch.length;
+      offset += rows.length;
+      const batch = rows.filter((row) => isOrdinaryStockId(row.stock_id)).map(serializePrice);
+      if (batch.length > 0) {
+        const { error } = await sb.from("stock_price").upsert(batch, { onConflict: "stock_id,date" });
+        if (error) throw error;
+        pushed += batch.length;
+      }
     }
     return { pushed };
   } catch (e: any) {
@@ -153,9 +158,9 @@ export async function pushInstitutionalToSupabase(days: number = 30): Promise<{ 
     const cutoffDate = getDateDaysAgo(days);
     
     // Pull from local SQLite stock_institutional
-    const rows = getDb()
+    const rows = (getDb()
       .prepare(`SELECT stock_id, date, foreign_net, trust_net, dealer_net FROM stock_institutional WHERE date >= ? ORDER BY date DESC LIMIT 30000`)
-      .all(cutoffDate) as any[];
+      .all(cutoffDate) as any[]).filter((row) => isOrdinaryStockId(row.stock_id));
 
     let pushed = 0;
     for (let i = 0; i < rows.length; i += BATCH) {

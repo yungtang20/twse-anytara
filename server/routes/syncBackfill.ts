@@ -4,6 +4,7 @@ import { getDb } from "../db";
 import { isLoopbackRequest } from "../lib/security";
 import { scrapePriceFromYahoo } from "../lib/yahooPrice";
 import { addLog, debugState, pushSyncLog, supabase } from "../services";
+import { isOrdinaryStockId } from "../lib/stockUniverse";
 
 const router = Router();
 
@@ -184,6 +185,10 @@ router.post("/api/local/backfill-finmind", json(), async (req: Request, res: Res
 
   if (targetStockIds.length === 0) {
     return res.status(400).json({ success: false, error: "無效的股票代號指定" });
+  }
+  targetStockIds = targetStockIds.filter(isOrdinaryStockId);
+  if (targetStockIds.length === 0) {
+    return res.status(400).json({ success: false, error: "指定內容沒有普通股代號" });
   }
 
   let priceInsertedTotal = 0;

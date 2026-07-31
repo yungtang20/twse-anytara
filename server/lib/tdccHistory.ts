@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "./runtimeState";
 import type { TdccRecord } from "./tdccDownload";
+import { isOrdinaryStockId } from "./stockUniverse";
 
 const TDCC_HISTORY_URL = "https://www.tdcc.com.tw/portal/zh/smWeb/qryStock";
 const USER_AGENT = "Mozilla/5.0 (compatible; TWSE-AnyTara/1.0; +local-data-sync)";
@@ -125,7 +126,7 @@ export async function backfillTdccHistory(
   stockId: string,
   options: number | TdccHistoryOptions = 52,
 ): Promise<TdccHistoryResult> {
-  if (!/^\d{4}$/.test(stockId)) throw new Error("TDCC history requires a four-digit stock ID");
+  if (!isOrdinaryStockId(stockId)) throw new Error("TDCC history only supports ordinary stocks");
   if (!supabaseAdmin) throw new Error("Supabase service role is not configured");
   const maxWeeks = typeof options === "number" ? options : options.maxWeeks ?? 52;
   const requestDelayMs = typeof options === "number" ? 500 : options.requestDelayMs ?? 500;

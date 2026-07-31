@@ -23,6 +23,7 @@ import { withAbortSignal } from "../server/lib/mcpClient";
 import { createJobDedupeKey, mapWithConcurrency } from "../server/lib/jobQueue";
 import { selectFinMindDatasetNames } from "../server/mvpMcpRoutes";
 import { parseTdccCSV, saveTdccToSQLite } from "../server/lib/tdccDownload";
+import { isOrdinaryStockId } from "../server/lib/stockUniverse";
 import { describeSupabaseError } from "../server/lib/supabaseDiagnostics";
 import { ensureCanonicalSchema } from "../server/lib/sqliteSchema";
 import { hasUsableLocalPriceRows } from "../server/lib/marketDataRepository";
@@ -71,6 +72,11 @@ assert.match(cloudSyncSource, /INITIAL_INSTITUTIONAL_DATES = 60/);
 assert.match(cloudSyncSource, /INSTITUTIONAL_RETENTION = 512/);
 assert.match(cloudSyncSource, /TDCC_RETENTION = 512/);
 assert.match(cloudSyncSource, /PRICE_RETENTION - status\.price_dates/);
+assert.equal(isOrdinaryStockId("2330"), true);
+assert.equal(isOrdinaryStockId("9910"), true);
+assert.equal(isOrdinaryStockId("0050"), false);
+assert.equal(isOrdinaryStockId("9103"), false);
+assert.equal(isOrdinaryStockId("2881A"), false);
 const mvpRouteSource = readFileSync(
   path.join(process.cwd(), "server", "mvpMcpRoutes.ts"),
   "utf8",
@@ -309,7 +315,13 @@ try {
   );
   runMigrations(migrationDb);
   runMigrations(migrationDb);
-  assert.equal((migrationDb.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get() as { count: number }).count, 4, "migrations must be idempotent");
+  assert.equal((migrationDb.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get() as { count: number }).count, 5, "migrations must be idempotent");
+  assert.throws(
+    () => migrationDb.prepare(
+      "INSERT INTO stock_meta (stock_id, stock_name) VALUES ('0050', 'ETF must be rejected')",
+    ).run(),
+    /only ordinary stock IDs are allowed/,
+  );
   for (const table of ["analysis_snapshots", "analysis_job_reports", "analysis_jobs"]) {
     assert.ok(migrationDb.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table), `${table} must exist`);
   }
@@ -333,6 +345,7 @@ try {
     '20260718,2330,17,36,"1,000",100',
     "20260718,2317,1,10,100,25",
     "20260718,2317,15,2,300,75",
+    "20260718,0050,17,1,100,100",
     "20261340,9999,1,1,100,100",
     "20260718,9999,1,1,-10,100",
   ].join("\n");
@@ -427,6 +440,10 @@ try {
   }
   const legacy = await fetch(`${baseUrl}/api/ai-analysis`, { method: "POST" });
   assert.equal(legacy.status, 410, "unsafe legacy AI route must stay retired");
+  const etfResponse = await fetch(`${baseUrl}/api/stock/0050/history`);
+  assert.equal(etfResponse.status, 400, "stock APIs must reject non-ordinary securities");
+  const etfBody = await etfResponse.json() as Record<string, unknown>;
+  assert.equal(etfBody.success, false);
 } finally {
   server.close();
   await once(server, "close");
