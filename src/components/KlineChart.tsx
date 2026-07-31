@@ -4,6 +4,11 @@ import {
 } from 'recharts';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, EyeOff } from 'lucide-react';
 import { PriceData, calcMA } from '../lib/indicators';
+import { IntegratedMarketPanels } from './IntegratedMarketPanels';
+import type {
+  InstitutionalPoint,
+  ShareholdingPoint,
+} from '../lib/integratedMarketData';
 
 export interface KlineOverlay {
   hLines?: { value: number; color: string; label?: string; dash?: boolean }[];
@@ -13,9 +18,9 @@ export interface KlineOverlay {
 interface KlineChartProps {
   data: PriceData[];
   overlay?: KlineOverlay;
+  institutional?: InstitutionalPoint[];
+  shareholding?: ShareholdingPoint[];
 }
-
-type TimeframeType = 'daily' | 'weekly' | 'yearly';
 
 // Custom Tooltip with Lots conversion
 const CustomTooltip = ({ active, payload }: any) => {
@@ -70,7 +75,7 @@ const CustomTooltip = ({ active, payload }: any) => {
         <div className="flex justify-between">
           <span className="text-slate-500">成交量:</span>
           <span className="text-slate-100 font-semibold">
-            {d.volume.toLocaleString()} 張 ({ (d.volume * 1000).toLocaleString() } 股)
+            {Math.floor(d.volume / 1000).toLocaleString()} 張 ({d.volume.toLocaleString()} 股)
           </span>
         </div>
         {d.vwap !== undefined && d.vwap !== null && (
@@ -83,85 +88,6 @@ const CustomTooltip = ({ active, payload }: any) => {
     </div>
   );
 };
-
-// Client-side data aggregator to support Daily, Weekly, Yearly timeframes
-function aggregateData(data: PriceData[], type: TimeframeType): PriceData[] {
-  if (type === 'daily' || !data || data.length === 0) return data;
-
-  const result: PriceData[] = [];
-  
-  if (type === 'weekly') {
-    const weeks: Record<string, PriceData[]> = {};
-    const weekKeys: string[] = [];
-    
-    data.forEach(d => {
-      const dateObj = new Date(d.date);
-      // Compute year and week number simple index
-      const firstDayOfYear = new Date(dateObj.getFullYear(), 0, 1);
-      const pastDaysOfYear = (dateObj.getTime() - firstDayOfYear.getTime()) / 86400000;
-      const weekNum = Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
-      const weekKey = `${dateObj.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
-      
-      if (!weeks[weekKey]) {
-        weeks[weekKey] = [];
-        weekKeys.push(weekKey);
-      }
-      weeks[weekKey].push(d);
-    });
-    
-    weekKeys.forEach(key => {
-      const group = weeks[key];
-      if (group.length === 0) return;
-      group.sort((a, b) => a.date.localeCompare(b.date));
-      const first = group[0];
-      const last = group[group.length - 1];
-      const high = Math.max(...group.map(g => g.high));
-      const low = Math.min(...group.map(g => g.low));
-      const volume = group.reduce((sum, g) => sum + g.volume, 0);
-      result.push({
-        date: last.date,
-        open: first.open,
-        high,
-        low,
-        close: last.close,
-        volume
-      });
-    });
-  } else if (type === 'yearly') {
-    const years: Record<string, PriceData[]> = {};
-    const yearKeys: string[] = [];
-    
-    data.forEach(d => {
-      const year = d.date.split('-')[0];
-      if (!years[year]) {
-        years[year] = [];
-        yearKeys.push(year);
-      }
-      years[year].push(d);
-    });
-    
-    yearKeys.forEach(year => {
-      const group = years[year];
-      if (group.length === 0) return;
-      group.sort((a, b) => a.date.localeCompare(b.date));
-      const first = group[0];
-      const last = group[group.length - 1];
-      const high = Math.max(...group.map(g => g.high));
-      const low = Math.min(...group.map(g => g.low));
-      const volume = group.reduce((sum, g) => sum + g.volume, 0);
-      result.push({
-        date: last.date,
-        open: first.open,
-        high,
-        low,
-        close: last.close,
-        volume
-      });
-    });
-  }
-  
-  return result;
-}
 
 // Rolling VWAP (Volume Weighted Average Price) over 20-day period
 function calcVWAP(data: PriceData[], period = 20): (number | null)[] {
@@ -178,9 +104,13 @@ function calcVWAP(data: PriceData[], period = 20): (number | null)[] {
   });
 }
 
-export function KlineChart({ data, overlay }: KlineChartProps) {
-  const [timeframe, setTimeframe] = useState<TimeframeType>('daily');
-  const [windowSize, setWindowSize] = useState<number>(120);
+export function KlineChart({
+  data,
+  overlay,
+  institutional = [],
+  shareholding = [],
+}: KlineChartProps) {
+  const [windowSize, setWindowSize] = useState<number>(61);
   const [windowOffset, setWindowOffset] = useState(0);
 
   // Filter or feature toggle states
@@ -191,14 +121,11 @@ export function KlineChart({ data, overlay }: KlineChartProps) {
   const [showRecentHighLow, setShowRecentHighLow] = useState(true);
   const [showPOC, setShowPOC] = useState(true);
   const [showPredictions, setShowPredictions] = useState(true);
+  const [showForeign, setShowForeign] = useState(true);
+  const [showTrust, setShowTrust] = useState(true);
+  const [showShareholding, setShowShareholding] = useState(true);
 
-  // 1. Aggregate based on timeframe
-  const aggregatedData = useMemo(() => {
-    let agg = aggregateData(data, timeframe);
-    if (agg.length === 0) return agg;
-
-    return agg;
-  }, [data, timeframe]);
+  const aggregatedData = data;
 
   // Remove the old global isVolumeInShares since data is now normalized
   const totalLen = aggregatedData.length;
@@ -384,13 +311,11 @@ export function KlineChart({ data, overlay }: KlineChartProps) {
 
     // Create 5 future points (T+1 to T+5)
     const predictions = [];
-    const timeframePrefix = timeframe === 'weekly' ? 'W' : timeframe === 'yearly' ? 'Y' : 'T';
-    
     for (let i = 1; i <= 5; i++) {
       const predPrice = parseFloat((lastPrice + drift * i * (i === 3 ? 1.5 : i === 4 ? 1.2 : 1)).toFixed(2));
       const predPct = parseFloat(((predPrice - lastPrice) / lastPrice * 100).toFixed(2));
       predictions.push({
-        date: `${timeframePrefix}+${i}`,
+        date: `T+${i}`,
         open: null,
         high: null,
         low: null,
@@ -416,7 +341,7 @@ export function KlineChart({ data, overlay }: KlineChartProps) {
       connectedReal,
       ...predictions
     ];
-  }, [visibleChartData, showPredictions, windowOffset, timeframe]);
+  }, [visibleChartData, showPredictions, windowOffset]);
 
   // Calculate maximum volume of the visible dataset to guarantee 100% correct scaling of Y-Axis in Recharts
   const maxVolume = useMemo(() => {
@@ -439,31 +364,38 @@ export function KlineChart({ data, overlay }: KlineChartProps) {
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg shadow-black/40 flex flex-col">
       {/* ── Toolbar ── */}
-      <div className="flex items-center border-b border-slate-800 bg-slate-950/40 flex-wrap p-2 gap-2 justify-between">
-        {/* Timeframe aggregation switch */}
-        <div className="flex bg-slate-950 p-0.5 rounded border border-slate-800">
-          {[
-            { key: 'daily', label: '日線' },
-            { key: 'weekly', label: '周線' },
-            { key: 'yearly', label: '年線' }
-          ].map(tf => (
-            <button
-              key={tf.key}
-              onClick={() => { setTimeframe(tf.key as TimeframeType); setWindowOffset(0); }}
-              className={`px-3 py-1 text-[11px] rounded transition-all font-semibold ${
-                timeframe === tf.key
-                  ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/30'
-                  : 'text-slate-500 hover:text-slate-300'
-              }`}
-            >
-              {tf.label}
-            </button>
-          ))}
-        </div>
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-800 bg-slate-950/40 p-2 text-[10px]">
+        {[
+          { label: '均線 MA25/60/200', state: showMAs, set: setShowMAs, color: 'text-orange-400' },
+          { label: '量能均線', state: showVolMAs, set: setShowVolMAs, color: 'text-cyan-400' },
+          { label: 'VWAP', state: showVWAP, set: setShowVWAP, color: 'text-yellow-400' },
+          { label: '最密成交價', state: showPOC, set: setShowPOC, color: 'text-rose-400' },
+          { label: '長短期撐壓', state: showSupportResistance, set: setShowSupportResistance, color: 'text-emerald-400' },
+          { label: '波段高低', state: showRecentHighLow, set: setShowRecentHighLow, color: 'text-sky-400' },
+          { label: '5日模擬', state: showPredictions, set: setShowPredictions, color: 'text-purple-400' },
+          { label: '外資', state: showForeign, set: setShowForeign, color: 'text-blue-400' },
+          { label: '投信', state: showTrust, set: setShowTrust, color: 'text-amber-400' },
+          { label: '千戶大戶', state: showShareholding, set: setShowShareholding, color: 'text-cyan-300' },
+        ].map((item) => (
+          <button
+            key={item.label}
+            type="button"
+            onClick={() => item.set(!item.state)}
+            className={`flex items-center gap-1 rounded border px-2 py-1 transition-all ${
+              item.state
+                ? 'border-slate-700 bg-slate-800/80 text-slate-200'
+                : 'border-slate-900 bg-transparent text-slate-600'
+            }`}
+          >
+            {item.state
+              ? <Eye size={10} className={item.color} />
+              : <EyeOff size={10} />}
+            {item.label}
+          </button>
+        ))}
 
-        {/* View Window Size control */}
-        <div className="flex items-center gap-1.5 bg-slate-950 p-0.5 rounded border border-slate-800">
-          {([30, 60, 120, 250, 512] as const).map(w => (
+        <div className="ml-auto flex items-center gap-1 rounded border border-slate-800 bg-slate-950 p-0.5">
+          {([26, 61, 201] as const).map(w => (
             <button
               key={w}
               onClick={() => { setWindowSize(w); setWindowOffset(0); }}
@@ -473,11 +405,10 @@ export function KlineChart({ data, overlay }: KlineChartProps) {
                   : 'text-slate-500 hover:text-slate-300'
               }`}
             >
-              {w === 512 ? '512根' : `${w}天`}
+              {w}天
             </button>
           ))}
 
-          {/* Navigation keys */}
           <div className="h-4 w-[1px] bg-slate-800 mx-1" />
           <button
             onClick={() => shift('left')}
@@ -513,37 +444,9 @@ export function KlineChart({ data, overlay }: KlineChartProps) {
           </button>
         </div>
 
-        {/* Dynamic Legend */}
-        <div className="text-[10px] text-slate-500 font-mono flex items-center gap-1 bg-slate-950/60 px-2 py-1 rounded border border-slate-850">
+        <div className="flex items-center gap-1 rounded border border-slate-850 bg-slate-950/60 px-2 py-1 font-mono text-slate-500">
           <span>{windowData[0]?.date} ~ {windowData[windowData.length - 1]?.date}</span>
         </div>
-      </div>
-
-      {/* ── Indicator Toggles ── */}
-      <div className="flex flex-wrap items-center gap-1.5 p-2 bg-slate-950/20 border-b border-slate-800/80 text-[10px] text-slate-450">
-        <span className="font-semibold text-slate-500 px-1 select-none">技術指標:</span>
-        {[
-          { label: '均線 (MA25/60/200)', state: showMAs, set: setShowMAs, color: 'text-orange-400' },
-          { label: '量能均線 (VolMA5/60)', state: showVolMAs, set: setShowVolMAs, color: 'text-cyan-400' },
-          { label: 'VWAP 均價線', state: showVWAP, set: setShowVWAP, color: 'text-yellow-400' },
-          { label: '最密成交價 (POC)', state: showPOC, set: setShowPOC, color: 'text-rose-400' },
-          { label: '長短期撐壓線', state: showSupportResistance, set: setShowSupportResistance, color: 'text-emerald-400' },
-          { label: '波段最高最低', state: showRecentHighLow, set: setShowRecentHighLow, color: 'text-sky-400' },
-          { label: 'Kronos 5日預測', state: showPredictions, set: setShowPredictions, color: 'text-purple-400 font-semibold' },
-        ].map((ind, i) => (
-          <button
-            key={i}
-            onClick={() => ind.set(!ind.state)}
-            className={`px-2 py-0.5 rounded border transition-all flex items-center gap-1 ${
-              ind.state 
-                ? 'bg-slate-800/80 border-slate-700 text-slate-200' 
-                : 'bg-transparent border-slate-900 text-slate-600'
-            }`}
-          >
-            {ind.state ? <Eye size={10} className={ind.color} /> : <EyeOff size={10} />}
-            <span>{ind.label}</span>
-          </button>
-        ))}
       </div>
 
       {/* ── Chart Area ── */}
@@ -551,7 +454,7 @@ export function KlineChart({ data, overlay }: KlineChartProps) {
         {/* Main Price Chart */}
         <div className="h-[320px] relative shrink-0">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart syncId="kline-volume-sync" data={chartData} margin={{ top: 12, right: 8, left: 0, bottom: 4 }} barGap="-100%">
+            <ComposedChart syncId="integrated-stock-cockpit" data={chartData} margin={{ top: 12, right: 8, left: 0, bottom: 4 }} barGap="-100%">
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.5} />
               <XAxis 
                 dataKey="date" 
@@ -689,7 +592,7 @@ export function KlineChart({ data, overlay }: KlineChartProps) {
         {/* Volume Sub-Chart */}
         <div className="h-[100px] border-t border-slate-850/60 pt-2 relative shrink-0">
           <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart syncId="kline-volume-sync" data={chartData} margin={{ top: 2, right: 8, left: 0, bottom: 4 }}>
+            <ComposedChart syncId="integrated-stock-cockpit" data={chartData} margin={{ top: 2, right: 8, left: 0, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.3} />
               <XAxis dataKey="date" tick={false} tickLine={false} axisLine={false} />
               <YAxis 
@@ -720,6 +623,14 @@ export function KlineChart({ data, overlay }: KlineChartProps) {
           </ResponsiveContainer>
         </div>
       </div>
+      <IntegratedMarketPanels
+        visibleDates={visibleChartData.map((row) => row.date)}
+        institutional={institutional}
+        shareholding={shareholding}
+        showForeign={showForeign}
+        showTrust={showTrust}
+        showShareholding={showShareholding}
+      />
     </div>
   );
 }

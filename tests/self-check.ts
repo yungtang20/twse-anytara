@@ -32,6 +32,7 @@ import { listPendingCalendarDates } from "../scripts/lib/syncDates";
 import { sortTrustBuyByDays } from "../server/routes/dashboard";
 import { buildSimulatedPriceProjection } from "../server/lib/priceProjection";
 import { appViewHash, parseAppView } from "../src/lib/navigation";
+import { buildIntegratedMarketData } from "../src/lib/integratedMarketData";
 
 const rising = Array.from({ length: 20 }, (_, index) => 100 + index);
 const syncRouteSource = readFileSync(
@@ -61,6 +62,10 @@ const volumeUnitMigrationSource = readFileSync(
 );
 const chipsChartSource = readFileSync(
   path.join(process.cwd(), "src", "components", "ChipsBarChart.tsx"),
+  "utf8",
+);
+const klineChartSource = readFileSync(
+  path.join(process.cwd(), "src", "components", "KlineChart.tsx"),
   "utf8",
 );
 const triggerUpdateSource = syncRouteSource.split('router.post("/api/trigger-update"')[1]
@@ -111,6 +116,29 @@ const simulatedProjection = buildSimulatedPriceProjection(
 assert.equal(simulatedProjection.isSimulated, true);
 assert.equal(simulatedProjection.predictions.length, 5);
 assert.match(simulatedProjection.disclaimer, /不代表未來價格/);
+assert.deepEqual(
+  buildIntegratedMarketData(
+    ["2026-07-23", "2026-07-24", "2026-07-27"],
+    [
+      { date: "2026-07-24", foreign_net: 1_500_000, trust_net: -250_000 },
+      { date: "2026-07-27", foreign_net: -500_000, trust_net: 100_000 },
+    ],
+    [
+      { date: "2026-07-18", ratio: 60.5 },
+      { date: "2026-07-25", ratio: 61.25 },
+    ],
+  ),
+  [
+    { date: "2026-07-23", foreign: null, trust: null, whaleRatio: 60.5 },
+    { date: "2026-07-24", foreign: 1500, trust: -250, whaleRatio: 60.5 },
+    { date: "2026-07-27", foreign: -500, trust: 100, whaleRatio: 61.25 },
+  ],
+);
+assert.match(klineChartSource, /\(\[26, 61, 201\] as const\)/);
+assert.doesNotMatch(klineChartSource, /\[30, 60, 120, 250, 512\]/);
+assert.match(klineChartSource, /showForeign/);
+assert.match(klineChartSource, /showTrust/);
+assert.match(klineChartSource, /showShareholding/);
 const mvpRouteSource = readFileSync(
   path.join(process.cwd(), "server", "mvpMcpRoutes.ts"),
   "utf8",

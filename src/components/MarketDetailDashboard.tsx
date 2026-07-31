@@ -6,19 +6,20 @@ import {
   fetchStockInstitutional,
   fetchStockShareholding,
   type DataQuality,
+  type InstitutionalRow,
+  type PriceData,
+  type ShareholdingRow,
 } from '../lib/api';
-import { ChipsBarChart } from './ChipsBarChart';
-import { TrendingUp, Users, ShieldAlert, CheckCircle2, ShieldCheck, RefreshCw } from 'lucide-react';
+import { ShieldAlert, CheckCircle2, RefreshCw } from 'lucide-react';
 
 interface MarketDetailDashboardProps {
   stockId: string;
 }
 
 export function MarketDetailDashboard({ stockId }: MarketDetailDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'kline' | 'institutional' | 'shareholding'>('kline');
-  const [priceData, setPriceData] = useState<any[]>([]);
-  const [instData, setInstData] = useState<any[]>([]);
-  const [shareholding, setShareholding] = useState<any[]>([]);
+  const [priceData, setPriceData] = useState<PriceData[]>([]);
+  const [instData, setInstData] = useState<InstitutionalRow[]>([]);
+  const [shareholding, setShareholding] = useState<ShareholdingRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasDataIssue, setHasDataIssue] = useState(false);
   const [quality, setQuality] = useState<DataQuality | null>(null);
@@ -101,86 +102,42 @@ export function MarketDetailDashboard({ stockId }: MarketDetailDashboardProps) {
         )}
       </div>
 
-      {/* 專業 Tab 切換 */}
-      <div className="flex bg-slate-900/80 p-1 rounded-lg border border-slate-850 gap-1">
-        {[
-          { id: 'kline', label: '技術 K 線圖', icon: TrendingUp },
-          { id: 'institutional', label: '三大法人籌碼', icon: Users, count: instData.length },
-          { id: 'shareholding', label: '千戶大戶比例', icon: ShieldCheck, count: shareholding.length }
-        ].map(tab => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-md text-xs font-bold transition-all ${
-                isActive
-                  ? 'bg-cyan-500/15 text-cyan-400 border border-cyan-500/35 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-transparent'
-              }`}
-            >
-              <Icon size={14} className={isActive ? 'text-cyan-400 animate-pulse' : 'text-slate-500'} />
-              <span>{tab.label}</span>
-              {tab.count !== undefined && tab.count > 0 && (
-                <span className={`px-1.5 py-0.5 text-[9px] rounded-full font-mono ${isActive ? 'bg-cyan-500/20 text-cyan-300' : 'bg-slate-850 text-slate-500'}`}>
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          );
-        })}
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[10px]">
+        <span className="font-mono text-slate-500">
+          K 線、成交量、外資、投信與千戶大戶已共用日期範圍
+        </span>
+        <div className="flex items-center gap-2">
+          {tdccMessage && <span className="text-slate-400">{tdccMessage}</span>}
+          <button
+            type="button"
+            onClick={backfillTdcc}
+            disabled={tdccBackfilling}
+            className="flex items-center gap-1.5 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1.5 font-bold text-cyan-300 disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={tdccBackfilling ? 'animate-spin' : ''} />
+            {tdccBackfilling ? '回補中' : '從集保網頁補一年'}
+          </button>
+        </div>
       </div>
 
-      {/* 圖表展示區 */}
       <div className="relative min-h-[300px]">
-        {activeTab === 'kline' && (
+        {priceData.length > 0 ? (
           <div className="flex flex-col gap-2">
-            {priceData.length > 0 ? (
-              <>
-                <KlineChart data={priceData} />
-                {!hasDataIssue && (
-                  <div className="flex items-center justify-end gap-1.5 text-[10px] text-slate-500 pr-1 mt-1 font-mono">
-                    <CheckCircle2 size={12} className="text-emerald-500" />
-                    已成功解析 {priceData.length} 根日 K 棒。支持成交量與技術指標自適應縮放。
-                  </div>
-                )}
-              </>
-            ) : (
-              <div className="bg-slate-900/40 border border-slate-850/60 rounded-xl py-6 flex flex-col items-center justify-center text-center">
-                <span className="text-slate-500 text-xs font-mono">無歷史交易數據，請前往策略分析分頁進行一鍵同步</span>
+            <KlineChart
+              data={priceData}
+              institutional={instData}
+              shareholding={shareholding}
+            />
+            {!hasDataIssue && (
+              <div className="flex items-center justify-end gap-1.5 pr-1 font-mono text-[10px] text-slate-500">
+                <CheckCircle2 size={12} className="text-emerald-500" />
+                已整合 {priceData.length} 根日 K、{instData.length} 個法人交易日與 {shareholding.length} 週 TDCC。
               </div>
             )}
           </div>
-        )}
-
-        {activeTab === 'institutional' && (
-          <ChipsBarChart
-            chipHistory={instData.map(r => ({ date: r.date, foreign: r.foreign_net, trust: r.trust_net }))}
-            shareholding={[]}
-            viewMode="institutional"
-          />
-        )}
-
-        {activeTab === 'shareholding' && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-end gap-2">
-              {tdccMessage && <span className="text-[10px] text-slate-400">{tdccMessage}</span>}
-              <button
-                type="button"
-                onClick={backfillTdcc}
-                disabled={tdccBackfilling}
-                className="flex items-center gap-1.5 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1.5 text-[10px] font-bold text-cyan-300 disabled:opacity-50"
-              >
-                <RefreshCw size={12} className={tdccBackfilling ? 'animate-spin' : ''} />
-                {tdccBackfilling ? '回補中' : '從集保網頁補一年'}
-              </button>
-            </div>
-            <ChipsBarChart
-              chipHistory={[]}
-              shareholding={shareholding}
-              viewMode="shareholding"
-            />
+        ) : (
+          <div className="bg-slate-900/40 border border-slate-850/60 rounded-xl py-6 flex flex-col items-center justify-center text-center">
+            <span className="text-slate-500 text-xs font-mono">無歷史交易數據，請前往策略分析分頁進行一鍵同步</span>
           </div>
         )}
       </div>
