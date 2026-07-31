@@ -13,6 +13,7 @@
     "test": "tsx tests/self-check.ts",
     "test:eval": "tsx tests/ai-evaluation.ts",
     "sync": "tsx scripts/syncData.ts",
+    "backfill:tdcc": "tsx scripts/backfillTdccUniverse.ts",
     "verify:cloud": "tsx scripts/verifyCloudData.ts",
     "build": "tsc --noEmit && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",

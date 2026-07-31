@@ -18,6 +18,11 @@ export interface TdccHistoryResult {
   skippedWeeks: number;
 }
 
+export interface TdccHistoryOptions {
+  maxWeeks?: number;
+  requestDelayMs?: number;
+}
+
 function hiddenValue(html: string, name: string): string {
   const pattern = new RegExp(`name=["']${name}["'][^>]+value=["']([^"']+)`, "i");
   return html.match(pattern)?.[1] || "";
@@ -118,10 +123,12 @@ async function fetchHistoryWeek(
 
 export async function backfillTdccHistory(
   stockId: string,
-  maxWeeks = 52,
+  options: number | TdccHistoryOptions = 52,
 ): Promise<TdccHistoryResult> {
   if (!/^\d{4}$/.test(stockId)) throw new Error("TDCC history requires a four-digit stock ID");
   if (!supabaseAdmin) throw new Error("Supabase service role is not configured");
+  const maxWeeks = typeof options === "number" ? options : options.maxWeeks ?? 52;
+  const requestDelayMs = typeof options === "number" ? 500 : options.requestDelayMs ?? 500;
   const session = await openSession();
   const dates = session.dates.slice(0, Math.min(Math.max(maxWeeks, 1), 52));
   const { data: existing, error } = await supabaseAdmin
@@ -132,25 +139,27 @@ export async function backfillTdccHistory(
   if (error) throw new Error(`Cannot read TDCC cloud history: ${error.message}`);
   const existingDates = new Set((existing || []).map((row) => row.date));
   const missingDates = dates.filter((date) => !existingDates.has(isoDate(date)));
-  const records: TdccRecord[] = [];
+  let insertedWeeks = 0;
   for (const date of missingDates) {
     const record = await fetchHistoryWeek(session, stockId, date);
-    if (record) records.push(record);
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
-  if (records.length > 0) {
-    const { error: upsertError } = await supabaseAdmin
-      .from("tdcc_shareholding")
-      .upsert(records.map((record) => ({ ...record, source: "tdcc_history_web" })), {
-        onConflict: "stock_id,date",
-      });
-    if (upsertError) throw new Error(`TDCC history upsert failed: ${upsertError.message}`);
+    if (record) {
+      const { error: upsertError } = await supabaseAdmin
+        .from("tdcc_shareholding")
+        .upsert({ ...record, source: "tdcc_history_web" }, {
+          onConflict: "stock_id,date",
+        });
+      if (upsertError) throw new Error(`TDCC history upsert failed: ${upsertError.message}`);
+      insertedWeeks += 1;
+    }
+    if (requestDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, requestDelayMs));
+    }
   }
   return {
     stockId,
     availableWeeks: session.dates.length,
     requestedWeeks: dates.length,
-    insertedWeeks: records.length,
+    insertedWeeks,
     skippedWeeks: dates.length - missingDates.length,
   };
 }
