@@ -1,6 +1,6 @@
 import { getDb } from "./db";
 import { addLog, debugState, pushSyncLog, supabase } from "./lib/runtimeState";
-export { addLog, debugState, pushSyncLog, supabase } from "./lib/runtimeState";
+export { addLog, debugState, pushSyncLog, supabase, supabaseAdmin } from "./lib/runtimeState";
 import {
   calcTwseLimit,
   fetchFollowRedirects,

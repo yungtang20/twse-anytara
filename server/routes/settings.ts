@@ -12,7 +12,7 @@ import {
   pullTdccFromSupabase,
   pruneSupabaseData,
 } from "../lib/syncBridge";
-import { debugState, addLog, pushSyncLog, supabase } from "../services";
+import { debugState, addLog, pushSyncLog, supabase, supabaseAdmin } from "../services";
 
 const router = Router();
 
@@ -91,114 +91,16 @@ router.get("/api/settings/supabase-status", async (_req: Request, res: Response)
     PRIMARY KEY(stock_id, date)
 );
 
--- 建立三大法人買賣超表
-CREATE TABLE IF NOT EXISTS public.stock_institutional (
-    stock_id TEXT NOT NULL,
-    date TEXT NOT NULL,
-    foreign_net BIGINT DEFAULT 0,
-    trust_net BIGINT DEFAULT 0,
-    dealer_net BIGINT DEFAULT 0,
-    foreign_buy BIGINT DEFAULT 0,
-    foreign_sell BIGINT DEFAULT 0,
-    trust_buy BIGINT DEFAULT 0,
-    trust_sell BIGINT DEFAULT 0,
-    dealer_buy BIGINT DEFAULT 0,
-    dealer_sell BIGINT DEFAULT 0,
-    total_net BIGINT DEFAULT 0,
-    PRIMARY KEY(stock_id, date)
-);
+ALTER TABLE public.stock_price ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.stock_price FROM anon, authenticated;
+GRANT SELECT ON TABLE public.stock_price TO anon, authenticated;
+GRANT ALL ON TABLE public.stock_price TO service_role;
 
--- 建立個股基本資料表
-CREATE TABLE IF NOT EXISTS public.stock_meta (
-    stock_id TEXT PRIMARY KEY,
-    stock_name TEXT NOT NULL,
-    industry_category TEXT,
-    market TEXT,
-    type TEXT,
-    source TEXT,
-    updated_at TIMESTAMPTZ DEFAULT now()
-);
-
--- 建立個股特徵/指標與股權分散表
-CREATE TABLE IF NOT EXISTS public.stock_features (
-    stock_id TEXT NOT NULL,
-    date TEXT NOT NULL,
-    ma5 REAL,
-    ma20 REAL,
-    ma60 REAL,
-    rsi14 REAL,
-    macd REAL,
-    macd_signal REAL,
-    macd_hist REAL,
-    volume_ma5 BIGINT,
-    volume_ma20 BIGINT,
-    bb_upper REAL,
-    bb_middle REAL,
-    bb_lower REAL,
-    updated_at TIMESTAMPTZ DEFAULT now(),
-    PRIMARY KEY(stock_id, date)
-);
-
-CREATE TABLE IF NOT EXISTS public.tdcc_shareholding (
-    stock_id TEXT NOT NULL,
-    date TEXT NOT NULL,
-    total_shares BIGINT,
-    whale_ratio REAL,
-    retail_ratio REAL,
-    source TEXT,
-    updated_at TIMESTAMPTZ DEFAULT now(),
-    PRIMARY KEY(stock_id, date)
-);
-
--- 建立個股估值指標歷史紀錄表
-CREATE TABLE IF NOT EXISTS public.stock_valuation (
-    stock_id TEXT NOT NULL,
-    date DATE NOT NULL,
-    yield REAL,
-    pe_ratio REAL,
-    pb_ratio REAL,
-    updated_at TIMESTAMPTZ DEFAULT now(),
-    PRIMARY KEY (stock_id, date)
-);
-
--- 建立個股信用交易/融資融券餘額表
-CREATE TABLE IF NOT EXISTS public.stock_margin (
-    stock_id TEXT NOT NULL,
-    date DATE NOT NULL,
-    margin_buy BIGINT,
-    margin_sell BIGINT,
-    margin_cash_redeem BIGINT,
-    margin_balance BIGINT,
-    short_buy BIGINT,
-    short_sell BIGINT,
-    short_balance BIGINT,
-    updated_at TIMESTAMPTZ DEFAULT now(),
-    PRIMARY KEY (stock_id, date)
-);
-
--- 建立個股月營收表
-CREATE TABLE IF NOT EXISTS public.stock_monthly_revenue (
-    stock_id TEXT NOT NULL,
-    year_month TEXT NOT NULL,
-    month_revenue BIGINT,
-    cumulative_revenue BIGINT,
-    mom REAL,
-    yoy REAL,
-    updated_at TIMESTAMPTZ DEFAULT now(),
-    PRIMARY KEY (stock_id, year_month)
-);
-
--- 建立個股季度利潤表
-CREATE TABLE IF NOT EXISTS public.stock_financials_quarter (
-    stock_id TEXT NOT NULL,
-    quarter_label TEXT NOT NULL,
-    revenue BIGINT,
-    net_income BIGINT,
-    eps REAL,
-    updated_at TIMESTAMPTZ DEFAULT now(),
-    PRIMARY KEY (stock_id, quarter_label)
-);`,
-          message: "連線成功，但尚未建立完整的資料表。請在右側複製完整的 SQL 語句，到您的 Supabase SQL Editor 中貼上並執行即可！"
+CREATE POLICY "stock_price_public_read"
+ON public.stock_price FOR SELECT
+TO anon, authenticated
+USING (true);`,
+          message: "連線成功，但尚未建立受 RLS 保護的 stock_price。請先套用專案中的 Supabase migration。"
         });
       }
       return res.json({
@@ -215,7 +117,8 @@ CREATE TABLE IF NOT EXISTS public.stock_financials_quarter (
       configured: true,
       connected: true,
       tableExists: true,
-      message: "Supabase 連線成功且 `stock_price` 資料表配置完好！"
+      serviceRoleConfigured: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+      message: "Supabase 連線成功且 `stock_price` 可讀；RLS 狀態請以 Supabase advisor 為準。"
     });
   } catch (e: any) {
     return res.json({
@@ -229,7 +132,7 @@ CREATE TABLE IF NOT EXISTS public.stock_financials_quarter (
 });
 
 // API to trigger database pruning and cleanup fallback
-router.post("/api/settings/cleanup", async (_req: Request, res: Response) => {
+router.post("/api/settings/cleanup", json(), async (req: Request, res: Response) => {
   if (debugState.activeSyncProcess.running) {
     return res.status(400).json({ success: false, error: "另一個背景工作（爬蟲、清理或同步）仍在運行中" });
   }
@@ -243,14 +146,14 @@ router.post("/api/settings/cleanup", async (_req: Request, res: Response) => {
     const time = new Date().toLocaleTimeString("zh-TW", { hour12: false });
     pushSyncLog(`[${time}] ${msg}`);
   };
+  const execute = req.body?.confirm === "DELETE_SUPABASE_HISTORY";
 
   // Run in background
   (async () => {
     try {
-      addSyncLog("開始執行 Supabase 免費額度 500MB 大空間優化修剪...");
-      const result = await pruneSupabaseData(512, addSyncLog);
-      addSyncLog(`\n✅ 清理完成！刪除普通股過期數據 ${result.deletedRegular} 筆，清理衍生權證標的 ${result.deletedWarrants} 檔。`);
-      addLog('PRUNE', 'OK', `Deleted ${result.deletedRegular} price records and ${result.deletedWarrants} warrant meta.`);
+      addSyncLog(execute ? "開始執行 Supabase 保留規則..." : "開始 Supabase 保留規則 dry-run...");
+      const result = await pruneSupabaseData(512, addSyncLog, execute);
+      addLog("PRUNE", "OK", JSON.stringify(result));
     } catch (e: any) {
       debugState.activeSyncProcess.error = e.message;
       addSyncLog(`\n❌ 清理過程遭遇阻礙: ${e.message}`);
@@ -260,14 +163,26 @@ router.post("/api/settings/cleanup", async (_req: Request, res: Response) => {
     }
   })();
 
-  res.json({ success: true, message: "Supabase 修剪優化排程已於背景啟動，日誌將即時串流" });
+  res.json({
+    success: true,
+    dryRun: !execute,
+    message: execute
+      ? "Supabase 修剪已於背景啟動"
+      : "Supabase 修剪預覽已於背景啟動；未提供確認字串，不會刪除資料",
+  });
 });
 
 // API to trigger bidirectional data sync bridge (push/pull)
 router.post("/api/settings/sync-bridge", json(), async (req: Request, res: Response) => {
-  const { mode, days = 30, dataType = "all" } = req.body;
+  const { mode, days = 30, dataType = "price" } = req.body;
   if (!supabase) {
     return res.status(400).json({ success: false, error: "Supabase 尚未連線，無法使用同步橋功能" });
+  }
+  if (mode === "push" && !supabaseAdmin) {
+    return res.status(400).json({
+      success: false,
+      error: "Supabase 上傳需要伺服器端 SUPABASE_SERVICE_ROLE_KEY",
+    });
   }
 
   if (debugState.activeSyncProcess.running) {

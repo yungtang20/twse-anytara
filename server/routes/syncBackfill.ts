@@ -11,7 +11,7 @@ const router = Router();
 router.post("/api/sync-daily", (req: Request, res: Response) => {
   if (!isLoopbackRequest(req)) return res.status(403).json({ success: false, error: "同步只能從本機觸發" });
   const node = JSON.stringify(process.execPath);
-  exec(`${node} node_modules/tsx/dist/cli.mjs scripts/syncData.ts && ${node} scripts/complete_and_fetch_today.js && ${node} node_modules/tsx/dist/cli.mjs scripts/prune_supabase.ts`, (error, stdout) => {
+  exec(`${node} node_modules/tsx/dist/cli.mjs scripts/syncData.ts && ${node} scripts/complete_and_fetch_today.js`, (error, stdout) => {
     if (error) {
       console.error(`Sync error: ${error}`);
       return res.status(500).json({ success: false, error: error.message });
@@ -66,7 +66,7 @@ router.post("/api/trigger-update", async (req: Request, res: Response) => {
     pushSyncLog(`[系統] 目標工作流程：從 Supabase 擷取並對接本地補登...`);
 
     const node = JSON.stringify(process.execPath);
-    const child = spawn(`${node} scripts/pull_from_supabase.js && ${node} scripts/complete_and_fetch_today.js && ${node} node_modules/tsx/dist/cli.mjs scripts/prune_supabase.ts`, { shell: true, windowsHide: true });
+    const child = spawn(`${node} scripts/pull_from_supabase.js && ${node} scripts/complete_and_fetch_today.js`, { shell: true, windowsHide: true });
 
     child.stdout.on("data", (data) => {
       const text = data.toString();

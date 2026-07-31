@@ -1,10 +1,30 @@
 // Supabase ↔ SQLite 同步橋 (背景呼叫)
 // 保持 Supabase 有最新資料 (shared, 跨部屬), SQLite 爲主 local cache (高速)
 import { getDb } from "../db";
-import { supabase } from "../services";
+import { supabase, supabaseAdmin } from "./runtimeState";
 import { getTdccSqliteStatus } from "./tdccDownload";
 
 const BATCH = 500;
+
+interface PriceRow {
+  stock_id: string;
+  date: string;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  close: number | null;
+  volume: number | null;
+  amount: number | null;
+  trade_count: number | null;
+  spread: number | null;
+}
+
+function requireSupabaseAdmin() {
+  if (!supabaseAdmin) {
+    throw new Error("Supabase 寫入需要伺服器端 SUPABASE_SERVICE_ROLE_KEY");
+  }
+  return supabaseAdmin;
+}
 
 export interface BridgeStatus {
   sqliteTdcc: { latest: string | null; totalRows: number };
@@ -33,8 +53,7 @@ function getDateDaysAgo(days: number): string {
 
 // PUSH TDCC: SQLite → Supabase
 export async function pushTdccToSupabase(days: number = 365): Promise<{ pushed: number }> {
-  if (!supabase) return { pushed: 0 };
-  const sb = supabase as any;
+  const sb = requireSupabaseAdmin() as any;
   try {
     const cutoffDate = getDateDaysAgo(days);
     
@@ -67,42 +86,41 @@ export async function pushTdccToSupabase(days: number = 365): Promise<{ pushed: 
   }
 }
 
+function serializePrice(row: PriceRow) {
+  return {
+    stock_id: row.stock_id,
+    date: row.date,
+    open: row.open,
+    high: row.high,
+    low: row.low,
+    close: row.close,
+    volume: row.volume ?? 0,
+    amount: row.amount ?? 0,
+    trade_count: row.trade_count ?? 0,
+    spread: row.spread ?? 0,
+  };
+}
+
 // PUSH Price: SQLite → Supabase
 export async function pushPriceToSupabase(days: number = 30): Promise<{ pushed: number }> {
-  if (!supabase) return { pushed: 0 };
-  const sb = supabase as any;
+  const sb = requireSupabaseAdmin() as any;
   try {
     const cutoffDate = getDateDaysAgo(days);
-    
-    // Pull from local SQLite stock_price
-    const rows = getDb()
-      .prepare(`SELECT stock_id, date, open, high, low, close, volume, amount, trade_count, spread, adj_factor, adj_close FROM stock_price WHERE date >= ? ORDER BY date DESC LIMIT 30000`)
-      .all(cutoffDate) as any[];
-
+    const selectRows = getDb().prepare(`
+      SELECT stock_id, date, open, high, low, close, volume, amount, trade_count, spread
+      FROM stock_history
+      WHERE date >= ?
+      ORDER BY date, stock_id
+      LIMIT ? OFFSET ?
+    `);
     let pushed = 0;
-    for (let i = 0; i < rows.length; i += BATCH) {
-      const batch = rows.slice(i, i + BATCH).map((r: any) => ({
-        stock_id: r.stock_id,
-        date: r.date,
-        open: r.open,
-        high: r.high,
-        low: r.low,
-        close: r.close,
-        volume: r.volume || 0,
-        amount: r.amount || 0,
-        trade_count: r.trade_count || 0,
-        spread: r.spread || 0,
-        adj_factor: r.adj_factor || 1.0,
-        adj_close: r.adj_close || r.close,
-        source: "sqlite_push",
-      }));
-      
+    while (true) {
+      const rows = selectRows.all(cutoffDate, BATCH, pushed) as PriceRow[];
+      if (rows.length === 0) break;
+      const batch = rows.map(serializePrice);
       const { error } = await sb.from("stock_price").upsert(batch, { onConflict: "stock_id,date" });
-      if (!error) pushed += batch.length;
-      else {
-        console.warn("[syncBridge] Price push batch err:", error.message);
-        throw error;
-      }
+      if (error) throw error;
+      pushed += batch.length;
     }
     return { pushed };
   } catch (e: any) {
@@ -111,10 +129,26 @@ export async function pushPriceToSupabase(days: number = 30): Promise<{ pushed: 
   }
 }
 
+function insertPricesIntoSqlite(rows: PriceRow[]): void {
+  const insert = getDb().prepare(`
+    INSERT OR REPLACE INTO stock_price (
+      stock_id, date, open, high, low, close, volume, amount,
+      trade_count, spread, adj_factor, adj_close, source
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1.0, ?, 'supabase_pull')
+  `);
+  getDb().transaction(() => {
+    for (const row of rows) {
+      insert.run(
+        row.stock_id, row.date, row.open, row.high, row.low, row.close,
+        row.volume, row.amount, row.trade_count, row.spread, row.close
+      );
+    }
+  })();
+}
+
 // PUSH Institutional: SQLite → Supabase
 export async function pushInstitutionalToSupabase(days: number = 30): Promise<{ pushed: number }> {
-  if (!supabase) return { pushed: 0 };
-  const sb = supabase as any;
+  const sb = requireSupabaseAdmin() as any;
   try {
     const cutoffDate = getDateDaysAgo(days);
     
@@ -166,44 +200,23 @@ export async function pullPriceFromSupabase(days: number = 30): Promise<{ pulled
   const sb = supabase as any;
   try {
     const cutoffDate = getDateDaysAgo(days);
-    
-    // Fetch from Supabase
-    const { data, error } = await sb
-      .from("stock_price")
-      .select("stock_id,date,open,high,low,close,volume,amount,trade_count,spread,adj_factor,adj_close,source")
-      .gte("date", cutoffDate)
-      .order("date", { ascending: false });
-
-    if (error) throw error;
-    if (!data || data.length === 0) return { pulled: 0 };
-
-    const db = getDb();
-    const insertPrice = db.prepare(`
-      INSERT OR REPLACE INTO stock_price (stock_id, date, open, high, low, close, volume, amount, trade_count, spread, adj_factor, adj_close, source)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-
-    db.transaction(() => {
-      for (const p of data) {
-        insertPrice.run(
-          p.stock_id,
-          p.date,
-          p.open !== undefined ? p.open : null,
-          p.high !== undefined ? p.high : null,
-          p.low !== undefined ? p.low : null,
-          p.close !== undefined ? p.close : null,
-          p.volume !== undefined ? p.volume : null,
-          p.amount !== undefined ? p.amount : null,
-          p.trade_count !== undefined ? p.trade_count : null,
-          p.spread !== undefined ? p.spread : null,
-          p.adj_factor !== undefined ? p.adj_factor : 1.0,
-          p.adj_close !== undefined ? p.adj_close : p.close,
-          p.source || "supabase_pull"
-        );
-      }
-    })();
-
-    return { pulled: data.length };
+    let pulled = 0;
+    while (true) {
+      const { data, error } = await sb
+        .from("stock_price")
+        .select("stock_id,date,open,high,low,close,volume,amount,trade_count,spread")
+        .gte("date", cutoffDate)
+        .order("date", { ascending: true })
+        .order("stock_id", { ascending: true })
+        .range(pulled, pulled + BATCH - 1);
+      if (error) throw error;
+      const rows = (data || []) as PriceRow[];
+      if (rows.length === 0) break;
+      insertPricesIntoSqlite(rows);
+      pulled += rows.length;
+      if (rows.length < BATCH) break;
+    }
+    return { pulled };
   } catch (e: any) {
     console.error("[syncBridge] pullPriceFromSupabase error:", e.message);
     throw e;
@@ -308,84 +321,23 @@ export async function pullTdccFromSupabase(days: number = 365): Promise<{ pulled
 // ==========================================
 export async function pruneSupabaseData(
   maxTradingDays: number = 512,
-  onLog: (msg: string) => void
-): Promise<{ deletedRegular: number; deletedWarrants: number }> {
-  if (!supabase) {
-    onLog("❌ Supabase client is not initialized.");
-    return { deletedRegular: 0, deletedWarrants: 0 };
-  }
-  const sb = supabase as any;
+  onLog: (msg: string) => void,
+  execute: boolean = false
+): Promise<{ candidateRows: number; deletedRows: number; dryRun: boolean }> {
+  const sb = requireSupabaseAdmin();
+  onLog(`${execute ? "🧹 執行" : "🔍 預覽"}每檔最新 ${maxTradingDays} 筆保留規則...`);
 
-  onLog(`🚀 啟動 Supabase 儲存空間備份修剪與優化... (目標保留最新 ${maxTradingDays} 個交易日)`);
-  
-  // 1. Get cutoff date from 2330
-  onLog(`🔍 查詢基準普通股 2330 倒數第 ${maxTradingDays} 個交易日的日期...`);
-  const { data: dates, error: dateError } = await sb
-    .from("stock_price")
-    .select("date")
-    .eq("stock_id", "2330")
-    .order("date", { ascending: false })
-    .range(maxTradingDays - 1, maxTradingDays - 1);
+  const { data, error } = await sb.rpc("prune_stock_price_retention", {
+    retain_rows: maxTradingDays,
+    execute_delete: execute,
+  });
+  if (error) throw new Error(`Supabase retention RPC 失敗: ${error.message}`);
 
-  if (dateError) {
-    onLog(`⚠️ 無法定位第 ${maxTradingDays} 個交易日，原因: ${dateError.message}`);
-    throw dateError;
-  }
-
-  if (!dates?.length) {
-    onLog(`⚠️ 交易日不足 ${maxTradingDays} 天，為避免誤刪資料，本次不執行修剪。`);
-    return { deletedRegular: 0, deletedWarrants: 0 };
-  }
-  const cutoffDate = dates[0].date;
-  onLog(`🎯 基準日期鎖定為: ${cutoffDate} (大於等於此日期將安全保留)`);
-
-  // ponytail: stock_id 長度無法可靠辨識商品類型；只做日期保留，若要依商品刪除需先有官方 instrument_type。
-  const deletedWarrantsCount = 0;
-
-  // 3. Delete old ordinary stocks data by chunks
-  onLog(`🧹 正在移除早於基準日 ${cutoffDate} 的過期普通股大歷史數據...`);
-  const { data: oldestPrices } = await sb
-    .from("stock_price")
-    .select("date")
-    .order("date", { ascending: true })
-    .limit(1);
-
-  let deletedRegularCount = 0;
-  if (oldestPrices && oldestPrices.length > 0) {
-    const oldestDateStr = oldestPrices[0].date;
-    onLog(`📍 偵測到 Supabase 目前最舊的紀錄日期為: ${oldestDateStr}`);
-    
-    if (oldestDateStr < cutoffDate) {
-      let currentStart = new Date(oldestDateStr);
-      const targetEnd = new Date(cutoffDate);
-      
-      while (currentStart < targetEnd) {
-        let nextEnd = new Date(currentStart);
-        nextEnd.setDate(nextEnd.getDate() + 14); // 14-day chunks to prevent timeout
-        if (nextEnd > targetEnd) nextEnd = targetEnd;
-        
-        const startStr = currentStart.toISOString().split("T")[0];
-        const endStr = nextEnd.toISOString().split("T")[0];
-        onLog(`   👉 清理進度批次: [${startStr} 至 ${endStr}]`);
-        
-        const pDel = await sb.from("stock_price").delete().gte("date", startStr).lt("date", endStr);
-        await sb.from("stock_institutional").delete().gte("date", startStr).lt("date", endStr);
-        await sb.from("stock_features").delete().gte("date", startStr).lt("date", endStr);
-        await sb.from("tdcc_shareholding").delete().gte("date", startStr).lt("date", endStr);
-        
-        if (pDel.data) {
-          deletedRegularCount += (pDel.data as any).length || 0;
-        }
-        
-        currentStart = nextEnd;
-      }
-    } else {
-      onLog("✨ 目前 Supabase 沒有更舊的普通股數據，無需進行時間維度修剪。");
-    }
-  } else {
-    onLog("⚠️ 未能在 Supabase 中尋找到有效的行情價格數據。");
-  }
-
-  onLog("🎉 Supabase 資料庫修剪與容量極限優化大功告成！");
-  return { deletedRegular: deletedRegularCount, deletedWarrants: deletedWarrantsCount };
+  const result = Array.isArray(data) ? data[0] : data;
+  const candidateRows = Number(result?.candidate_rows || 0);
+  const deletedRows = Number(result?.deleted_rows || 0);
+  onLog(execute
+    ? `✅ 已刪除 ${deletedRows} 筆超出保留上限的資料。`
+    : `ℹ️ Dry-run：共有 ${candidateRows} 筆符合刪除條件，未修改資料。`);
+  return { candidateRows, deletedRows, dryRun: !execute };
 }

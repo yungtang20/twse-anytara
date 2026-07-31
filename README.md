@@ -300,7 +300,14 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 | 限制 | 說明 |
 |------|------|
 | 儲存容量 | 500MB |
-| 目前使用 | 327MB |
+| `stock_price` 目前使用 | 228MB（2026-07-31 盤點） |
+
+Supabase 存取分工：
+
+- `SUPABASE_ANON_KEY`／`VITE_SUPABASE_ANON_KEY`：前端與一般唯讀查詢。
+- `SUPABASE_SERVICE_ROLE_KEY`：僅限伺服器與同步腳本寫入，禁止使用 `VITE_` 前綴。
+- 首次部署先套用 `supabase/migrations/20260731000000_harden_stock_price_access.sql`。
+- `scripts/prune_supabase.ts` 與 `scripts/bulk_load_512.ts` 預設只 dry-run；必須明確加上 `--execute` 才會修改雲端資料。
 
 ---
 

@@ -1,9 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseAdminClient } from "./lib/supabaseAdmin";
 
-const supabase = createClient(
-  (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL) as string,
-  (process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY) as string
-);
+const supabase = createSupabaseAdminClient();
+const RETENTION_ROWS = 512;
 
 // 轉化民國日期（動態取得今天日期）
 const getLatestTradingDate = () => {
@@ -28,6 +26,22 @@ const parseSpread = (str: string) => {
   const num = parseFloat(text.replace(/,/g, ""));
   return isNaN(num) ? 0 : num * sign;
 };
+
+async function pruneRetentionIfEnabled(): Promise<void> {
+  if (process.env.SUPABASE_AUTO_PRUNE_ENABLED !== "true") {
+    console.log("[Sync] Automatic Supabase pruning is disabled.");
+    return;
+  }
+
+  const { data, error } = await supabase.rpc("prune_stock_price_retention", {
+    retain_rows: RETENTION_ROWS,
+    execute_delete: true,
+  });
+  if (error) throw new Error(`Retention RPC failed: ${error.message}`);
+
+  const result = Array.isArray(data) ? data[0] : data;
+  console.log(`[Sync] Retention deleted ${Number(result?.deleted_rows || 0)} rows.`);
+}
 
 async function syncDailyPrices() {
   // Dynamic search for latest valid trading date (handling holidays/weekends)
@@ -106,8 +120,7 @@ async function syncDailyPrices() {
           records.push({
             stock_id: id,
             date: isoDate,
-            open, high, low, close, volume, amount, trade_count, spread,
-            updated_at: new Date().toISOString()
+            open, high, low, close, volume, amount, trade_count, spread
           });
         }
       }
@@ -137,8 +150,7 @@ async function syncDailyPrices() {
           records.push({
             stock_id: id,
             date: isoDate,
-            open, high, low, close, volume, amount, trade_count, spread,
-            updated_at: new Date().toISOString()
+            open, high, low, close, volume, amount, trade_count, spread
           });
         }
       }
@@ -163,38 +175,14 @@ async function syncDailyPrices() {
   }
   
   console.log(`[Sync] Successfully upserted ${successCount} records to Supabase.`);
-
-  // 總容量控制，保留最近 RETENTION_TRADING_DAYS 個交易日
-  const RETENTION_TRADING_DAYS = 512;
-  const { data: dates } = await supabase
-    .from("stock_price")
-    .select("date")
-    .eq("stock_id", "2330")
-    .order("date", { ascending: false })
-    .range(RETENTION_TRADING_DAYS - 1, RETENTION_TRADING_DAYS - 1);
-
-  if (dates && dates.length > 0) {
-    const cutoffDate = dates[0].date;
-    console.log(`[Sync] Triggering cleanup for data older than: ${cutoffDate} (keeping latest 512 trading days max)`);
-    
-    // stock_id 長度不能可靠判斷商品類型，只依保留日期清理。
-    const { error: err1 } = await supabase.from("stock_price").delete().lt("date", cutoffDate);
-    if (err1) console.error("[Sync] Price table cleanup error:", err1.message);
-    
-    // 2. 清理 stock_institutional
-    const { error: err2 } = await supabase.from("stock_institutional").delete().lt("date", cutoffDate);
-    if (err2) console.error("[Sync] Institutional table cleanup error:", err2.message);
-    
-    // 3. 清理 stock_features
-    const { error: err3 } = await supabase.from("stock_features").delete().lt("date", cutoffDate);
-    if (err3) console.error("[Sync] Features table cleanup error:", err3.message);
-    const { error: err4 } = await supabase.from("tdcc_shareholding").delete().lt("date", cutoffDate);
-    if (err4) console.error("[Sync] TDCC table cleanup error:", err4.message);
-    
-    console.log("[Sync] Cleanup complete; only rows older than the retention date were pruned.");
-  } else {
-    console.log("[Sync] Total trading days < 512, no cleanup needed.");
+  if (successCount !== records.length) {
+    throw new Error(`Only ${successCount}/${records.length} rows were uploaded`);
   }
+  await pruneRetentionIfEnabled();
 }
 
-syncDailyPrices();
+syncDailyPrices().catch((error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`[Sync] Failed: ${message}`);
+  process.exitCode = 1;
+});
