@@ -1,86 +1,29 @@
-import dotenv from "dotenv";
-dotenv.config();
-
-import https from "https";
-import http from "http";
-import { createClient } from "@supabase/supabase-js";
 import { getDb } from "./db";
-
-// Supabase client
-const sbUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || "";
-const sbKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
-export const supabase = (sbUrl && sbKey) ? createClient(sbUrl, sbKey) : null;
-
-// Shared state for diagnostics and background sync progress
-export const debugState = {
-  debugLogs: [] as Array<{ time: string; type: string; status: string; detail: string }>,
-  activeSyncProcess: {
-    running: false,
-    logs: [] as string[],
-    startTime: null as string | null,
-    error: null as string | null
-  }
-};
-
-// Log appending helper
-export const addLog = (type: string, status: string, detail: string) => {
-  const time = new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" });
-  debugState.debugLogs.unshift({ time, type, status, detail });
-  if (debugState.debugLogs.length > 50) debugState.debugLogs.pop();
-};
-
-export const pushSyncLog = (line: string) => {
-  const logs = debugState.activeSyncProcess.logs;
-  logs.push(line);
-  // ponytail: a 500-line in-memory ring is enough for the diagnostics UI; use persistent logs if full history is required.
-  if (logs.length > 500) logs.splice(0, logs.length - 500);
-};
-
-/** Helper: follow 302 redirects (TPEX API requires this) */
-export function fetchFollowRedirects(url: string, maxRedirects = 5): Promise<{ ok: boolean; status: number; json: () => Promise<any> }> {
-  return new Promise((resolve, reject) => {
-    const mod = url.startsWith('https') ? https : http;
-    const req = mod.get(url, { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json, text/javascript' } }, (res) => {
-      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location && maxRedirects > 0) {
-        let loc = res.headers.location;
-        if (loc.startsWith('/')) { const p = new URL(url); loc = p.protocol + '//' + p.host + loc; }
-        res.resume();
-        return fetchFollowRedirects(loc, maxRedirects - 1).then(resolve).catch(reject);
-      }
-      resolve({
-        ok: (res.statusCode || 0) >= 200 && (res.statusCode || 0) < 300,
-        status: res.statusCode || 0,
-        json: () => new Promise((res2, rej) => { let d = ''; res.on('data', c => d += c); res.on('end', () => { try { res2(JSON.parse(d)); } catch (e) { rej(e); } }); }),
-      });
-    });
-    req.on('error', reject);
-  });
-}
-
-export const getNormalizedProp = (obj: any, candidates: string[]) => {
-  if (!obj) return undefined;
-  for (const c of candidates) {
-    if (obj[c] !== undefined && obj[c] !== null) return obj[c];
-    
-    // Fuzzy matching: remove whitespaces, punctuation, and lowercase
-    const cClean = c.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '').toLowerCase();
-    for (const key of Object.keys(obj)) {
-      const kClean = key.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '').toLowerCase();
-      if (kClean === cClean && obj[key] !== undefined && obj[key] !== null) {
-        return obj[key];
-      }
-    }
-  }
-  return undefined;
-};
-
-/** Format a date as YYYYMMDD for TWSE API */
-export const formatDateStr = (date: Date): string => {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}${m}${d}`;
-};
+import { addLog, debugState, pushSyncLog, supabase } from "./lib/runtimeState";
+export { addLog, debugState, pushSyncLog, supabase } from "./lib/runtimeState";
+import {
+  calcTwseLimit,
+  fetchFollowRedirects,
+  formatDateStr,
+  formatTpexDateStr,
+  parseNum,
+  parseTpexIndex,
+  parseTwseIndex,
+  parseTwseUpDown,
+} from "./lib/marketParsers";
+export {
+  calcTwseLimit,
+  fetchFollowRedirects,
+  formatDateStr,
+  formatTpexDateStr,
+  getNormalizedProp,
+  parseNum,
+  parseTpexIndex,
+  parseTpexUpDown,
+  parseTwseIndex,
+  parseTwseUpDown,
+  stripHtml,
+} from "./lib/marketParsers";
 
 /** Get the latest available trading date from SQLite database */
 export const getLatestTradingDate = (): string => {
@@ -93,14 +36,6 @@ export const getLatestTradingDate = (): string => {
   } catch { /* ignore */ }
   const taipeiNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
   return formatDateStr(taipeiNow);
-};
-
-/** Format a date as YYYY/MM/DD for TPEX API */
-export const formatTpexDateStr = (date: Date): string => {
-  const y = date.getFullYear() - 1911;
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}/${m}/${d}`;
 };
 
 /**
@@ -136,161 +71,6 @@ export function hasTwseCache(): boolean {
 export function hasOtcCache(): boolean {
   return lastOtcCache._source !== 'uninitialized';
 }
-
-/** Strip HTML tags from a string */
-export const stripHtml = (s: string) => String(s || '').replace(/<[^>]*>/g, '').trim();
-
-/** Parse number from string with commas */
-export const parseNum = (s: any) => parseFloat(String(s || '').replace(/,/g, '')) || 0;
-
-export const calcTwseLimit = (prevClose: number) => {
-  const getTick = (p: number) => {
-    if (p < 10) return 0.01;
-    if (p < 50) return 0.05;
-    if (p < 100) return 0.1;
-    if (p < 500) return 0.5;
-    if (p < 1000) return 1;
-    return 5;
-  };
-  
-  let upTarget = prevClose * 1.1;
-  let downTarget = prevClose * 0.9;
-  
-  upTarget = Math.round(upTarget * 10000) / 10000;
-  downTarget = Math.round(downTarget * 10000) / 10000;
-  
-  let upTick = getTick(upTarget - 0.00001);
-  let downTick = getTick(downTarget + 0.00001);
-  
-  let limitUp = Math.floor((upTarget + 0.0000001) / upTick) * upTick;
-  let limitDown = Math.ceil((downTarget - 0.0000001) / downTick) * downTick;
-  
-  return {
-    up: parseFloat(limitUp.toFixed(2)),
-    down: parseFloat(limitDown.toFixed(2))
-  };
-};
-
-/** Parse TWSE MI_INDEX response JSON (new tables format) */
-export const parseTwseIndex = (json: any) => {
-  try {
-    const table = json?.tables?.[0];
-    if (!table?.data) return null;
-
-    let row = table.data.find((r: any) => String(r[0]).includes('發行量加權股價指數'));
-    if (!row) row = table.data[1]; // fallback to second row
-
-    const index = parseNum(row[1]);
-    const change = parseNum(row[3]);
-    const changePercent = parseNum(row[4]);
-
-    if (index <= 0) return null;
-    return { index, change, changePercent };
-  } catch {
-    return null;
-  }
-};
-
-/** Parse TWSE 漲跌家數 from MI_INDEX tables (ordinary shares only) */
-export const parseTwseUpDown = (json: any) => {
-  try {
-    const table = json?.tables?.find((t: any) => t.title?.includes('每日收盤行情'));
-    if (!table?.data) return null;
-
-    let limitUp = 0, up = 0, flat = 0, down = 0, limitDown = 0;
-    
-    for (const row of table.data) {
-      const id = String(row[0]);
-      // Filter for ordinary shares: 4 digits, doesn't start with 0
-      if (id.length !== 4 || !/^[1-9]\d{3}$/.test(id)) continue;
-      
-      const closeStr = String(row[8]).replace(/,/g, '');
-      const diffStr = String(row[10]).replace(/,/g, '');
-      const signHtml = String(row[9]);
-      
-      const close = parseFloat(closeStr);
-      const diff = parseFloat(diffStr);
-      
-      if (isNaN(close) || close <= 0) {
-        // No closing price, might be un-traded, check flat? No, usually not flat if no price.
-        // Or if it didn't trade, but has a limit up bid? We don't count untraded as up/down.
-        continue;
-      }
-      
-      let prevClose = close;
-      if (signHtml.includes('red') || signHtml.includes('+')) {
-        prevClose = close - diff;
-      } else if (signHtml.includes('green') || signHtml.includes('-')) {
-        prevClose = close + diff;
-      }
-      
-      prevClose = parseFloat(prevClose.toFixed(2));
-      const limits = calcTwseLimit(prevClose);
-      
-      if (signHtml.includes('red') || signHtml.includes('+')) {
-        if (close >= limits.up - 0.005) {
-          limitUp++;
-        } else {
-          up++;
-        }
-      } else if (signHtml.includes('green') || signHtml.includes('-')) {
-        if (close <= limits.down + 0.005) {
-          limitDown++;
-        } else {
-          down++;
-        }
-      } else {
-        flat++;
-      }
-    }
-
-    return { limitUp, up, flat, down, limitDown };
-  } catch {
-    return null;
-  }
-};
-
-/** Parse TPEX daily trading index (new tables format) */
-export const parseTpexIndex = (json: any, targetTpexDateStr?: string) => {
-  try {
-    const table = json?.tables?.[0];
-    if (!table?.data?.[0]) return null;
-    let row = table.data[table.data.length - 1]; // fallback to last row
-    if (targetTpexDateStr) {
-      const matchedRow = table.data.find((r: any) => r[0] === targetTpexDateStr);
-      if (matchedRow) row = matchedRow;
-    }
-    const index = parseNum(row[4]);
-    const change = parseNum(row[5]);
-    const changePercent = index !== 0 ? parseFloat(((change / (index - change)) * 100).toFixed(2)) : 0;
-    if (index <= 0) return null;
-    return { index, change, changePercent };
-  } catch {
-    return null;
-  }
-};
-
-/** Parse TPEX 漲跌家數 */
-export const parseTpexUpDown = (json: any) => {
-  try {
-    const data = json?.aaData?.[0];
-    if (!data || data.length < 8) return null;
-    const limitUpVal = parseInt(String(data[4]?.replace(/,/g, '') || '0')) || 0;
-    const upVal = parseInt(String(data[2]?.replace(/,/g, '') || '0')) || 0;
-    const flatVal = parseInt(String(data[6]?.replace(/,/g, '') || '0')) || 0;
-    const downVal = parseInt(String(data[3]?.replace(/,/g, '') || '0')) || 0;
-    const limitDownVal = parseInt(String(data[5]?.replace(/,/g, '') || '0')) || 0;
-    return {
-      limitUp: limitUpVal,
-      up: Math.max(0, upVal - limitUpVal),
-      flat: flatVal,
-      down: Math.max(0, downVal - limitDownVal),
-      limitDown: limitDownVal,
-    };
-  } catch {
-    return null;
-  }
-};
 
 /** Calculate TWSE stats from SQLite database */
 export const getTwseStatsFromDb = (dateStr: string) => {

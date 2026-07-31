@@ -2,6 +2,14 @@ import { Router, type Request, type Response } from "express";
 import { scrapePriceFromYahoo } from "../lib/yahooPrice";
 import { getDb } from "../db";
 import { calcIndicators, supabase } from "../services";
+import {
+  hasUsableLocalPriceRows,
+  readLocalInstitutionalRows,
+  readLocalMeta,
+  readLocalPriceRows,
+  readLocalStockData,
+  searchLocalStocks,
+} from "../lib/marketDataRepository";
 
 const router = Router();
 
@@ -22,6 +30,15 @@ function dataQuality(source: string, asOf?: string | null, warnings: string[] = 
 router.get("/api/stock/search", async (req: Request, res: Response) => {
   const q = String(req.query.q || "").trim().replace(/[%,()\"']/g, "");
   if (!q) return res.json({ success: true, data: [] });
+
+  try {
+    const localRows = searchLocalStocks(q);
+    if (localRows.length > 0) {
+      return res.json({ success: true, data: localRows, source: "sqlite" });
+    }
+  } catch (err: unknown) {
+    console.error("[SQLite Search Error]:", err instanceof Error ? err.message : String(err));
+  }
 
   if (supabase) {
     try {
@@ -54,6 +71,28 @@ router.get("/api/stock/search", async (req: Request, res: Response) => {
 router.get("/api/stock/:id/history", async (req: Request, res: Response) => {
   const id = req.params.id;
   const days = Math.min(parseInt(String(req.query.days || "120")), 1000);
+
+  try {
+    const localPrices = readLocalPriceRows(id, Math.max(days, 30));
+    if (hasUsableLocalPriceRows(localPrices)) {
+      const prices = localPrices.slice(0, days);
+      const meta = readLocalMeta(id);
+      const warnings = [
+        ...(prices.length < 10 ? [`insufficient_history:${prices.length}`] : []),
+        ...(meta.stock_name === id ? ["metadata_missing"] : []),
+      ];
+      const quality = dataQuality("sqlite", prices[0]?.date, warnings);
+      return res.json({
+        success: true,
+        data: [...prices].reverse(),
+        ...quality,
+        dataQuality: quality,
+        meta,
+      });
+    }
+  } catch (err: unknown) {
+    console.error("[SQLite History Error]:", err instanceof Error ? err.message : String(err));
+  }
 
   if (supabase) {
     try {
@@ -167,6 +206,17 @@ router.get("/api/stock/:id/history", async (req: Request, res: Response) => {
 router.get("/api/stock/:id/indicators", async (req: Request, res: Response) => {
   const id = req.params.id;
 
+  try {
+    const prices = readLocalPriceRows(id, 1_000);
+    if (hasUsableLocalPriceRows(prices)) {
+      const indicators = calcIndicators([...prices].reverse());
+      const quality = dataQuality("sqlite", prices[0]?.date);
+      return res.json({ success: true, data: indicators, ...quality, dataQuality: quality });
+    }
+  } catch (err: unknown) {
+    console.error("[SQLite Indicators Error]:", err instanceof Error ? err.message : String(err));
+  }
+
   if (supabase) {
     try {
       const { data: priceData, error: priceErr } = await supabase
@@ -209,6 +259,24 @@ router.get("/api/stock/:id/indicators", async (req: Request, res: Response) => {
 // Get institutional data for a stock
 router.get("/api/stock/:id/institutional", async (req: Request, res: Response) => {
   const id = req.params.id;
+
+  try {
+    const institutional = readLocalInstitutionalRows(id);
+    if (institutional.length > 0) {
+      const warnings = institutional.length < 10
+        ? [`insufficient_history:${institutional.length}`]
+        : [];
+      const quality = dataQuality("sqlite", institutional[0]?.date, warnings);
+      return res.json({
+        success: true,
+        data: institutional,
+        ...quality,
+        dataQuality: quality,
+      });
+    }
+  } catch (err: unknown) {
+    console.error("[SQLite Institutional Error]:", err instanceof Error ? err.message : String(err));
+  }
 
   if (supabase) {
     try {
@@ -266,6 +334,43 @@ router.get("/api/stock/:id/shareholding", async (req: Request, res: Response) =>
 // Get full quote (price + indicators + institutional)
 router.get("/api/stock/:id/quote", async (req: Request, res: Response) => {
   const id = req.params.id;
+
+  try {
+    const local = readLocalStockData(id);
+    const latest = local.prices[0];
+    if (latest && hasUsableLocalPriceRows(local.prices)) {
+      const prev = local.prices[1];
+      const change = prev ? Number((latest.close - prev.close).toFixed(2)) : 0;
+      const changePercent = prev?.close
+        ? Number(((change / prev.close) * 100).toFixed(2))
+        : 0;
+      const quality = dataQuality(
+        "sqlite",
+        latest.date,
+        local.meta.stock_name === id ? ["metadata_missing"] : [],
+      );
+      return res.json({
+        success: true,
+        data: {
+          stock_id: local.meta.stock_id,
+          name: local.meta.stock_name,
+          market: local.meta.market,
+          industry: local.meta.industry_category,
+          ...latest,
+          change,
+          changePercent,
+          prevClose: prev?.close ?? null,
+          indicators: calcIndicators([...local.prices].reverse()),
+          institutional: local.institutional.slice(0, 10),
+          shareholding: local.shareholding,
+        },
+        ...quality,
+        dataQuality: quality,
+      });
+    }
+  } catch (err: unknown) {
+    console.error("[SQLite Quote Error]:", err instanceof Error ? err.message : String(err));
+  }
 
   if (supabase) {
     try {

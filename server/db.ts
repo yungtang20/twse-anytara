@@ -2,12 +2,22 @@ import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
 import { runMigrations } from "./lib/migrations";
+import { ensureCanonicalSchema } from "./lib/sqliteSchema";
 
 let db: any = null;
 
+export function resolveDatabasePath(
+  cwd = process.cwd(),
+  configuredPath = process.env.SQLITE_DB_PATH,
+): string {
+  return configuredPath
+    ? path.resolve(cwd, configuredPath)
+    : path.join(cwd, "twstock", "taiwan_stock_unified.db");
+}
+
 export function initDb() {
   try {
-    const dbPath = path.join(process.cwd(), "twstock", "taiwan_stock_unified.db");
+    const dbPath = resolveDatabasePath();
     
     // Ensure the folder exists
     const dbDir = path.dirname(dbPath);
@@ -17,111 +27,14 @@ export function initDb() {
 
     // Initialize/Create Database if it doesn't exist
     const tempDb = new Database(dbPath); // open in read-write mode to initialize schema
-    const tableCheck = tempDb.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'stock_price'").get();
+    const tableCheck = tempDb.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('stock_history', 'stock_price') LIMIT 1",
+    ).get();
     const needsInit = !tableCheck;
+    ensureCanonicalSchema(tempDb);
     
     if (needsInit) {
       console.log(`[DB] Creating new SQLite database/tables at ${dbPath}`);
-      const schemas = [
-        `CREATE TABLE IF NOT EXISTS stock_meta (
-            stock_id TEXT PRIMARY KEY,
-            stock_name TEXT NOT NULL,
-            industry_category TEXT,
-            market TEXT,
-            type TEXT,
-            source TEXT,
-            updated_at TEXT DEFAULT (datetime('now', 'localtime'))
-        )`,
-        `CREATE TABLE IF NOT EXISTS stock_trading_calendar (
-            date TEXT PRIMARY KEY,
-            is_open INTEGER NOT NULL,
-            source TEXT,
-            updated_at TEXT DEFAULT (datetime('now', 'localtime'))
-        )`,
-        `CREATE TABLE IF NOT EXISTS stock_price (
-            stock_id TEXT,
-            date TEXT,
-            open REAL,
-            high REAL,
-            low REAL,
-            close REAL,
-            volume INTEGER,
-            amount INTEGER,
-            trade_count INTEGER,
-            spread REAL,
-            adj_factor REAL DEFAULT 1.0,
-            adj_close REAL,
-            source TEXT,
-            updated_at TEXT DEFAULT (datetime('now', 'localtime')),
-            PRIMARY KEY (stock_id, date)
-        )`,
-        `CREATE TABLE IF NOT EXISTS dividend_events (
-            stock_id TEXT,
-            date TEXT,
-            before_price REAL,
-            after_price REAL,
-            reference_price REAL,
-            cash_dividend REAL,
-            stock_dividend REAL,
-            source TEXT,
-            updated_at TEXT DEFAULT (datetime('now', 'localtime')),
-            PRIMARY KEY (stock_id, date)
-        )`,
-        `CREATE TABLE IF NOT EXISTS stock_institutional (
-            stock_id TEXT,
-            date TEXT,
-            foreign_net INTEGER DEFAULT 0,
-            trust_net INTEGER DEFAULT 0,
-            dealer_net INTEGER DEFAULT 0,
-            foreign_buy INTEGER DEFAULT 0,
-            foreign_sell INTEGER DEFAULT 0,
-            trust_buy INTEGER DEFAULT 0,
-            trust_sell INTEGER DEFAULT 0,
-            dealer_buy INTEGER DEFAULT 0,
-            dealer_sell INTEGER DEFAULT 0,
-            institutional_net INTEGER DEFAULT 0,
-            source TEXT,
-            updated_at TEXT DEFAULT (datetime('now', 'localtime')),
-            PRIMARY KEY (stock_id, date)
-        )`,
-        `CREATE TABLE IF NOT EXISTS shareholding_data (
-            stock_id TEXT,
-            date TEXT,
-            foreign_shares REAL,
-            foreign_ratio REAL,
-            source TEXT,
-            updated_at TEXT DEFAULT (datetime('now', 'localtime')),
-            PRIMARY KEY (stock_id, date)
-        )`,
-        `CREATE TABLE IF NOT EXISTS tdcc_shareholding (
-            stock_id TEXT,
-            date TEXT,
-            total_shares INTEGER,
-            whale_ratio REAL,
-            retail_ratio REAL,
-            source TEXT,
-            updated_at TEXT DEFAULT (datetime('now', 'localtime')),
-            PRIMARY KEY (stock_id, date)
-        )`,
-        `CREATE TABLE IF NOT EXISTS audit_log (
-            log_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            stock_id TEXT,
-            action TEXT,
-            status TEXT,
-            detail TEXT,
-            timestamp TEXT DEFAULT (datetime('now', 'localtime'))
-        )`,
-        `CREATE INDEX IF NOT EXISTS idx_stock_history_stock_date ON stock_price(stock_id, date)`,
-        `CREATE INDEX IF NOT EXISTS idx_dividend_events_stock_date ON dividend_events(stock_id, date)`,
-        `CREATE INDEX IF NOT EXISTS idx_institutional_stock_date ON stock_institutional(stock_id, date)`,
-        `CREATE INDEX IF NOT EXISTS idx_shareholding_stock_date ON shareholding_data(stock_id, date)`,
-        `CREATE INDEX IF NOT EXISTS idx_tdcc_stock_date ON tdcc_shareholding(stock_id, date)`
-      ];
-
-      for (const sql of schemas) {
-        tempDb.prepare(sql).run();
-      }
-
       // Add a few baseline stocks metadata
       const ENABLE_SEED_DATA = process.env.ENABLE_SEED_DATA === 'true';
       if (ENABLE_SEED_DATA) {

@@ -141,15 +141,9 @@ export async function saveTdccToSQLite(records: TdccRecord[], source = "opendata
       if (seen.has(key)) continue;
       seen.add(key);
       db.prepare(
-        `INSERT INTO tdcc_shareholding
+        `INSERT OR REPLACE INTO tdcc_shareholding
           (stock_id, date, total_shares, whale_ratio, retail_ratio, source, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-         ON CONFLICT(stock_id, date) DO UPDATE SET
-           total_shares=excluded.total_shares,
-           whale_ratio=excluded.whale_ratio,
-           retail_ratio=excluded.retail_ratio,
-           source=excluded.source,
-           updated_at=excluded.updated_at`
+         VALUES (?, ?, ?, ?, ?, ?, datetime('now'))`
       ).run(r.stock_id, r.date, r.total_shares, r.whale_ratio, r.retail_ratio, source);
       n++;
     }

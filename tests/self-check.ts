@@ -22,10 +22,36 @@ import { createJobDedupeKey, mapWithConcurrency } from "../server/lib/jobQueue";
 import { selectFinMindDatasetNames } from "../server/mvpMcpRoutes";
 import { parseTdccCSV, saveTdccToSQLite } from "../server/lib/tdccDownload";
 import { describeSupabaseError } from "../server/lib/supabaseDiagnostics";
+import { ensureCanonicalSchema } from "../server/lib/sqliteSchema";
+import { hasUsableLocalPriceRows } from "../server/lib/marketDataRepository";
+import { resolveDatabasePath } from "../server/db";
 
 const rising = Array.from({ length: 20 }, (_, index) => 100 + index);
-assert.equal(clampSidebarWidth(100, 1200), 176, "sidebar width must keep navigation usable");
-assert.equal(clampSidebarWidth(500, 800), 360, "sidebar width must preserve responsive content space");
+assert.equal(
+  resolveDatabasePath("D:\\app", "fixtures\\smoke.db"),
+  "D:\\app\\fixtures\\smoke.db",
+  "configured SQLite paths must resolve relative to the process directory",
+);
+const freshLocalRows = Array.from({ length: 30 }, (_, index) => ({
+  date: `2026-07-${String(index + 1).padStart(2, "0")}`,
+  open: 1,
+  high: 1,
+  low: 1,
+  close: 1,
+  volume: 1,
+}));
+assert.equal(
+  hasUsableLocalPriceRows(freshLocalRows, new Date("2026-08-01T00:00:00+08:00").getTime()),
+  true,
+  "fresh local prices must win over remote providers",
+);
+assert.equal(
+  hasUsableLocalPriceRows(freshLocalRows, new Date("2026-08-15T00:00:00+08:00").getTime()),
+  false,
+  "stale local prices must allow a remote fallback",
+);
+assert.equal(clampSidebarWidth(100, 1200), 132, "sidebar width must keep navigation usable");
+assert.equal(clampSidebarWidth(500, 800), 288, "sidebar width must preserve responsive content space");
 assert.equal(clampSidebarWidth(300, 1200), 300, "sidebar width must retain a valid user size");
 assert.equal(calcRSI(rising, 14).at(-1), 100, "RSI must be 100 when average loss is zero");
 assert.equal(calcRSI(Array(20).fill(100), 14).at(-1), 50, "flat RSI must be neutral");
@@ -194,9 +220,22 @@ assert.equal(validatedReport.evidence["metric:latest_close"].value, 114);
 
 const migrationDb = new Database(":memory:");
 try {
+  ensureCanonicalSchema(migrationDb);
+  const compatibilityInsert = migrationDb.prepare(`
+    INSERT OR REPLACE INTO stock_price
+      (stock_id, date, open, high, low, close, volume, amount, trade_count, spread, source)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  compatibilityInsert.run("2330", "2026-07-22", 100, 105, 99, 103, 1_000, 100_000, 10, 4, "contract_test");
+  compatibilityInsert.run("2330", "2026-07-22", 101, 106, 100, 104, 2_000, 200_000, 20, 5, "contract_test");
+  assert.equal(
+    (migrationDb.prepare("SELECT close FROM stock_history WHERE stock_id = '2330'").get() as { close: number }).close,
+    104,
+    "stock_price compatibility writes must land in canonical stock_history",
+  );
   runMigrations(migrationDb);
   runMigrations(migrationDb);
-  assert.equal((migrationDb.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get() as { count: number }).count, 3, "migrations must be idempotent");
+  assert.equal((migrationDb.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get() as { count: number }).count, 4, "migrations must be idempotent");
   for (const table of ["analysis_snapshots", "analysis_job_reports", "analysis_jobs"]) {
     assert.ok(migrationDb.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table), `${table} must exist`);
   }
@@ -233,10 +272,6 @@ try {
   assert.deepEqual(parsedTdcc.records.find((record) => record.stock_id === "2317"), {
     stock_id: "2317", date: "2026-07-18", total_shares: 400, whale_ratio: 75, retail_ratio: 25,
   });
-  migrationDb.exec(`CREATE TABLE tdcc_shareholding (
-    stock_id TEXT, date TEXT, total_shares INTEGER, whale_ratio REAL, retail_ratio REAL,
-    source TEXT, updated_at TEXT, PRIMARY KEY (stock_id, date)
-  )`);
   await saveTdccToSQLite(parsedTdcc.records, "contract_test", migrationDb);
   await saveTdccToSQLite(parsedTdcc.records, "contract_test", migrationDb);
   assert.equal((migrationDb.prepare("SELECT COUNT(*) AS count FROM tdcc_shareholding").get() as { count: number }).count, 2, "TDCC upsert must be idempotent");

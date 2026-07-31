@@ -73,7 +73,7 @@ async function startServer() {
   const db = initDb();
 
   // Trigger background sync if DB lacks historical data or is stale
-  if (db) {
+  if (db && process.env.STARTUP_SYNC_ENABLED !== "false") {
     try {
       const row = db.prepare("SELECT COUNT(DISTINCT date) as c FROM stock_price").get() as { c: number };
       const latestDbRow = db.prepare("SELECT MAX(date) as max_date FROM stock_price").get() as { max_date: string | null };
@@ -233,7 +233,9 @@ async function startServer() {
   const httpServer = app.listen(PORT, HOST, () => {
     console.log(`[FULL-STACK] Express server running on http://${HOST}:${PORT}`);
     // MVP: 连 remote MCP server (失败不卡 server)
-    initMcp().then((ok) => console.log(`[MVP] MCP init ${ok ? "OK" : "FAIL (server 仍可用)"}`));
+    if (process.env.MCP_ENABLED !== "false") {
+      initMcp().then((ok) => console.log(`[MVP] MCP init ${ok ? "OK" : "FAIL (server 仍可用)"}`));
+    }
 
     // 恢復未完成的 job (server 重啟後)
     try { resumeInterruptedJobs(); } catch (e: any) { console.warn("[jobQueue] resume 失敗:", e.message); }

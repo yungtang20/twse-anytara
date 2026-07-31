@@ -76,9 +76,9 @@ export const FRAMEWORK_CONTRACTS: Record<string, FrameworkContract> = {
     limitations: ["沒有訓練資料與樣本外回測，不得宣稱模型 alpha"],
   },
   vanguard: {
-    datasets: [PRICE, "TaiwanStockPER", "TaiwanStockDividend", CASH_FLOW],
-    metrics: ["return_12m", "dividend_yield", "latest_cash_dividend", "cash_dividend_5y_avg", "cash_dividend_5y_cv_pct", "cash_dividend_10y_total", "free_cash_flow_ttm"],
-    limitations: ["單一標的快照不能取代完整資產配置與 IPS"],
+    datasets: [PRICE, "TaiwanStockPER", "TaiwanStockDividend"],
+    metrics: ["return_12m", "dividend_yield", "latest_cash_dividend", "cash_dividend_5y_avg", "cash_dividend_5y_cv_pct", "cash_dividend_10y_total"],
+    limitations: ["ETF 通常不提供企業自由現金流；單一標的快照不能取代完整資產配置與 IPS"],
   },
   deshaw: {
     datasets: [PRICE],

@@ -89,11 +89,11 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 ```
 
 **數據來源**：
-- 個股報價：FinMind API → Supabase fallback
-- K 線圖：FinMind API（2015-01-01 至今日）
-- 成交量：FinMind API
-- 法人/外資：Supabase institutional_data
-- 千張大戶/集保人數：Supabase shareholding_unified
+- 個股報價／K 線／成交量：SQLite → Supabase → Yahoo fallback
+- AI 價格快照：新鮮 SQLite → FinMind fallback
+- AI 財務與估值資料：FinMind（僅依分析框架抓取必要資料集）
+- 法人/外資：SQLite → Supabase fallback
+- 千張大戶/集保人數：SQLite TDCC
 
 ---
 
@@ -170,11 +170,11 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 ### 3.1 數據來源優先級
 
 ```
-優先級 1：FinMind API（免費會員）
-  ↓ 如果失敗或無數據
+優先級 1：SQLite 本地資料庫（資料新鮮且足夠）
+  ↓ 如果過期、資料不足或無數據
 優先級 2：Supabase
   ↓ 如果失敗或無數據
-優先級 3：SQLite 本地資料庫
+優先級 3：FinMind / Yahoo 外部資料源
 ```
 
 ### 3.2 FinMind API 數據集（12 個免費）
@@ -206,9 +206,9 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 ### 4.1 數據收集策略
 
 **數據來源優先級**：
-1. FinMind API（免費會員）
-2. Supabase
-3. SQLite 本地資料庫
+1. SQLite 本地資料庫（價格與 TDCC）
+2. Supabase（雲端備援）
+3. FinMind / Yahoo（外部補充與回補）
 
 **FinMind API 數據集**：12 個免費數據集
 

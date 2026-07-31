@@ -14,12 +14,20 @@ const prices = Array.from({ length: 260 }, (_, index) => {
 const quarterDates = ["2025-06-30", "2025-09-30", "2025-12-31", "2026-03-31"];
 
 function completeInputs(): SnapshotDatasetInput[] {
-  const statements = quarterDates.flatMap((date, index) => [
+  const statements = [
+    { date: "2025-03-31", type: "Revenue", value: 90 },
+    { date: "2025-03-31", type: "GrossProfit", value: 45 },
+    { date: "2025-03-31", type: "OperatingIncome", value: 18 },
+    { date: "2025-03-31", type: "IncomeAfterTaxes", value: 8 },
+    { date: "2025-03-31", type: "EPS", value: 0.8 },
+    ...quarterDates.flatMap((date, index) => [
     { date, type: "Revenue", value: 100 + index * 10 },
     { date, type: "GrossProfit", value: 50 + index * 5 },
+    { date, type: "OperatingIncome", value: 20 + index * 2 },
     { date, type: "IncomeAfterTaxes", value: 10 + index * 2 },
     { date, type: "EPS", value: 1 + index * 0.2 },
-  ]);
+    ]),
+  ];
   const balanceDates = ["2025-03-31", ...quarterDates];
   const balance = balanceDates.flatMap((date, index) => [
     { date, type: "Equity", value: 200 + index * 10 },
@@ -41,7 +49,14 @@ function completeInputs(): SnapshotDatasetInput[] {
     { dataset: "TaiwanStockCashFlowsStatement", rows: cashFlows },
     { dataset: "TaiwanStockInstitutionalInvestorsBuySell", rows: [{ date: "2026-05-18", name: "Foreign_Investor", buy: 10, sell: 5 }] },
     { dataset: "TaiwanStockMarginPurchaseShortSale", rows: [{ date: "2026-05-18", MarginPurchaseTodayBalance: 100 }] },
-    { dataset: "TaiwanStockDividend", rows: [{ date: "2025-07-01", CashEarningsDistribution: 2.5 }] },
+    {
+      dataset: "TaiwanStockDividend",
+      rows: Array.from({ length: 10 }, (_, index) => ({
+        date: `${2016 + index}-07-01`,
+        CashEarningsDistribution: 1.5 + index * 0.1,
+        ParticipateDistributionOfTotalShares: 1_000,
+      })),
+    },
     { dataset: "TaiwanStockShareholding", rows: [{ date: "2026-05-18", ForeignInvestmentSharesRatio: 40 }] },
     { dataset: "TDCCShareholding", source: "tdcc_sqlite", rows: [{ date: "2026-05-16", total_shares: 1_000, whale_ratio: 60, retail_ratio: 10 }] },
   ];
@@ -74,7 +89,11 @@ for (const testCase of cases) {
   );
   assert.equal(snapshot.quality.isMock, false);
   const eligibility = evaluateFrameworkEligibility(snapshot, testCase.framework);
-  assert.equal(eligibility.eligible, testCase.eligible, `${testCase.category} eligibility mismatch`);
+  assert.equal(
+    eligibility.eligible,
+    testCase.eligible,
+    `${testCase.category} eligibility mismatch: ${JSON.stringify(eligibility)}`,
+  );
   eligiblePasses++;
 
   if (testCase.eligible) {
@@ -105,7 +124,11 @@ const referenceSnapshot = buildStockSnapshot("9999", completeInputs(), {}, "2026
 const beforeEligibility = JSON.stringify(referenceSnapshot);
 for (const frameworkId of Object.keys(FRAMEWORK_CONTRACTS)) {
   const eligibility = evaluateFrameworkEligibility(referenceSnapshot, frameworkId);
-  assert.equal(eligibility.eligible, true, `${frameworkId} contract should accept the complete fixture`);
+  assert.equal(
+    eligibility.eligible,
+    true,
+    `${frameworkId} contract should accept the complete fixture: ${JSON.stringify(eligibility)}`,
+  );
   assert.ok(eligibility.limitations.length > 0, `${frameworkId} must declare known data limitations`);
 }
 assert.equal(JSON.stringify(referenceSnapshot), beforeEligibility, "framework eligibility must not mutate the shared snapshot");

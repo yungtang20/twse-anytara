@@ -10,6 +10,7 @@ import { buildStockSnapshot, formatSnapshotForPrompt, type SnapshotRow, type Sto
 import { validateEvidenceReport, type EvidenceSummary, type ReportClaim } from "./lib/evidenceReport";
 import { fetchWithOneRetry } from "./lib/fetchRetry";
 import { evaluateFrameworkEligibility, FRAMEWORK_CONTRACTS } from "./lib/frameworkEligibility";
+import { hasUsableLocalPriceRows, readLocalPriceRows } from "./lib/marketDataRepository";
 
 const FINMIND = "https://api.finmindtrade.com/api/v4/data";
 
@@ -123,11 +124,20 @@ export function selectFinMindDatasetNames(frameworkIds: string[] = []): string[]
 export async function fetchAnalysisSnapshot(stockId: string, signal?: AbortSignal, frameworkIds: string[] = []): Promise<AnalysisSnapshot> {
   const settings = await getDynamicSettings();
   const selectedDatasets = new Set(selectFinMindDatasetNames(frameworkIds));
+  let localPriceRows: SnapshotRow[] = [];
+  try {
+    const rows = readLocalPriceRows(stockId, 1_000);
+    if (hasUsableLocalPriceRows(rows)) {
+      localPriceRows = rows.map((row) => ({ ...row }));
+      selectedDatasets.delete("TaiwanStockPrice");
+    }
+  } catch { /* local price data is optional; FinMind remains the fallback */ }
   const results = await Promise.all(FINMIND_DATASETS.filter(({ ds }) => selectedDatasets.has(ds)).map(async (dataset) => {
     const { sd, ed } = dataset.getDates();
     return { ...dataset, result: await fetchFinMind(dataset.ds, stockId, sd, ed, settings.finmindApiKey, signal) };
   }));
   const datasetRows = Object.fromEntries(results.map(({ ds, result }) => [ds, result.rows]));
+  if (localPriceRows.length > 0) datasetRows.TaiwanStockPrice = localPriceRows.length;
   if (!datasetRows.TaiwanStockPrice) throw new Error("insufficient_data: TaiwanStockPrice");
 
   signal?.throwIfAborted();
@@ -144,6 +154,9 @@ export async function fetchAnalysisSnapshot(stockId: string, signal?: AbortSigna
     identity = { companyName: row?.stock_name || null, market: row?.market || null, industry: row?.industry_category || null };
   } catch { /* metadata is optional */ }
   const snapshot = buildStockSnapshot(stockId, [
+    ...(localPriceRows.length > 0
+      ? [{ dataset: "TaiwanStockPrice", source: "sqlite" as const, rows: localPriceRows }]
+      : []),
     ...results.map(({ ds, result }) => ({ dataset: ds, rows: result.data, error: result.error })),
     { dataset: "TDCCShareholding", source: "tdcc_sqlite" as const, rows: tdccRows },
   ], identity);

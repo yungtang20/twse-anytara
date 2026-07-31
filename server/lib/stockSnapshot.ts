@@ -4,7 +4,7 @@ export type SnapshotRow = Record<string, unknown>;
 
 export interface SnapshotSeries {
   dataset: string;
-  source: "finmind" | "tdcc_sqlite";
+  source: "finmind" | "sqlite" | "tdcc_sqlite";
   asOf: string | null;
   retrievedAt: string;
   rowCount: number;
@@ -54,7 +54,7 @@ export interface StockSnapshot {
 
 export interface SnapshotDatasetInput {
   dataset: string;
-  source?: "finmind" | "tdcc_sqlite";
+  source?: "finmind" | "sqlite" | "tdcc_sqlite";
   rows: SnapshotRow[];
   error?: string;
 }

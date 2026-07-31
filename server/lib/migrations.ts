@@ -1,3 +1,5 @@
+import { ensureCanonicalIndexes, ensureCanonicalSchema } from "./sqliteSchema";
+
 interface MigrationDb {
   exec(sql: string): unknown;
   prepare(sql: string): {
@@ -84,17 +86,14 @@ const MIGRATIONS = [
   {
     version: 4,
     name: "core_tables_indexes",
-    sql: `
-      CREATE INDEX IF NOT EXISTS idx_stock_price_date ON stock_price(date);
-      CREATE INDEX IF NOT EXISTS idx_stock_price_stock_date ON stock_price(stock_id, date DESC);
-      CREATE INDEX IF NOT EXISTS idx_stock_meta_market ON stock_meta(market);
-      CREATE INDEX IF NOT EXISTS idx_stock_institutional_stock_date ON stock_institutional(stock_id, date DESC);
-      CREATE INDEX IF NOT EXISTS idx_tdcc_shareholding_stock_date ON tdcc_shareholding(stock_id, date DESC);
-    `,
+    apply(db: MigrationDb) {
+      ensureCanonicalIndexes(db);
+    },
   },
 ] as const;
 
 export function runMigrations(db: MigrationDb): void {
+  ensureCanonicalSchema(db);
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version INTEGER PRIMARY KEY,
