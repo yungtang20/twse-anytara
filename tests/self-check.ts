@@ -33,6 +33,7 @@ import { sortTrustBuyByDays } from "../server/routes/dashboard";
 import { buildSimulatedPriceProjection } from "../server/lib/priceProjection";
 import { appViewHash, parseAppView } from "../src/lib/navigation";
 import { buildIntegratedMarketData } from "../src/lib/integratedMarketData";
+import { buildSupportResistanceLines } from "../src/lib/trendLines";
 
 const rising = Array.from({ length: 20 }, (_, index) => 100 + index);
 const syncRouteSource = readFileSync(
@@ -136,6 +137,33 @@ assert.deepEqual(
     { date: "T+5", foreign: null, trust: null, whaleRatio: null },
   ],
 );
+const trendRows: PriceData[] = Array.from({ length: 60 }, (_, index) => ({
+  date: `D${index + 1}`,
+  open: 100,
+  high: index === 5 ? 200 : index === 10 ? 190 : index === 40 ? 180 : index === 50 ? 170 : 120,
+  low: index === 6 ? 40 : index === 11 ? 45 : index === 41 ? 50 : index === 51 ? 55 : 80,
+  close: 100,
+  volume: 1_000,
+}));
+const trendLines = buildSupportResistanceLines(trendRows, 59);
+assert.deepEqual(
+  trendLines.shortResistance.slice(35, 60),
+  Array.from({ length: 25 }, (_, offset) => 185 - offset),
+);
+assert.deepEqual(
+  trendLines.shortSupport.slice(35, 60),
+  Array.from({ length: 25 }, (_, offset) => 47 + offset * 0.5),
+);
+assert.deepEqual(
+  trendLines.longResistance,
+  Array.from({ length: 60 }, (_, offset) => 210 - offset * 2),
+);
+assert.deepEqual(
+  trendLines.longSupport,
+  Array.from({ length: 60 }, (_, offset) => 34 + offset),
+);
+assert.match(klineChartSource, /label: '均線'/);
+assert.doesNotMatch(klineChartSource, /均線 MA25\/60\/200/);
 assert.match(klineChartSource, /\(\[26, 61, 201\] as const\)/);
 assert.doesNotMatch(klineChartSource, /\[30, 60, 120, 250, 512\]/);
 assert.doesNotMatch(klineChartSource, /institutionalLayer/);
@@ -143,11 +171,10 @@ assert.match(klineChartSource, /aria-pressed=\{item\.state\}/);
 assert.match(klineChartSource, /showForeign/);
 assert.match(klineChartSource, /showTrust/);
 assert.match(klineChartSource, /showShareholding/);
-assert.match(klineChartSource, /const KRONOS_SIMULATION_DAYS = 5/);
 assert.match(klineChartSource, /visibleDates=\{chartData\.map/);
-assert.doesNotMatch(klineChartSource, /Kronos 預測/);
-assert.match(klineChartSource, /simulationPoints\.length !== KRONOS_SIMULATION_DAYS/);
+assert.doesNotMatch(klineChartSource, /Kronos|kronos/);
 assert.doesNotMatch(klineChartSource, /const drift =/);
+assert.equal(klineChartSource.split("<Tooltip content={<CustomTooltip />} />").length - 1, 1);
 assert.match(klineChartSource, /label: 'MA25', color: '#fb923c'/);
 assert.match(klineChartSource, /label: 'MA60', color: '#60a5fa'/);
 assert.match(klineChartSource, /label: 'MA200', color: '#f472b6'/);

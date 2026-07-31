@@ -9,6 +9,7 @@ import type {
   InstitutionalPoint,
   ShareholdingPoint,
 } from '../lib/integratedMarketData';
+import { buildSupportResistanceLines } from '../lib/trendLines';
 
 export interface KlineOverlay {
   hLines?: { value: number; color: string; label?: string; dash?: boolean }[];
@@ -20,10 +21,7 @@ interface KlineChartProps {
   overlay?: KlineOverlay;
   institutional?: InstitutionalPoint[];
   shareholding?: ShareholdingPoint[];
-  simulationPoints?: Array<{ day: string; price: number; pct: number }>;
 }
-
-const KRONOS_SIMULATION_DAYS = 5;
 
 function LineLegend({ items }: { items: Array<{ label: string; color: string }> }) {
   return (
@@ -46,26 +44,6 @@ const CustomTooltip = ({ active, payload }: any) => {
   if (!active || !payload?.length) return null;
   const d = payload[0].payload;
   
-  if (d.isPrediction) {
-    return (
-      <div className="bg-slate-950/95 border border-purple-500/40 p-3 rounded-lg shadow-2xl font-mono text-xs text-slate-300 space-y-1.5 min-w-[190px]">
-        <div className="text-purple-400 font-bold border-b border-purple-950 pb-1 flex justify-between items-center">
-          <span>🔮 Kronos 5日模擬 ({d.date})</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-slate-500">預估價格:</span>
-          <span className="text-purple-300 font-bold">{d.close.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-slate-500">預估漲跌:</span>
-          <span className={d.predPct >= 0 ? 'text-red-400 font-bold' : 'text-emerald-400 font-bold'}>
-            {d.predPct >= 0 ? '+' : ''}{d.predPct.toFixed(2)}%
-          </span>
-        </div>
-      </div>
-    );
-  }
-
   const isUp = d.close >= d.open;
   const change = d.close - d.open;
   const changePct = d.open > 0 ? (change / d.open) * 100 : 0;
@@ -128,7 +106,6 @@ export function KlineChart({
   overlay,
   institutional = [],
   shareholding = [],
-  simulationPoints = [],
 }: KlineChartProps) {
   const [windowSize, setWindowSize] = useState<number>(61);
   const [windowOffset, setWindowOffset] = useState(0);
@@ -140,7 +117,6 @@ export function KlineChart({
   const [showSupportResistance, setShowSupportResistance] = useState(true);
   const [showRecentHighLow, setShowRecentHighLow] = useState(true);
   const [showPOC, setShowPOC] = useState(true);
-  const [showPredictions, setShowPredictions] = useState(true);
   const [showForeign, setShowForeign] = useState(true);
   const [showTrust, setShowTrust] = useState(false);
   const [showShareholding, setShowShareholding] = useState(true);
@@ -186,38 +162,10 @@ export function KlineChart({
 
   const vwapData = useMemo(() => calcVWAP(aggregatedData, 20), [aggregatedData]);
 
-  // 3. Compute Support & Resistance levels based on the current window's ending position
-  const supRes = useMemo(() => {
-    if (aggregatedData.length === 0) return { shortRes: 0, shortSup: 0, longRes: 0, longSup: 0 };
-    
-    // Short term support & resistance (15 periods)
-    const shortLen = 15;
-    const startShort = Math.max(0, endIdx - shortLen + 1);
-    const shortSlice = aggregatedData.slice(startShort, endIdx + 1);
-    const shortRes = shortSlice.length > 0 ? Math.max(...shortSlice.map(d => {
-      const v = Number(d.high);
-      return isNaN(v) ? 0 : v;
-    })) : 0;
-    const shortSup = shortSlice.length > 0 ? Math.min(...shortSlice.map(d => {
-      const v = Number(d.low);
-      return isNaN(v) ? 0 : v;
-    })) : 0;
-
-    // Long term support & resistance (60 periods)
-    const longLen = 60;
-    const startLong = Math.max(0, endIdx - longLen + 1);
-    const longSlice = aggregatedData.slice(startLong, endIdx + 1);
-    const longRes = longSlice.length > 0 ? Math.max(...longSlice.map(d => {
-      const v = Number(d.high);
-      return isNaN(v) ? 0 : v;
-    })) : 0;
-    const longSup = longSlice.length > 0 ? Math.min(...longSlice.map(d => {
-      const v = Number(d.low);
-      return isNaN(v) ? 0 : v;
-    })) : 0;
-
-    return { shortRes, shortSup, longRes, longSup };
-  }, [aggregatedData, endIdx]);
+  const supportResistanceLines = useMemo(
+    () => buildSupportResistanceLines(aggregatedData, endIdx),
+    [aggregatedData, endIdx],
+  );
 
   // 4. Construct the chart dataset
   const allChartData = useMemo(() => {
@@ -256,11 +204,23 @@ export function KlineChart({
         volma5: cleanV5,
         volma60: cleanV60,
         vwap: vwapData[i],
+        shortResistance: supportResistanceLines.shortResistance[i],
+        shortSupport: supportResistanceLines.shortSupport[i],
+        longResistance: supportResistanceLines.longResistance[i],
+        longSupport: supportResistanceLines.longSupport[i],
         isUp,
-        isPrediction: false,
       };
     });
-  }, [aggregatedData, ma25, ma60, ma200, volma5, volma60, vwapData]);
+  }, [
+    aggregatedData,
+    ma25,
+    ma60,
+    ma200,
+    volma5,
+    volma60,
+    vwapData,
+    supportResistanceLines,
+  ]);
 
   // Slice visible data
   const visibleChartData = useMemo(() => {
@@ -312,45 +272,7 @@ export function KlineChart({
     };
   }, [visibleChartData]);
 
-  // 7. Append Kronos 5-day prediction to the end of the chart dataset if requested
-  const chartData = useMemo(() => {
-    if (
-      !showPredictions
-      || visibleChartData.length === 0
-      || windowOffset > 0
-      || simulationPoints.length !== KRONOS_SIMULATION_DAYS
-    ) {
-      return visibleChartData;
-    }
-
-    const lastReal = visibleChartData[visibleChartData.length - 1];
-    const predictions = simulationPoints.map((point) => ({
-        date: point.day,
-        open: null,
-        high: null,
-        low: null,
-        close: point.price,
-        volume: 0,
-        color: '#a855f7',
-        boxRange: null,
-        wickRange: null,
-        isPrediction: true,
-        predPct: point.pct,
-        kronosPrediction: point.price,
-      }));
-
-    // Connect last real item to the first prediction item
-    const connectedReal = {
-      ...lastReal,
-      kronosPrediction: lastReal.close
-    };
-
-    return [
-      ...visibleChartData.slice(0, -1),
-      connectedReal,
-      ...predictions
-    ];
-  }, [visibleChartData, showPredictions, windowOffset, simulationPoints]);
+  const chartData = visibleChartData;
 
   // Calculate maximum volume of the visible dataset to guarantee 100% correct scaling of Y-Axis in Recharts
   const maxVolume = useMemo(() => {
@@ -361,9 +283,7 @@ export function KlineChart({
   }, [chartData]);
 
   // Bar sizes to align K-Line candle bodies and Volume bars perfectly
-  const currentWindowSize = showPredictions && windowOffset === 0
-    ? windowSize + KRONOS_SIMULATION_DAYS
-    : windowSize;
+  const currentWindowSize = windowSize;
   const calculatedBarSize = useMemo(() => {
     if (currentWindowSize <= 35) return 14;
     if (currentWindowSize <= 65) return 8;
@@ -377,13 +297,12 @@ export function KlineChart({
       {/* ── Toolbar ── */}
       <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-800 bg-slate-950/40 p-2 text-[10px]">
         {[
-          { label: '均線 MA25/60/200', state: showMAs, set: setShowMAs, color: 'text-orange-400' },
+          { label: '均線', state: showMAs, set: setShowMAs, color: 'text-orange-400' },
           { label: '量能均線', state: showVolMAs, set: setShowVolMAs, color: 'text-cyan-400' },
           { label: 'VWAP', state: showVWAP, set: setShowVWAP, color: 'text-yellow-400' },
           { label: '最密成交價', state: showPOC, set: setShowPOC, color: 'text-rose-400' },
           { label: '長短期撐壓', state: showSupportResistance, set: setShowSupportResistance, color: 'text-emerald-400' },
           { label: '波段高低', state: showRecentHighLow, set: setShowRecentHighLow, color: 'text-sky-400' },
-          { label: 'Kronos 5日模擬', state: showPredictions, set: setShowPredictions, color: 'text-purple-400' },
           { label: '千戶大戶', state: showShareholding, set: setShowShareholding, color: 'text-cyan-300' },
         ].map((item) => (
           <button
@@ -489,12 +408,20 @@ export function KlineChart({
       <div className="p-3 select-none flex-1 min-h-[420px] flex flex-col gap-2">
         {/* Main Price Chart */}
         <div className="h-[320px] relative shrink-0">
-          {showMAs && (
+          {(showMAs || showSupportResistance) && (
             <LineLegend
               items={[
-                { label: 'MA25', color: '#fb923c' },
-                { label: 'MA60', color: '#60a5fa' },
-                { label: 'MA200', color: '#f472b6' },
+                ...(showMAs ? [
+                  { label: 'MA25', color: '#fb923c' },
+                  { label: 'MA60', color: '#60a5fa' },
+                  { label: 'MA200', color: '#f472b6' },
+                ] : []),
+                ...(showSupportResistance ? [
+                  { label: '短壓25', color: '#ef4444' },
+                  { label: '短撐25', color: '#10b981' },
+                  { label: '長壓60', color: '#dc2626' },
+                  { label: '長撐60', color: '#059669' },
+                ] : []),
               ]}
             />
           )}
@@ -542,20 +469,6 @@ export function KlineChart({
                 <Line type="monotone" dataKey="vwap" stroke="#eab308" dot={false} strokeWidth={1.5} name="VWAP" connectNulls={false} />
               )}
 
-              {/* Kronos Prediction path line */}
-              {showPredictions && windowOffset === 0 && (
-                <Line 
-                  type="monotone" 
-                  dataKey="kronosPrediction" 
-                  stroke="#a855f7" 
-                  strokeWidth={2} 
-                  strokeDasharray="4 4" 
-                  dot={{ r: 3, stroke: '#a855f7', fill: '#0f172a', strokeWidth: 1 }}
-                  name="Kronos 5日模擬"
-                  connectNulls={true} 
-                />
-              )}
-
               {/* POC Reference Line */}
               {pocPrice !== null && (
                 <ReferenceLine 
@@ -567,36 +480,48 @@ export function KlineChart({
                 />
               )}
 
-              {/* Support & Resistance Levels */}
-              {showSupportResistance && supRes.shortRes > 0 && (
+              {/* Two-point support and resistance trend lines */}
+              {showSupportResistance && (
                 <>
-                  <ReferenceLine 
-                    y={supRes.shortRes} 
-                    stroke="#ef4444" 
-                    strokeDasharray="4 3" 
+                  <Line
+                    type="linear"
+                    dataKey="shortResistance"
+                    stroke="#ef4444"
+                    strokeDasharray="4 3"
                     strokeWidth={1}
-                    label={{ value: `短期壓力: ${supRes.shortRes.toFixed(1)}`, fill: '#ef4444', fontSize: 8, position: 'left' }} 
+                    dot={false}
+                    name="短期壓力（25日高點連線）"
+                    connectNulls
                   />
-                  <ReferenceLine 
-                    y={supRes.shortSup} 
-                    stroke="#10b981" 
-                    strokeDasharray="4 3" 
+                  <Line
+                    type="linear"
+                    dataKey="shortSupport"
+                    stroke="#10b981"
+                    strokeDasharray="4 3"
                     strokeWidth={1}
-                    label={{ value: `短期支撐: ${supRes.shortSup.toFixed(1)}`, fill: '#10b981', fontSize: 8, position: 'left' }} 
+                    dot={false}
+                    name="短期支撐（25日低點連線）"
+                    connectNulls
                   />
-                  <ReferenceLine 
-                    y={supRes.longRes} 
-                    stroke="#dc2626" 
-                    strokeDasharray="1 3" 
+                  <Line
+                    type="linear"
+                    dataKey="longResistance"
+                    stroke="#dc2626"
+                    strokeDasharray="1 3"
                     strokeWidth={1.5}
-                    label={{ value: `長期壓力: ${supRes.longRes.toFixed(1)}`, fill: '#dc2626', fontSize: 8, position: 'left' }} 
+                    dot={false}
+                    name="長期壓力（60日高點連線）"
+                    connectNulls
                   />
-                  <ReferenceLine 
-                    y={supRes.longSup} 
-                    stroke="#059669" 
-                    strokeDasharray="1 3" 
+                  <Line
+                    type="linear"
+                    dataKey="longSupport"
+                    stroke="#059669"
+                    strokeDasharray="1 3"
                     strokeWidth={1.5}
-                    label={{ value: `長期支撐: ${supRes.longSup.toFixed(1)}`, fill: '#059669', fontSize: 8, position: 'left' }} 
+                    dot={false}
+                    name="長期支撐（60日低點連線）"
+                    connectNulls
                   />
                 </>
               )}
@@ -656,8 +581,6 @@ export function KlineChart({
                 width={48} 
                 tickFormatter={v => v >= 1000 ? `${(v/1000).toFixed(0)}K` : v}
               />
-              <Tooltip content={<CustomTooltip />} />
-              
               {/* Volume Bars aligned perfectly with candles using the exact same calculatedBarSize */}
               <Bar dataKey="volume" barSize={calculatedBarSize} fill="#ef4444">
                 {chartData.map((e, i) => (
@@ -675,6 +598,7 @@ export function KlineChart({
             </ComposedChart>
           </ResponsiveContainer>
         </div>
+
       </div>
       <IntegratedMarketPanels
         visibleDates={chartData.map((row) => row.date)}

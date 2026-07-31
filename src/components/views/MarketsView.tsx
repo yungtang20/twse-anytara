@@ -9,7 +9,6 @@ import { SRPanel } from "./SRPanel";
 import { MAPanel } from "./MAPanel";
 import { ChipsPanel } from "./ChipsPanel";
 import { PatternPanel } from "./PatternPanel";
-import { PredictionPanel } from "./PredictionPanel";
 
 const getPrevTradingDayStr = (dateStr: string) => {
   const d = new Date(dateStr);
@@ -476,7 +475,6 @@ export function MarketsView() {
           </div>
           <div className="space-y-3">
             <ChipsPanel stockId={stock.id} />
-            <PredictionPanel stockId={stock.id} />
           </div>
         </div>
 
