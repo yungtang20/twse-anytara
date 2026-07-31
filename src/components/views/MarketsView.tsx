@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Search, RotateCw, AlertTriangle, CheckCircle, ArrowUpRight, ArrowDownRight, Terminal as TerminalIcon, Database, ChartLine } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
+import { Search, AlertTriangle, Terminal as TerminalIcon, ChartLine } from "lucide-react";
 import { MarketDetailDashboard } from '../MarketDetailDashboard';
-import { normalizeVolumes } from '../../lib/utils';
 
 import { StockData } from '../../types/stock';
 import { SRPanel } from "./SRPanel";
@@ -10,107 +8,10 @@ import { MAPanel } from "./MAPanel";
 import { ChipsPanel } from "./ChipsPanel";
 import { PatternPanel } from "./PatternPanel";
 
-const getPrevTradingDayStr = (dateStr: string) => {
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return dateStr;
-  d.setDate(d.getDate() - 1);
-  if (d.getDay() === 0) { // Sunday, go to Friday
-    d.setDate(d.getDate() - 2);
-  } else if (d.getDay() === 6) { // Saturday, go to Friday
-    d.setDate(d.getDate() - 1);
-  }
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-};
-
 export function MarketsView() {
   const [ticker, setTicker] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [stock, setStock] = useState<StockData | null>(null);
-  const [activeSubTab, setActiveSubTab] = useState<'terminal' | 'kline'>('terminal');
-  
-  // Database Date states
-  const [latestDate, setLatestDate] = useState('');
-  const [updateLogs, setUpdateLogs] = useState<string[]>([]);
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [showConsole, setShowConsole] = useState(false);
-
-  // Supabase states for direct data queries
-  const [supabaseLog, setSupabaseLog] = useState<string>('');
-  const [dbLoading, setDbLoading] = useState(false);
-  const [dbStatus, setDbStatus] = useState<{
-    connected: boolean;
-    tableName: string;
-    rowCount: number | null;
-    metaSource: string;
-  }>({
-    connected: false,
-    tableName: 'stock_meta',
-    rowCount: null,
-    metaSource: '載入中...'
-  });
-
-  useEffect(() => {
-    let activeInterval: ReturnType<typeof setInterval> | null = null;
-    let disposed = false;
-
-    const checkStatus = async () => {
-      try {
-        const res = await fetch("/api/sync-status").then(r => r.json());
-        if (disposed) return;
-        if (res.success) {
-          if (res.latestSupabaseDate) {
-            setLatestDate(res.latestSupabaseDate);
-          }
-          if (res.running) {
-            setIsUpdating(true);
-            setShowConsole(true);
-            if (res.logs && res.logs.length > 0) {
-              setUpdateLogs(res.logs);
-            }
-
-            activeInterval = setInterval(async () => {
-              try {
-                const pollRes = await fetch("/api/sync-status").then(r => r.json());
-                if (pollRes.success) {
-                  if (pollRes.logs && pollRes.logs.length > 0) {
-                    setUpdateLogs(pollRes.logs);
-                  }
-                  if (!pollRes.running) {
-                    if (pollRes.latestSupabaseDate) {
-                      setLatestDate(pollRes.latestSupabaseDate);
-                    }
-                    setIsUpdating(false);
-                    if (activeInterval) {
-                      clearInterval(activeInterval);
-                      activeInterval = null;
-                    }
-                    setTimeout(() => setShowConsole(false), 3000);
-                  }
-                }
-              } catch (e) {
-                console.error("Error polling sync-status in effect:", e);
-              }
-            }, 1500);
-          }
-        }
-      } catch (e) {
-        console.error("Error checking sync-status on mount:", e);
-      }
-    };
-
-    checkStatus();
-
-    return () => {
-      disposed = true;
-      if (activeInterval) {
-        clearInterval(activeInterval);
-        activeInterval = null;
-      }
-    };
-  }, []);
 
   useEffect(() => {
     if (searchQuery) {
@@ -119,21 +20,13 @@ export function MarketsView() {
   }, [searchQuery]);
 
   const querySupabase = async (stockId: string) => {
-    setDbLoading(true);
-    setSupabaseLog(`[資料請求] 正在向伺服器 API 請求個股數據: ${stockId}...`);
-    
     try {
-      // 1. Fetch from unified API
-      setSupabaseLog(prev => prev + `\n[連線] 呼叫 /api/stock/${stockId}/quote...`);
-      
       const quoteRes = await fetch(`/api/stock/${stockId}/quote`).then(r => r.json());
       if (!quoteRes || !quoteRes.success || !quoteRes.data) {
           throw new Error('API 返回錯誤或無資料');
       }
       
       const quote = quoteRes.data;
-      setSupabaseLog(prev => prev + `\n[對接匹配] 尋獲個股 metadata:\n> 代號: ${quote.stock_id}\n> 名稱: ${quote.name}\n> 市場: ${quote.market || 'TSE'}`);
-      
       let mergedData: any = {
         id: quote.stock_id,
         name: quote.name || '未知',
@@ -154,11 +47,9 @@ export function MarketsView() {
         integratedPressures: []
       };
       
-      setSupabaseLog(prev => prev + `\n[資料請求] 正在向伺服器 API 請求歷史數據...`);
       const histRes = await fetch(`/api/stock/${stockId}/history?days=3`).then(r => r.json());
       if (histRes && histRes.success && histRes.data && histRes.data.length > 0) {
           const priceData = histRes.data; // Note: API returns normalized volume
-          setSupabaseLog(prev => prev + `\n[價格對接成功] 成功從 API 載入 ${priceData.length} 筆歷史交易資訊。`);
           
           const latestPrice = priceData.at(-1);
           const prevPriceRec = priceData.at(-2) || latestPrice;
@@ -166,8 +57,6 @@ export function MarketsView() {
           if (!latestPrice || !prevPriceRec || !prev2PriceRec) {
             throw new Error('歷史價格筆數不足');
           }
-
-          setSupabaseLog(prev => prev + `\n[對照載入] 最新交易日期: ${latestPrice.date}，收盤: ${latestPrice.close}，開盤: ${latestPrice.open}，最高: ${latestPrice.high}，最低: ${latestPrice.low}，成交量: ${latestPrice.volume}`);
 
           const changePrev = Number(prevPriceRec.close || 0) - Number(prev2PriceRec.close || prevPriceRec.close);
 
@@ -186,27 +75,11 @@ export function MarketsView() {
           mergedData.prevVolDiff = mergedData.prevVolume - prev2Vol;
       }
       
-      setDbStatus({
-        connected: true,
-        tableName: 'API: quote, history',
-        rowCount: 1,
-        metaSource: '已驗證'
-      });
-      
-      setSupabaseLog(prev => prev + '\n[解析完成] 所有資料驗證無誤，渲染引擎啟動...');
       setStock(mergedData);
       
     } catch (err: any) {
-      setSupabaseLog(prev => prev + `\n[系統崩潰] 連線失敗或找不到該股: ${err.message}`);
-      setDbStatus({
-        connected: false,
-        tableName: 'N/A',
-        rowCount: 0,
-        metaSource: '無法取得資料'
-      });
+      console.error(`Stock query failed for ${stockId}:`, err);
       setStock(null);
-    } finally {
-      setDbLoading(false);
     }
   };
 
@@ -222,55 +95,14 @@ export function MarketsView() {
     setSearchQuery(code);
   };
 
-  const triggerDailyUpdate = async () => {
-    if (isUpdating) return;
-    
-    setIsUpdating(true);
-    setShowConsole(true);
-    setUpdateLogs(['[系統] 正在送達 Supabase 雲端同步指令...']);
-
-    try {
-      const res = await fetch("/api/trigger-update", { method: "POST" }).then(r => r.json());
-      
-      // Start polling for real-time logs
-      const pollInterval = setInterval(async () => {
-        try {
-          const pollRes = await fetch("/api/sync-status").then(r => r.json());
-          if (pollRes.success) {
-            if (pollRes.logs && pollRes.logs.length > 0) {
-              setUpdateLogs(pollRes.logs);
-            }
-            if (!pollRes.running) {
-              clearInterval(pollInterval);
-              if (pollRes.latestSupabaseDate) {
-                setLatestDate(pollRes.latestSupabaseDate);
-              }
-              setIsUpdating(false);
-              setTimeout(() => setShowConsole(false), 3000);
-            }
-          }
-        } catch (e) {
-          console.error("Error polling sync-status manually:", e);
-        }
-      }, 1500);
-
-    } catch (e: any) {
-      setUpdateLogs(prev => [...prev, `${new Date().toLocaleTimeString()} [錯誤] 啟動背景更新時發生例外: ${e.message}`]);
-      setIsUpdating(false);
-    }
-  };
-
-  // Center alignment for Header Box in CSS style
   const getASCIIHeaderBox = () => {
-    const totalWidth = 63;
-    const contentStr = stock ? `🚀 ${stock.id} ${stock.name}` : `🚀 Loading...`;
-    const totalSpaces = totalWidth - contentStr.length;
-    const leftSpaces = Math.max(1, Math.floor(totalSpaces / 2));
-    const rightSpaces = Math.max(1, totalWidth - contentStr.length - leftSpaces);
-    
+    if (!stock) return null;
     return (
-      <div className="font-mono text-center tracking-wide select-none text-cyan-400 font-bold text-[11px] sm:text-[14px] md:text-[16px] leading-tight whitespace-pre overflow-x-auto bg-slate-950 p-2 sm:p-4 rounded-t-xl border-t border-x border-slate-800">
-        {`╔${"═".repeat(totalWidth)}╗\n║${" ".repeat(leftSpaces)}${contentStr}${" ".repeat(rightSpaces)}║\n╚${"═".repeat(totalWidth)}╝`}
+      <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 rounded-t-xl border-x border-t border-slate-800 bg-slate-950 px-3 py-3 text-center font-mono font-bold tracking-wide">
+        <span className="text-sm text-cyan-400 sm:text-base">{stock.id} {stock.name}</span>
+        <span className="text-[11px] text-slate-400 sm:text-sm">
+          Supabase 資料庫日期 <strong className="text-emerald-400">{stock.lastDate || '無資料'}</strong>
+        </span>
       </div>
     );
   };
@@ -285,7 +117,7 @@ export function MarketsView() {
             AI 精準個股終端
           </h2>
           <p className="text-slate-450 text-xs sm:text-sm">
-            輸入上市櫃個股代號，即時編譯 5 大決策要素與 AI 模擬預估圖表。
+            輸入上市櫃個股代號，即時載入 Supabase 個股決策資料與整合圖表。
           </p>
         </div>
 
@@ -309,90 +141,13 @@ export function MarketsView() {
         </form>
       </div>
 
-      {/* 2. 資料庫更新警報與日誌 */}
-      <div className="flex flex-col gap-3">
-        {(!latestDate || latestDate < getPrevTradingDayStr(new Date().toISOString())) ? (
-          <div className="bg-amber-950/40 border border-amber-900/60 rounded-xl p-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-amber-500/10 text-amber-500 shrink-0">
-                <AlertTriangle size={20} />
-              </div>
-              <div className="space-y-0.5">
-                <p className="text-sm font-semibold text-amber-300">Supabase 最新日期為 {latestDate || '尚無資料'}</p>
-                <p className="text-xs text-amber-400">雲端行情落後官方交易所；此操作不會讀寫本地 SQLite。</p>
-              </div>
-            </div>
-            <button
-              onClick={triggerDailyUpdate}
-              disabled={isUpdating}
-              className="text-xs shrink-0 font-bold bg-amber-600 hover:bg-amber-500 text-slate-950 px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-md self-start sm:self-center disabled:opacity-50"
-              id="btn-daily-update"
-            >
-              <RotateCw className={`w-3.5 h-3.5 ${isUpdating ? 'animate-spin' : ''}`} />
-              更新 Supabase
-            </button>
-          </div>
-        ) : (
-          <div className="bg-emerald-950/40 border border-emerald-900/60 rounded-xl p-2.5 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 shrink-0">
-                <CheckCircle size={20} />
-              </div>
-              <div className="space-y-0.5">
-                <p className="text-sm font-semibold text-emerald-300">Supabase 最新日期已同步至 {latestDate}</p>
-                <p className="text-xs text-emerald-400/80">
-                  雲端行情已直接由 TWSE／TPEX 更新；本地 SQLite 維持獨立。
-                </p>
-              </div>
-            </div>
-            <span className="text-[10px] uppercase font-bold tracking-wider font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded shadow-sm">
-              UP-TO-DATE
-            </span>
-          </div>
-        )}
-
-        {/* 模擬更新控制台日誌 */}
-        <AnimatePresence>
-          {showConsole && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              className="bg-slate-950 border border-slate-850 rounded-xl overflow-hidden shadow-2xl font-mono"
-            >
-              <div className="bg-slate-900 py-2.5 px-4 flex items-center justify-between border-b border-slate-850 text-xs text-slate-400">
-                <span className="flex items-center gap-1.5 font-bold">
-                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
-                  STATION DATA-SYNC CONSOLE
-                </span>
-                <span className="text-xs">SYSTEM CLOCK: {new Date().toLocaleTimeString()}</span>
-              </div>
-              <div className="p-4 overflow-y-auto max-h-[160px] text-xs space-y-1.5 scrollbar-thin scrollbar-thumb-slate-800 scrollbar-track-slate-950">
-                {updateLogs.map((log, index) => (
-                  <div key={index} className="text-slate-350 flex gap-2">
-                    <span className="text-cyan-500 shrink-0">&gt;</span>
-                    {log.includes('完成') ? (
-                      <span className="text-emerald-400 font-bold">{log}</span>
-                    ) : log.includes('下載') ? (
-                      <span className="text-slate-300">{log}</span>
-                    ) : (
-                      <span className="text-slate-450">{log}</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* 3. 股票分析資訊總頁 (Terminal Classic Style) */}
+      {/* 2. 股票分析資訊總頁 (Terminal Classic Style) */}
       {!searchQuery ? (
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center min-h-[180px]">
           <ChartLine className="text-cyan-500 mb-4 animate-pulse" size={48} />
           <h3 className="text-white text-lg font-bold mb-2 tracking-widest uppercase font-mono">[ 歡迎使用個股決策終端 ]</h3>
           <p className="text-slate-400 text-center text-sm max-w-md">
-            請在上方搜尋欄位中輸入上市櫃股票代號（例如: <span className="text-cyan-400 font-mono">2330</span>），即可一鍵編譯五大決策要素與 AI 模擬預估。
+            請在上方搜尋欄位中輸入上市櫃股票代號（例如: <span className="text-cyan-400 font-mono">2330</span>），即可載入個股決策資料。
           </p>
         </div>
       ) : !stock ? (

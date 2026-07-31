@@ -1,0 +1,38 @@
+name: Supabase market sync
+
+on:
+  schedule:
+    # 18:00 Asia/Taipei, Monday through Friday (Taiwan has no DST).
+    - cron: "0 10 * * 1-5"
+  workflow_dispatch:
+
+concurrency:
+  group: supabase-cloud-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync-market:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_SYNC_MAX_DAYS: "14"
+      SYNC_SCOPE: market
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Validate cloud credentials
+        shell: bash
+        run: |
+          test -n "$SUPABASE_URL" || { echo "Missing SUPABASE_URL"; exit 1; }
+          test -n "$SUPABASE_SERVICE_ROLE_KEY" || { echo "Missing SUPABASE_SERVICE_ROLE_KEY"; exit 1; }
+      - name: Sync TWSE and TPEX market data
+        run: npx tsx scripts/syncData.ts

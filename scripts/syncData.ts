@@ -12,6 +12,11 @@ const INITIAL_INSTITUTIONAL_DATES = 60;
 const HARD_BUDGET_BYTES = 500 * 1024 * 1024;
 const WRITE_CEILING_BYTES = 450 * 1024 * 1024;
 const DRY_RUN = process.argv.includes("--dry-run");
+const SYNC_SCOPE = process.env.SYNC_SCOPE || "all";
+
+if (!["all", "market", "tdcc"].includes(SYNC_SCOPE)) {
+  throw new Error(`Unsupported SYNC_SCOPE: ${SYNC_SCOPE}`);
+}
 
 interface MarketTable {
   title?: string;
@@ -624,61 +629,71 @@ async function finishSyncRun(
   }).eq("id", id);
 }
 
-async function run(): Promise<void> {
+async function prepareCloudWrite(): Promise<void> {
+  if (DRY_RUN) return;
+  const deletedRows = await enforceRetention();
+  const storage = await getStorageStatus();
+  console.log(
+    `[Sync] Pre-sync retention deleted ${deletedRows} rows; database size ` +
+    `${(storage.database_bytes / 1024 / 1024).toFixed(1)} MiB.`,
+  );
+  if (storage.database_bytes >= WRITE_CEILING_BYTES) {
+    throw new Error("Supabase is at or above the 450 MiB write ceiling; prune before uploading");
+  }
+}
+
+async function verifyCloudBudget(): Promise<number> {
+  const deletedRows = await enforceRetention();
+  if (DRY_RUN) return deletedRows;
+  const storage = await getStorageStatus();
+  if (storage.database_bytes >= HARD_BUDGET_BYTES) {
+    throw new Error(`Supabase exceeded 500 MiB after retention: ${storage.database_bytes} bytes`);
+  }
+  console.log(
+    `[Sync] Retention deleted ${deletedRows} rows; database size ` +
+    `${(storage.database_bytes / 1024 / 1024).toFixed(1)} MiB.`,
+  );
+  return deletedRows;
+}
+
+async function syncMarketScope(
+  totals: { prices: number; institutional: number; meta: number },
+): Promise<void> {
   const latestBefore = await getLatestCloudDate();
   const maxDays = Number.parseInt(process.env.SUPABASE_SYNC_MAX_DAYS || "14", 10);
   const dates = listPendingCalendarDates(latestBefore, taipeiToday(), maxDays);
   console.log(`[Sync] Supabase latest date before sync: ${latestBefore || "none"}`);
-
-  if (!DRY_RUN) {
-    const preDeleted = await enforceRetention();
-    const before = await getStorageStatus();
-    console.log(
-      `[Sync] Pre-sync retention deleted ${preDeleted} rows; database size ` +
-      `${(before.database_bytes / 1024 / 1024).toFixed(1)} MiB.`,
-    );
-    if (before.database_bytes >= WRITE_CEILING_BYTES) {
-      throw new Error("Supabase is at or above the 450 MiB write ceiling; prune before uploading");
-    }
+  for (const date of dates) {
+    const records = await syncDate(date);
+    totals.prices += records.prices.length;
+    totals.institutional += records.institutional.length;
+    totals.meta += records.meta.length;
   }
+  const priceBackfill = await backfillPriceHistory();
+  totals.prices += priceBackfill.prices;
+  totals.meta += priceBackfill.meta;
+  totals.meta += await syncFinMindMetadata();
+  totals.institutional += await backfillInstitutionalHistory();
+  await syncDividendsCloud();
+}
 
+async function run(): Promise<void> {
+  await prepareCloudWrite();
   const runId = await createSyncRun();
   const totals = { prices: 0, institutional: 0, meta: 0 };
   try {
-    for (const date of dates) {
-      const records = await syncDate(date);
-      totals.prices += records.prices.length;
-      totals.institutional += records.institutional.length;
-      totals.meta += records.meta.length;
-    }
-    const priceBackfill = await backfillPriceHistory();
-    totals.prices += priceBackfill.prices;
-    totals.meta += priceBackfill.meta;
-    totals.meta += await syncFinMindMetadata();
-    totals.institutional += await backfillInstitutionalHistory();
-    await syncTdccCloud();
-    await syncDividendsCloud();
-    const deletedRows = await enforceRetention();
-    if (!DRY_RUN) {
-      const after = await getStorageStatus();
-      if (after.database_bytes >= HARD_BUDGET_BYTES) {
-        throw new Error(`Supabase exceeded 500 MiB after retention: ${after.database_bytes} bytes`);
-      }
-      console.log(
-        `[Sync] Retention deleted ${deletedRows} rows; database size ` +
-        `${(after.database_bytes / 1024 / 1024).toFixed(1)} MiB.`,
-      );
-    }
-    await finishSyncRun(runId, "success", totals, "Official TWSE/TPEX cloud sync completed");
+    if (SYNC_SCOPE !== "tdcc") await syncMarketScope(totals);
+    if (SYNC_SCOPE !== "market") await syncTdccCloud();
+    await verifyCloudBudget();
+    await finishSyncRun(runId, "success", totals, `Cloud ${SYNC_SCOPE} sync completed`);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     await finishSyncRun(runId, "failed", totals, message);
     throw error;
   }
-
   const latestAfter = await getLatestCloudDate();
   console.log(
-    `[Sync] ${DRY_RUN ? "Validated" : "Uploaded"} ${totals.prices} prices and ` +
+    `[Sync] ${SYNC_SCOPE} ${DRY_RUN ? "validated" : "uploaded"} ${totals.prices} prices and ` +
     `${totals.institutional} institutional rows; latest date ${latestAfter || "none"}.`,
   );
 }

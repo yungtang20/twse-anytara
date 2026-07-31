@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Cell
 } from 'recharts';
@@ -23,6 +23,21 @@ interface KlineChartProps {
   shareholding?: ShareholdingPoint[];
 }
 
+interface CandleDatum extends PriceData {
+  color: string;
+  candleRange: [number, number];
+  previousClose: number;
+  vwap: number | null;
+}
+
+interface CandlestickShapeProps {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  payload?: CandleDatum;
+}
+
 function LineLegend({ items }: { items: Array<{ label: string; color: string }> }) {
   return (
     <div className="pointer-events-none absolute right-2 top-1 z-10 flex flex-wrap items-center gap-2 rounded bg-slate-950/80 px-2 py-1 font-mono text-[9px] text-slate-300">
@@ -39,52 +54,74 @@ function LineLegend({ items }: { items: Array<{ label: string; color: string }> 
   );
 }
 
-// Custom Tooltip with Lots conversion
-const CustomTooltip = ({ active, payload }: any) => {
-  if (!active || !payload?.length) return null;
-  const d = payload[0].payload;
-  
-  const isUp = d.close >= d.open;
-  const change = d.close - d.open;
-  const changePct = d.open > 0 ? (change / d.open) * 100 : 0;
-  
+function CandlestickShape({
+  x = 0,
+  y = 0,
+  width = 0,
+  height = 0,
+  payload,
+}: CandlestickShapeProps) {
+  if (!payload || payload.high <= payload.low) return null;
+  const priceToY = (price: number) => (
+    y + ((payload.high - price) / (payload.high - payload.low)) * height
+  );
+  const openY = priceToY(payload.open);
+  const closeY = priceToY(payload.close);
+  const bodyTop = Math.min(openY, closeY);
+  const bodyHeight = Math.max(1.5, Math.abs(closeY - openY));
+  const centerX = x + width / 2;
   return (
-    <div className="bg-slate-950/95 border border-slate-700 p-3 rounded-lg shadow-2xl font-mono text-xs text-slate-300 space-y-1 min-w-[190px]">
-      <div className="text-slate-400 font-bold border-b border-slate-800 pb-1">{d.date}</div>
-      <div className="space-y-0.5">
-        {[
-          ['開盤', d.open, 'text-slate-200'],
-          ['最高', d.high, 'text-red-400'],
-          ['最低', d.low, 'text-emerald-400'],
-          ['收盤', d.close, isUp ? 'text-red-400' : 'text-emerald-400']
-        ].map(([l, v, c]) => (
-          <div key={l as string} className="flex justify-between">
-            <span className="text-slate-500">{l}:</span>
-            <span className={`font-bold ${c}`}>{(v as number).toFixed(2)}</span>
-          </div>
-        ))}
-        <div className="flex justify-between border-t border-slate-800 pt-1">
-          <span className="text-slate-500">漲跌:</span>
-          <span className={change >= 0 ? 'text-red-400 font-bold' : 'text-emerald-400 font-bold'}>
-            {change >= 0 ? '+' : ''}{change.toFixed(2)} ({changePct >= 0 ? '+' : ''}{changePct.toFixed(2)}%)
-          </span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-slate-500">成交量:</span>
-          <span className="text-slate-100 font-semibold">
-            {Math.floor(d.volume / 1000).toLocaleString()} 張 ({d.volume.toLocaleString()} 股)
-          </span>
-        </div>
-        {d.vwap !== undefined && d.vwap !== null && (
-          <div className="flex justify-between border-t border-slate-800 pt-1 text-[10px]">
-            <span className="text-slate-500">VWAP:</span>
-            <span className="text-yellow-400 font-medium">{d.vwap.toFixed(2)}</span>
-          </div>
+    <g>
+      <line
+        x1={centerX}
+        x2={centerX}
+        y1={y}
+        y2={y + height}
+        stroke={payload.color}
+        strokeWidth={1}
+      />
+      <rect
+        x={x}
+        y={bodyTop - (bodyHeight === 1.5 ? 0.75 : 0)}
+        width={Math.max(1, width)}
+        height={bodyHeight}
+        fill={payload.color}
+      />
+    </g>
+  );
+}
+
+function MarketDataStrip({ datum }: { datum?: CandleDatum }) {
+  if (!datum) return <div className="h-7 border-b border-slate-800" />;
+  const change = datum.close - datum.previousClose;
+  const changePct = datum.previousClose > 0 ? (change / datum.previousClose) * 100 : 0;
+  const directionClass = change >= 0 ? 'text-red-400' : 'text-emerald-400';
+  const sign = change >= 0 ? '+' : '';
+  return (
+    <div
+      aria-live="polite"
+      className="h-7 overflow-x-auto border-b border-slate-800 bg-slate-950/70 px-2 font-mono text-[10px] text-slate-400"
+    >
+      <div className="flex h-full min-w-max items-center gap-2">
+        <strong className="text-slate-200">{datum.date}</strong>
+        <span>開 <b className="text-slate-100">{datum.open.toFixed(2)}</b></span>
+        <span>高 <b className="text-red-400">{datum.high.toFixed(2)}</b></span>
+        <span>低 <b className="text-emerald-400">{datum.low.toFixed(2)}</b></span>
+        <span>收 <b className="text-slate-100">{datum.close.toFixed(2)}</b></span>
+        <span className={directionClass}>
+          漲跌 <b>{sign}{change.toFixed(2)}</b>
+        </span>
+        <span className={directionClass}>
+          漲幅 <b>{sign}{changePct.toFixed(2)}%</b>
+        </span>
+        <span>量 <b className="text-slate-100">{Math.floor(datum.volume / 1000).toLocaleString()} 張</b></span>
+        {datum.vwap !== null && (
+          <span>VWAP <b className="text-yellow-400">{datum.vwap.toFixed(2)}</b></span>
         )}
       </div>
     </div>
   );
-};
+}
 
 // Rolling VWAP (Volume Weighted Average Price) over 20-day period
 function calcVWAP(data: PriceData[], period = 20): (number | null)[] {
@@ -120,6 +157,7 @@ export function KlineChart({
   const [showForeign, setShowForeign] = useState(true);
   const [showTrust, setShowTrust] = useState(false);
   const [showShareholding, setShowShareholding] = useState(true);
+  const [hoveredDatum, setHoveredDatum] = useState<CandleDatum | null>(null);
 
   const aggregatedData = data;
 
@@ -178,8 +216,7 @@ export function KlineChart({
 
       const isUp = close >= open;
       const color = isUp ? '#ef4444' : '#22c55e';
-      const upper = Math.max(open, close);
-      const lower = Math.min(open, close);
+      const previousClose = i > 0 ? Number(aggregatedData[i - 1].close || close) : close;
       
       const v5 = volma5[i];
       const v60 = volma60[i];
@@ -194,10 +231,8 @@ export function KlineChart({
         close,
         volume: isNaN(vol) ? 0 : vol,
         color,
-        upper,
-        lower,
-        boxRange: [lower, upper],
-        wickRange: [low, high],
+        candleRange: [low, high] as [number, number],
+        previousClose,
         ma25: ma25[i],
         ma60: ma60[i],
         ma200: ma200[i],
@@ -273,6 +308,28 @@ export function KlineChart({
   }, [visibleChartData]);
 
   const chartData = visibleChartData;
+  const priceDomain = useMemo<[number, number]>(() => {
+    if (chartData.length === 0) return [0, 1];
+    const lowest = Math.min(...chartData.map((row) => row.low));
+    const highest = Math.max(...chartData.map((row) => row.high));
+    const padding = Math.max((highest - lowest) * 0.08, highest * 0.02);
+    return [Math.max(0, lowest - padding), highest + padding];
+  }, [chartData]);
+  const displayDatum = useMemo(() => {
+    if (hoveredDatum && chartData.some((row) => row.date === hoveredDatum.date)) {
+      return hoveredDatum;
+    }
+    return chartData[chartData.length - 1];
+  }, [chartData, hoveredDatum]);
+
+  const handleChartMouseMove = useCallback((state: {
+    activeTooltipIndex?: unknown;
+  }) => {
+    const index = Number(state.activeTooltipIndex);
+    if (Number.isInteger(index) && chartData[index]) {
+      setHoveredDatum(chartData[index]);
+    }
+  }, [chartData]);
 
   // Calculate maximum volume of the visible dataset to guarantee 100% correct scaling of Y-Axis in Recharts
   const maxVolume = useMemo(() => {
@@ -407,26 +464,35 @@ export function KlineChart({
       {/* ── Chart Area ── */}
       <div className="p-3 select-none flex-1 min-h-[420px] flex flex-col gap-2">
         {/* Main Price Chart */}
-        <div className="h-[320px] relative shrink-0">
-          {(showMAs || showSupportResistance) && (
-            <LineLegend
-              items={[
-                ...(showMAs ? [
-                  { label: 'MA25', color: '#fb923c' },
-                  { label: 'MA60', color: '#60a5fa' },
-                  { label: 'MA200', color: '#f472b6' },
-                ] : []),
-                ...(showSupportResistance ? [
-                  { label: '短壓25', color: '#ef4444' },
-                  { label: '短撐25', color: '#10b981' },
-                  { label: '長壓60', color: '#dc2626' },
-                  { label: '長撐60', color: '#059669' },
-                ] : []),
-              ]}
-            />
-          )}
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart syncId="integrated-stock-cockpit" data={chartData} margin={{ top: 12, right: 8, left: 0, bottom: 4 }} barGap="-100%">
+        <div className="h-[320px] shrink-0">
+          <MarketDataStrip datum={displayDatum} />
+          <div className="relative h-[292px]">
+            {(showMAs || showSupportResistance) && (
+              <LineLegend
+                items={[
+                  ...(showMAs ? [
+                    { label: 'MA25', color: '#fb923c' },
+                    { label: 'MA60', color: '#60a5fa' },
+                    { label: 'MA200', color: '#f472b6' },
+                  ] : []),
+                  ...(showSupportResistance ? [
+                    { label: '短壓25', color: '#ef4444' },
+                    { label: '短撐25', color: '#10b981' },
+                    { label: '長壓60', color: '#dc2626' },
+                    { label: '長撐60', color: '#059669' },
+                  ] : []),
+                ]}
+              />
+            )}
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart
+                syncId="integrated-stock-cockpit"
+                data={chartData}
+                margin={{ top: 12, right: 8, left: 0, bottom: 4 }}
+                onMouseMove={handleChartMouseMove}
+                onTouchMove={handleChartMouseMove}
+                onMouseLeave={() => setHoveredDatum(null)}
+              >
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.5} />
               <XAxis 
                 dataKey="date" 
@@ -437,23 +503,24 @@ export function KlineChart({
                 interval="preserveStartEnd" 
               />
               <YAxis 
-                domain={['auto', 'auto']} 
+                domain={priceDomain}
+                allowDataOverflow
                 tick={{ fill: '#64748b', fontSize: 9, fontFamily: 'monospace' }} 
                 tickLine={false} 
                 axisLine={false} 
                 width={48} 
               />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip
+                content={() => null}
+                cursor={{ stroke: '#475569', strokeDasharray: '3 3' }}
+              />
 
-              {/* Candle Shadow lines */}
-              <Bar dataKey="wickRange" barSize={calculatedBarSize > 4 ? 1.5 : 1}>
-                {chartData.map((e, i) => <Cell key={`w${i}`} fill={e.color} />)}
-              </Bar>
-
-              {/* Candle Bodies */}
-              <Bar dataKey="boxRange" barSize={calculatedBarSize}>
-                {chartData.map((e, i) => <Cell key={`b${i}`} fill={e.color} />)}
-              </Bar>
+              <Bar
+                dataKey="candleRange"
+                barSize={calculatedBarSize}
+                shape={<CandlestickShape />}
+                isAnimationActive={false}
+              />
 
               {/* Moving Averages */}
               {showMAs && (
@@ -555,8 +622,9 @@ export function KlineChart({
                   label={hl.label ? { value: `${hl.label} ${hl.value}`, fill: hl.color, fontSize: 8, position: 'right' } : undefined}
                 />
               ))}
-            </ComposedChart>
-          </ResponsiveContainer>
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
         {/* Volume Sub-Chart */}

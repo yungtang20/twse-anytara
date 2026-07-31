@@ -69,6 +69,18 @@ const klineChartSource = readFileSync(
   path.join(process.cwd(), "src", "components", "KlineChart.tsx"),
   "utf8",
 );
+const marketsViewSource = readFileSync(
+  path.join(process.cwd(), "src", "components", "views", "MarketsView.tsx"),
+  "utf8",
+);
+const marketWorkflowSource = readFileSync(
+  path.join(process.cwd(), ".github", "workflows", "supabase-market-sync.yml"),
+  "utf8",
+);
+const tdccWorkflowSource = readFileSync(
+  path.join(process.cwd(), ".github", "workflows", "supabase-tdcc-sync.yml"),
+  "utf8",
+);
 const triggerUpdateSource = syncRouteSource.split('router.post("/api/trigger-update"')[1]
   ?.split('// GET Endpoint to poll sync progress')[0] || "";
 assert.match(
@@ -90,6 +102,14 @@ assert.match(cloudSyncSource, /INITIAL_INSTITUTIONAL_DATES = 60/);
 assert.match(cloudSyncSource, /INSTITUTIONAL_RETENTION = 512/);
 assert.match(cloudSyncSource, /TDCC_RETENTION = 512/);
 assert.match(cloudSyncSource, /PRICE_RETENTION - status\.price_dates/);
+assert.match(cloudSyncSource, /SYNC_SCOPE !== "tdcc"/);
+assert.match(cloudSyncSource, /SYNC_SCOPE !== "market"/);
+assert.match(marketWorkflowSource, /cron: "0 10 \* \* 1-5"/);
+assert.match(marketWorkflowSource, /SYNC_SCOPE: market/);
+assert.match(tdccWorkflowSource, /cron: "0 10 \* \* 6"/);
+assert.match(tdccWorkflowSource, /SYNC_SCOPE: tdcc/);
+assert.doesNotMatch(marketsViewSource, /\/api\/sync-status|\/api\/trigger-update/);
+assert.match(marketsViewSource, /Supabase 資料庫日期/);
 assert.equal(isOrdinaryStockId("2330"), true);
 assert.equal(isOrdinaryStockId("9910"), true);
 assert.equal(isOrdinaryStockId("0050"), false);
@@ -162,6 +182,19 @@ assert.deepEqual(
   trendLines.longSupport,
   Array.from({ length: 60 }, (_, offset) => 34 + offset),
 );
+const adjacentExtremes: PriceData[] = Array.from({ length: 60 }, (_, index) => ({
+  date: `A${index + 1}`,
+  open: 300,
+  high: index === 40 ? 500 : index === 41 ? 490 : 400,
+  low: index === 10 ? 100 : index === 11 ? 105 : 200,
+  close: 300,
+  volume: 1_000,
+}));
+const adjacentLines = buildSupportResistanceLines(adjacentExtremes, 59);
+assert.equal(adjacentLines.longResistance[40], 500);
+assert.equal(adjacentLines.longResistance[41], 490);
+assert.equal(adjacentLines.longSupport[10], 100);
+assert.equal(adjacentLines.longSupport[11], 105);
 assert.match(klineChartSource, /label: '均線'/);
 assert.doesNotMatch(klineChartSource, /均線 MA25\/60\/200/);
 assert.match(klineChartSource, /\(\[26, 61, 201\] as const\)/);
@@ -174,7 +207,15 @@ assert.match(klineChartSource, /showShareholding/);
 assert.match(klineChartSource, /visibleDates=\{chartData\.map/);
 assert.doesNotMatch(klineChartSource, /Kronos|kronos/);
 assert.doesNotMatch(klineChartSource, /const drift =/);
-assert.equal(klineChartSource.split("<Tooltip content={<CustomTooltip />} />").length - 1, 1);
+assert.equal(klineChartSource.split("<Tooltip content={<CustomTooltip />} />").length - 1, 0);
+assert.match(klineChartSource, /function CandlestickShape/);
+assert.match(klineChartSource, /aria-live="polite"/);
+assert.match(klineChartSource, /onMouseMove=\{handleChartMouseMove\}/);
+assert.match(klineChartSource, /domain=\{priceDomain\}/);
+assert.match(klineChartSource, /allowDataOverflow/);
+assert.doesNotMatch(klineChartSource, /dataKey="wickRange"/);
+assert.doesNotMatch(klineChartSource, /dataKey="boxRange"/);
+assert.doesNotMatch(klineChartSource, /const CustomTooltip/);
 assert.match(klineChartSource, /label: 'MA25', color: '#fb923c'/);
 assert.match(klineChartSource, /label: 'MA60', color: '#60a5fa'/);
 assert.match(klineChartSource, /label: 'MA200', color: '#f472b6'/);

@@ -24,31 +24,13 @@ function extremePoints(
       value: Number(row[field]),
     }))
     .filter((point) => Number.isFinite(point.value) && point.value > 0);
-  const pivotRadius = 2;
-  const pivots = candidates.filter((point, candidateIndex) => {
-    const neighbors = candidates.slice(
-      Math.max(0, candidateIndex - pivotRadius),
-      candidateIndex + pivotRadius + 1,
-    );
-    return neighbors.every((neighbor) => highest
-      ? point.value >= neighbor.value
-      : point.value <= neighbor.value);
-  });
   const byPrice = (left: { index: number; value: number }, right: { index: number; value: number }) => {
       const priceOrder = highest
         ? right.value - left.value
         : left.value - right.value;
       return priceOrder || left.index - right.index;
   };
-  const selected: Array<{ index: number; value: number }> = [];
-  for (const point of [...pivots, ...candidates].sort(byPrice)) {
-    if (selected.some((selectedPoint) => selectedPoint.index === point.index)) continue;
-    if (selected.every((selectedPoint) => Math.abs(selectedPoint.index - point.index) >= 3)) {
-      selected.push(point);
-    }
-    if (selected.length === 2) break;
-  }
-  return selected;
+  return candidates.sort(byPrice).slice(0, 2);
 }
 
 function extendedSeries(
