@@ -37,6 +37,7 @@ import {
   buildSupportResistanceLines,
   selectTrendAnchors,
 } from "../src/lib/trendLines";
+import { formatPriceAxisTick } from "../src/lib/chartFormatting";
 
 const rising = Array.from({ length: 20 }, (_, index) => 100 + index);
 const syncRouteSource = readFileSync(
@@ -213,6 +214,8 @@ assert.deepEqual(
   selectTrendAnchors(adjacentExtremes, 59, 60, "low", false).map(({ index }) => index),
   [10, 30],
 );
+assert.equal(formatPriceAxisTick(49.999999999), "50.00");
+assert.equal(formatPriceAxisTick(277.5), "277.50");
 assert.match(klineChartSource, /label: '均線'/);
 assert.doesNotMatch(klineChartSource, /均線 MA25\/60\/200/);
 assert.match(klineChartSource, /\(\[26, 61, 201\] as const\)/);
@@ -230,6 +233,7 @@ assert.match(klineChartSource, /function CandlestickShape/);
 assert.match(klineChartSource, /aria-live="polite"/);
 assert.match(klineChartSource, /onMouseMove=\{handleChartMouseMove\}/);
 assert.match(klineChartSource, /domain=\{priceDomain\}/);
+assert.match(klineChartSource, /tickFormatter=\{formatPriceAxisTick\}/);
 assert.match(klineChartSource, /allowDataOverflow/);
 assert.doesNotMatch(klineChartSource, /dataKey="wickRange"/);
 assert.doesNotMatch(klineChartSource, /dataKey="boxRange"/);

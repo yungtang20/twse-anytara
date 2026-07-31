@@ -10,6 +10,9 @@ import type {
   ShareholdingPoint,
 } from '../lib/integratedMarketData';
 import { buildSupportResistanceLines } from '../lib/trendLines';
+import { formatPriceAxisTick } from '../lib/chartFormatting';
+
+const TREND_LINE_ALGORITHM_VERSION = 2;
 
 export interface KlineOverlay {
   hLines?: { value: number; color: string; label?: string; dash?: boolean }[];
@@ -202,7 +205,7 @@ export function KlineChart({
 
   const supportResistanceLines = useMemo(
     () => buildSupportResistanceLines(aggregatedData, endIdx),
-    [aggregatedData, endIdx],
+    [aggregatedData, endIdx, TREND_LINE_ALGORITHM_VERSION],
   );
 
   // 4. Construct the chart dataset
@@ -505,6 +508,7 @@ export function KlineChart({
               <YAxis 
                 domain={priceDomain}
                 allowDataOverflow
+                tickFormatter={formatPriceAxisTick}
                 tick={{ fill: '#64748b', fontSize: 9, fontFamily: 'monospace' }} 
                 tickLine={false} 
                 axisLine={false} 
@@ -558,7 +562,7 @@ export function KlineChart({
                     strokeWidth={1}
                     dot={false}
                     name="短期壓力（25日高點連線）"
-                    connectNulls
+                    connectNulls={false}
                   />
                   <Line
                     type="linear"
@@ -568,7 +572,7 @@ export function KlineChart({
                     strokeWidth={1}
                     dot={false}
                     name="短期支撐（25日低點連線）"
-                    connectNulls
+                    connectNulls={false}
                   />
                   <Line
                     type="linear"
@@ -578,7 +582,7 @@ export function KlineChart({
                     strokeWidth={1.5}
                     dot={false}
                     name="長期壓力（60日高點連線）"
-                    connectNulls
+                    connectNulls={false}
                   />
                   <Line
                     type="linear"
@@ -588,7 +592,7 @@ export function KlineChart({
                     strokeWidth={1.5}
                     dot={false}
                     name="長期支撐（60日低點連線）"
-                    connectNulls
+                    connectNulls={false}
                   />
                 </>
               )}
