@@ -2,7 +2,7 @@ name: Supabase TDCC sync
 
 on:
   schedule:
-    # Saturday 18:00 Asia/Taipei (Taiwan has no DST).
+    # Saturday 18:00 Asia/Taipei (UTC+8, no DST).
     - cron: "0 10 * * 6"
   workflow_dispatch:
 
@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - name: Validate cloud credentials
