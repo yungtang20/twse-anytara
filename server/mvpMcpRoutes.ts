@@ -11,6 +11,7 @@ import { fetchCloudMeta, fetchCloudPrices, fetchCloudShareholding } from "./lib/
 import { readFinMindCache, writeFinMindCache } from "./lib/finmindCache";
 import { isOrdinaryStockId } from "./lib/stockUniverse";
 import { generateNvidiaReport, hasNvidiaApiKey, nvidiaModel } from "./lib/nvidiaAi";
+import { fetchInstitutionalHoldingSnapshot, formatInstitutionalHoldingEvidence } from "./lib/institutionalHoldings";
 
 const FINMIND = "https://api.finmindtrade.com/api/v4/data";
 
@@ -162,6 +163,14 @@ export async function fetchAnalysisSnapshot(stockId: string, signal?: AbortSigna
     tdccRows = (await fetchCloudShareholding(stockId, 12)).map((row) => ({ ...row }));
   } catch { /* TDCC is optional */ }
   datasetRows.TDCCShareholding = tdccRows.length;
+  let holdingEvidence = "";
+  try {
+    const holdings = await fetchInstitutionalHoldingSnapshot(stockId, signal);
+    holdingEvidence = formatInstitutionalHoldingEvidence(holdings);
+    datasetRows.InstitutionalHoldingsLatest = 1;
+  } catch {
+    datasetRows.InstitutionalHoldingsLatest = 0;
+  }
   let identity: { companyName?: string | null; market?: string | null; industry?: string | null } = {};
   try {
     const row = await fetchCloudMeta(stockId);
@@ -174,7 +183,7 @@ export async function fetchAnalysisSnapshot(stockId: string, signal?: AbortSigna
     ...results.map(({ ds, result }) => ({ dataset: ds, rows: result.data, error: result.error })),
     { dataset: "TDCCShareholding", source: "tdcc_supabase" as const, rows: tdccRows },
   ], identity);
-  const canonicalBlock = formatSnapshotForPrompt(snapshot);
+  const canonicalBlock = [formatSnapshotForPrompt(snapshot), holdingEvidence].filter(Boolean).join("\n\n");
   return {
     ...snapshot,
     datasetRows,

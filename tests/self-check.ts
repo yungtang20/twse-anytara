@@ -31,6 +31,7 @@ import { sortTrustBuyByDays } from "../server/routes/dashboard";
 import { buildSimulatedPriceProjection } from "../server/lib/priceProjection";
 import { analyzeChartPattern } from "../server/lib/patternStrategy";
 import { DEFAULT_NVIDIA_MODEL, NVIDIA_BASE_URL, nvidiaModel } from "../server/lib/nvidiaAi";
+import { parseInstitutionalHoldingSeries } from "../server/lib/institutionalHoldings";
 import { appViewHash, parseAppView } from "../src/lib/navigation";
 import { buildIntegratedMarketData } from "../src/lib/integratedMarketData";
 import {
@@ -48,6 +49,12 @@ const rising = Array.from({ length: 20 }, (_, index) => 100 + index);
 assert.equal(NVIDIA_BASE_URL, "https://integrate.api.nvidia.com/v1");
 assert.equal(DEFAULT_NVIDIA_MODEL, "z-ai/glm-5.2");
 assert.equal(nvidiaModel(), process.env.NVIDIA_MODEL || DEFAULT_NVIDIA_MODEL);
+const holdingSnapshot = parseInstitutionalHoldingSeries("2330", "https://example.test/2330.json", [
+  { date: "2026-07-30", foreign_ratio: 68, trust_ratio: 1, dealer_ratio: 0.5, three_inst_ratio: 69.5 },
+  { date: "2026-07-31", foreign_ratio: 69, trust_ratio: 1.1, dealer_ratio: 0.6, three_inst_ratio: 70.7 },
+]);
+assert.equal(holdingSnapshot.date, "2026-07-31");
+assert.equal(holdingSnapshot.totalRatio, 70.7);
 
 function patternFixture(kind: "bottom" | "top", secondIndex = 50, confirmed = true) {
   const rows = Array.from({ length: 60 }, (_, index) => {
@@ -767,6 +774,7 @@ for (const route of [
   "GET /api/stock/:id/sr-analysis",
   "GET /api/stock/:id/ma-analysis",
   "GET /api/stock/:id/chips-analysis",
+  "GET /api/stock/:id/institutional-holdings",
   "GET /api/stock/:id/prediction-analysis",
   "GET /api/stock/:id/pattern-analysis",
   "GET /api/strategy/sr-scan",

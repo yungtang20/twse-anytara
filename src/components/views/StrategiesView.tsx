@@ -296,6 +296,6 @@ function StockStrategyDetail(props: StockStrategyDetailProps) {
 function StrategyPanel(props: StockStrategyDetailProps & { change: number; changePercent: number }) {
   if (props.strategyId === 'support-resistance') return <SRPanel data={props.srData} />;
   if (props.strategyId === 'ma-trend') return <MAPanel data={props.maData} change={props.change} changePercent={props.changePercent} />;
-  if (props.strategyId === 'chips-flow') return <ChipsDetailPanel institutional={props.institutional} shareholding={props.shareholding} />;
+  if (props.strategyId === 'chips-flow') return <ChipsDetailPanel stockId={props.stock.stock_id} institutional={props.institutional} shareholding={props.shareholding} />;
   return <PatternPanel stockId={props.stock.stock_id} />;
 }

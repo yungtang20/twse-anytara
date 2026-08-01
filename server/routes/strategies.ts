@@ -13,6 +13,7 @@ import {
 } from "../lib/cloudMarketData";
 import { buildSimulatedPriceProjection } from "../lib/priceProjection";
 import { analyzeChartPattern } from "../lib/patternStrategy";
+import { fetchInstitutionalHoldingSnapshot } from "../lib/institutionalHoldings";
 import {
   analyzeMovingAverage,
   scanMovingAverage,
@@ -186,6 +187,15 @@ router.get("/api/stock/:id/chips-analysis", async (req, res) => {
         })),
       },
     });
+  } catch (error) {
+    return errorResponse(res, error);
+  }
+});
+
+router.get("/api/stock/:id/institutional-holdings", async (req, res) => {
+  try {
+    const data = await fetchInstitutionalHoldingSnapshot(req.params.id);
+    return res.json({ success: true, source: "tw-institutional-stocker", data });
   } catch (error) {
     return errorResponse(res, error);
   }

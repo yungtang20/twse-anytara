@@ -240,6 +240,24 @@ export async function fetchChipsAnalysis(id: string): Promise<ChipsAnalysis | nu
   return res.success ? res.data : null;
 }
 
+export interface InstitutionalHoldingSnapshot {
+  stockId: string;
+  date: string;
+  foreignRatio: number;
+  trustRatio: number;
+  dealerRatio: number;
+  totalRatio: number;
+  sourceUrl: string;
+  estimated: true;
+}
+
+export async function fetchInstitutionalHoldings(id: string) {
+  const res = await get<{ success: true; data: InstitutionalHoldingSnapshot }>(
+    `/api/stock/${id}/institutional-holdings`,
+  );
+  return res.data;
+}
+
 // ── Pattern Analysis ────────────────────────────────────────
 
 export interface PatternAnalysis {

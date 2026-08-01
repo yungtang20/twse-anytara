@@ -1,19 +1,22 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   fetchStockInstitutional,
+  fetchInstitutionalHoldings,
   fetchStockShareholding,
+  type InstitutionalHoldingSnapshot,
   type InstitutionalRow,
   type ShareholdingRow,
 } from '../../lib/api';
 
 interface ChipsDetailPanelProps {
+  stockId: string;
   institutional: InstitutionalRow[];
   shareholding: ShareholdingRow[];
 }
 
 type InstitutionalKey = 'foreign_net' | 'trust_net';
 
-export function ChipsDetailPanel({ institutional, shareholding }: ChipsDetailPanelProps) {
+export function ChipsDetailPanel({ stockId, institutional, shareholding }: ChipsDetailPanelProps) {
   const recentInstitutional = useMemo(
     () => [...institutional].sort((left, right) => right.date.localeCompare(left.date)).slice(0, 10),
     [institutional],
@@ -25,13 +28,42 @@ export function ChipsDetailPanel({ institutional, shareholding }: ChipsDetailPan
 
   return <section className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
     <h3 className="mb-3 border-b border-slate-800 pb-2 text-sm font-bold text-white">3 ⚡ 籌碼動能</h3>
-    {!recentInstitutional.length && !recentShareholding.length
-      ? <div className="py-4 text-center text-xs text-slate-500">無資料</div>
-      : <div className="space-y-2 font-mono text-xs">
+    <div className="space-y-2 font-mono text-xs">
+      <InstitutionalHoldingsCard stockId={stockId} />
+      {!recentInstitutional.length && !recentShareholding.length
+        ? <div className="py-4 text-center text-xs text-slate-500">買賣超與 TDCC 無資料</div>
+        : <>
           <ChipsSummary institutional={recentInstitutional} />
           <ChipsTables institutional={recentInstitutional} shareholding={recentShareholding} />
-        </div>}
+        </>}
+    </div>
   </section>;
+}
+
+function InstitutionalHoldingsCard({ stockId }: { stockId: string }) {
+  const [data, setData] = useState<InstitutionalHoldingSnapshot | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
+  useEffect(() => {
+    let active = true;
+    setData(null); setUnavailable(false);
+    fetchInstitutionalHoldings(stockId)
+      .then((value) => { if (active) setData(value); })
+      .catch(() => { if (active) setUnavailable(true); });
+    return () => { active = false; };
+  }, [stockId]);
+  if (unavailable) return <div className="rounded-lg border border-slate-800 p-2 text-slate-500">法人持股狀態暫無資料</div>;
+  if (!data) return <div className="rounded-lg border border-slate-800 p-2 text-slate-500">法人持股狀態載入中…</div>;
+  const items = [
+    ['外資', data.foreignRatio, false], ['投信', data.trustRatio, true],
+    ['自營商', data.dealerRatio, true], ['三大法人', data.totalRatio, true],
+  ] as const;
+  return <div className="rounded-lg border border-slate-800 bg-slate-950 p-2">
+    <div className="mb-1.5 flex items-center justify-between gap-2"><b className="text-slate-300">目前法人持股狀態</b><span className="text-[10px] text-slate-500">{data.date}</span></div>
+    <div className="grid grid-cols-2 gap-1 sm:grid-cols-4">{items.map(([label, ratio, estimated]) => <div key={label} className="rounded border border-slate-800/80 px-2 py-1">
+      <div className="text-[10px] text-slate-500">{label}{estimated ? '（估）' : ''}</div><b className="text-cyan-300">{ratio.toFixed(2)}%</b>
+    </div>)}</div>
+    <div className="mt-1.5 text-[10px] text-slate-500">外資採官方持股比率；投信、自營商與合計為歷史買賣超累計估算，並非官方實際持股率。</div>
+  </div>;
 }
 
 function ChipsSummary({ institutional }: Pick<ChipsDetailPanelProps, 'institutional'>) {
@@ -49,7 +81,7 @@ function TrendSummary({ label, days }: { label: string; days: number }) {
   </div>;
 }
 
-function ChipsTables({ institutional, shareholding }: ChipsDetailPanelProps) {
+function ChipsTables({ institutional, shareholding }: Pick<ChipsDetailPanelProps, 'institutional' | 'shareholding'>) {
   return <div className="overflow-x-auto">
     <div className="grid w-max grid-cols-[max-content_max-content] items-start gap-1.5">
       <DetailTable title="近 10 日法人買賣超" headers={['日期', '外資(張)', '投信(張)']}>
@@ -96,7 +128,7 @@ export function ChipsPanel({ stockId }: { stockId: string }) {
 
   return loading
     ? <section className="rounded-xl border border-slate-800 bg-slate-950/50 p-3"><h3 className="mb-3 border-b border-slate-800 pb-2 text-sm font-bold text-white">3 ⚡ 籌碼動能</h3><div className="py-4 text-center text-xs text-slate-500">載入中...</div></section>
-    : <ChipsDetailPanel institutional={institutional} shareholding={shareholding} />;
+    : <ChipsDetailPanel stockId={stockId} institutional={institutional} shareholding={shareholding} />;
 }
 
 function countConsecutive(rows: InstitutionalRow[], key: InstitutionalKey) {
