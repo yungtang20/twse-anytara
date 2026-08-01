@@ -11,6 +11,9 @@ export interface TdccRecord {
   total_shares: number;
   whale_ratio: number;
   retail_ratio: number;
+  total_people: number;
+  whale_shares: number;
+  whale_people: number;
 }
 
 export interface TdccParseResult {
@@ -82,7 +85,7 @@ function splitCsvLine(line: string): string[] {
 
 export function parseTdccCSV(csvText: string): TdccParseResult {
   const lines = csvText.replace(/^﻿/, "").trim().split(/\r?\n/);
-  const levelMap: Record<string, Record<number, number>> = {}; // date -> level -> shares
+  const levelMap: Record<string, Record<number, { shares: number; people: number }>> = {};
   let parsedRows = 0;
 
   for (let i = 1; i < lines.length; i++) {
@@ -93,11 +96,14 @@ export function parseTdccCSV(csvText: string): TdccParseResult {
     const date = normalizeTdccDate(parts[0]);
     const stockId = parts[1].toUpperCase();
     const level = parseInt(parts[2], 10);
+    const people = Number(parts[3].replace(/,/g, ""));
     const shares = Number(parts[4].replace(/,/g, ""));
-    if (!date || !isOrdinaryStockId(stockId) || !Number.isInteger(level) || level < 1 || level > 17 || !Number.isFinite(shares) || shares < 0) continue;
+    if (!date || !isOrdinaryStockId(stockId) || !Number.isInteger(level) || level < 1 || level > 17
+      || !Number.isFinite(people) || people < 0 || !Number.isFinite(shares) || shares < 0) continue;
     const key = `${stockId}_${date}`;
     if (!levelMap[key]) levelMap[key] = {};
-    levelMap[key][level] = (levelMap[key][level] || 0) + shares;
+    const previous = levelMap[key][level] || { shares: 0, people: 0 };
+    levelMap[key][level] = { shares: previous.shares + shares, people: previous.people + people };
     parsedRows++;
   }
 
@@ -105,18 +111,21 @@ export function parseTdccCSV(csvText: string): TdccParseResult {
   for (const [key, sharesByLevel] of Object.entries(levelMap)) {
     const stockId = key.split("_")[0];
     const date = key.slice(stockId.length + 1);
-    let totalShares = sharesByLevel[17] || 0;
+    let totalShares = sharesByLevel[17]?.shares || 0;
+    let totalPeople = sharesByLevel[17]?.people || 0;
     if (!totalShares) {
       // fallback: sum all levels
-      totalShares = Object.values(sharesByLevel).reduce((a, b) => a + b, 0);
+      totalShares = Object.values(sharesByLevel).reduce((sum, row) => sum + row.shares, 0);
+      totalPeople = Object.values(sharesByLevel).reduce((sum, row) => sum + row.people, 0);
     }
     // Level 15 is 1,000,001 shares and above. Level 16 is an adjustment row.
     let whaleShares = 0;
+    let whalePeople = 0;
     let retailShares = 0;
-    for (const [lvlStr, shares] of Object.entries(sharesByLevel)) {
+    for (const [lvlStr, row] of Object.entries(sharesByLevel)) {
       const lvl = parseInt(lvlStr, 10);
-      if (lvl === 15) whaleShares += shares;
-      if (lvl >= 1 && lvl <= 6) retailShares += shares;
+      if (lvl === 15) { whaleShares += row.shares; whalePeople += row.people; }
+      if (lvl >= 1 && lvl <= 6) retailShares += row.shares;
     }
     if (!totalShares || whaleShares > totalShares || retailShares > totalShares) continue;
     records.push({
@@ -125,6 +134,9 @@ export function parseTdccCSV(csvText: string): TdccParseResult {
       total_shares: Math.round(totalShares),
       whale_ratio: Math.round((whaleShares / totalShares) * 10000) / 100,
       retail_ratio: Math.round((retailShares / totalShares) * 10000) / 100,
+      total_people: Math.round(totalPeople),
+      whale_shares: Math.round(whaleShares),
+      whale_people: Math.round(whalePeople),
     });
   }
 
@@ -162,6 +174,9 @@ export async function saveTdccToSupabase(records: TdccRecord[], source = "openda
       total_shares: r.total_shares,
       whale_ratio: r.whale_ratio,
       retail_ratio: r.retail_ratio,
+      total_people: r.total_people,
+      whale_shares: r.whale_shares,
+      whale_people: r.whale_people,
       source,
     }));
     const CHUNK = 500;

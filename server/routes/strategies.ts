@@ -1,5 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { scanAndScoreStock } from "../../src/lib/strategy-engine";
+import { buildSupportResistanceLines } from "../../src/lib/trendLines";
 import {
   fetchCloudCandidates,
   fetchCloudInstitutional,
@@ -11,6 +12,12 @@ import {
   type CloudPriceRow,
 } from "../lib/cloudMarketData";
 import { buildSimulatedPriceProjection } from "../lib/priceProjection";
+import { analyzeChartPattern } from "../lib/patternStrategy";
+import {
+  analyzeMovingAverage,
+  scanMovingAverage,
+  type MovingAverageScanType,
+} from "../lib/maStrategy";
 
 const router = Router();
 
@@ -19,70 +26,37 @@ function errorResponse(res: Response, error: unknown) {
   return res.status(503).json({ success: false, error: message });
 }
 
-function movingAverage(closes: number[], period: number): number | null {
-  if (closes.length < period) return null;
-  return closes.slice(-period).reduce((sum, value) => sum + value, 0) / period;
-}
-
 function countConsecutive(
   rows: CloudInstitutionalRow[],
   key: "foreign_net" | "trust_net",
 ): number {
   if (rows.length === 0) return 0;
-  const positive = (rows[0][key] || 0) >= 0;
+  const first = rows[0][key] || 0;
+  if (first === 0) return 0;
+  const positive = first > 0;
   let count = 0;
   for (const row of rows) {
-    if (((row[key] || 0) >= 0) !== positive) break;
+    const value = row[key] || 0;
+    if ((positive && value <= 0) || (!positive && value >= 0)) break;
     count++;
   }
   return positive ? count : -count;
 }
 
-function analyzePattern(rows: CloudPriceRow[]) {
-  const closes = rows.map((row) => row.close);
-  const highs = rows.map((row) => row.high);
-  const lows = rows.map((row) => row.low);
-  let patternName = "無明顯型態";
-  let patternDirection = "neutral";
-  let neckline: number | null = null;
-  let target: number | null = null;
-  let stopLoss: number | null = null;
-  let confidence = 0;
-
-  if (rows.length >= 60) {
-    const recentLows = lows.slice(-60);
-    const recentHighs = highs.slice(-60);
-    const low1 = Math.min(...recentLows.slice(0, 20));
-    const low2 = Math.min(...recentLows.slice(20, 40));
-    const midHigh = Math.max(...recentHighs.slice(15, 30));
-    if (low1 > 0 && Math.abs(low1 - low2) / low1 < 0.03 && midHigh > low1 * 1.02) {
-      patternName = "W底";
-      patternDirection = "up";
-      neckline = Number(midHigh.toFixed(2));
-      target = Number((midHigh + midHigh - (low1 + low2) / 2).toFixed(2));
-      stopLoss = Number((((low1 + low2) / 2) * 0.97).toFixed(2));
-      confidence = 0.7;
-    }
-    const high1 = Math.max(...recentHighs.slice(0, 20));
-    const high2 = Math.max(...recentHighs.slice(20, 40));
-    const midLow = Math.min(...recentLows.slice(15, 30));
-    if (high1 > 0 && Math.abs(high1 - high2) / high1 < 0.03 && midLow < high1 * 0.98) {
-      patternName = "M頂";
-      patternDirection = "down";
-      neckline = Number(midLow.toFixed(2));
-      target = Number((midLow - ((high1 + high2) / 2 - midLow)).toFixed(2));
-      stopLoss = Number((((high1 + high2) / 2) * 1.03).toFixed(2));
-      confidence = 0.7;
-    }
-  }
-  return { patternName, patternDirection, neckline, target, stopLoss, confidence, dataPoints: closes.length };
+function consecutiveNetTotal(
+  rows: CloudInstitutionalRow[],
+  key: "foreign_net" | "trust_net",
+  consecutive: number,
+): number {
+  return rows.slice(0, Math.abs(consecutive)).reduce((sum, row) => sum + row[key], 0) / 1000;
 }
 
 function analyzeSupportResistance(rows: CloudPriceRow[]) {
-  if (rows.length < 20) throw new Error("Insufficient Supabase price history");
+  if (rows.length < 60) throw new Error("Insufficient Supabase price history");
   const highs = rows.map((row) => row.high);
   const lows = rows.map((row) => row.low);
   const lastClose = rows.at(-1)!.close;
+  const visibleRows = rows.slice(-61);
   let atrSum = 0;
   const atrStart = Math.max(1, rows.length - 14);
   for (let index = atrStart; index < rows.length; index++) {
@@ -93,41 +67,64 @@ function analyzeSupportResistance(rows: CloudPriceRow[]) {
     );
   }
   const atr14 = atrSum / Math.max(1, rows.length - atrStart);
-  const swingHighs: number[] = [];
-  const swingLows: number[] = [];
-  for (let index = 5; index < rows.length - 5; index++) {
-    const window = rows.slice(index - 5, index + 6);
-    if (window.every((row, offset) => offset === 5 || row.high < rows[index].high)) swingHighs.push(rows[index].high);
-    if (window.every((row, offset) => offset === 5 || row.low > rows[index].low)) swingLows.push(rows[index].low);
-  }
-  const tolerance = Math.max(atr14 * 0.8, lastClose * 0.005);
-  const cluster = (levels: number[], descending: boolean) => {
-    const sorted = [...levels].sort((a, b) => a - b);
-    const groups: Array<{ level: number; power: number }> = [];
-    for (const level of sorted) {
-      const existing = groups.at(-1);
-      if (existing && Math.abs(existing.level - level) <= tolerance) {
-        existing.level = (existing.level * existing.power + level) / (existing.power + 1);
-        existing.power++;
-      } else groups.push({ level, power: 1 });
-    }
-    const result = groups.map((item) => ({ level: Number(item.level.toFixed(2)), power: item.power }));
-    return descending ? result.reverse() : result;
-  };
   const recentHigh = Math.max(...highs.slice(-20));
   const recentLow = Math.min(...lows.slice(-20));
-  const resistances = cluster([...swingHighs, recentHigh].filter((level) => level > lastClose), false);
-  const supports = cluster([...swingLows, recentLow].filter((level) => level < lastClose), true);
+  const endIndex = rows.length - 1;
+  const lines = buildSupportResistanceLines(rows, endIndex);
+  const shortResistance = lines.shortResistance[endIndex];
+  const shortSupport = lines.shortSupport[endIndex];
+  const longResistance = lines.longResistance[endIndex];
+  const longSupport = lines.longSupport[endIndex];
+  const vwapRows = rows.slice(-20);
+  const totalVolume = vwapRows.reduce((sum, row) => sum + row.volume, 0);
+  const vwap = totalVolume > 0
+    ? vwapRows.reduce((sum, row) => sum + ((row.high + row.low + row.close) / 3) * row.volume, 0) / totalVolume
+    : null;
+  const visibleHighs = visibleRows.map((row) => row.high);
+  const visibleLows = visibleRows.map((row) => row.low);
+  const swingHigh = Math.max(...visibleHighs);
+  const swingLow = Math.min(...visibleLows);
+  const poc = calculatePointOfControl(visibleRows);
+  const round = (value: number | null) => value === null ? null : Number(value.toFixed(2));
   return {
     lastClose,
     atr14: Number(atr14.toFixed(2)),
-    pressure: { near: resistances[0]?.level ?? null, mid: resistances[1]?.level ?? null, far: resistances[2]?.level ?? null },
-    support: { near: supports[0]?.level ?? null, mid: supports[1]?.level ?? null, far: supports[2]?.level ?? null },
-    resistances: resistances.slice(0, 6),
-    supports: supports.slice(0, 6),
+    vwap: round(vwap),
+    poc: round(poc),
+    shortResistance: round(shortResistance),
+    shortSupport: round(shortSupport),
+    longResistance: round(longResistance),
+    longSupport: round(longSupport),
+    swingHigh: round(swingHigh),
+    swingLow: round(swingLow),
+    pressure: { near: round(recentHigh), mid: round(shortResistance), far: round(longResistance) },
+    support: { near: round(recentLow), mid: round(shortSupport), far: round(longSupport) },
+    resistances: [recentHigh, shortResistance, longResistance]
+      .filter((value): value is number => value !== null)
+      .map((level) => ({ level: round(level)!, power: 1 })),
+    supports: [recentLow, shortSupport, longSupport]
+      .filter((value): value is number => value !== null)
+      .map((level) => ({ level: round(level)!, power: 1 })),
     recentHigh: Number(recentHigh.toFixed(2)),
     recentLow: Number(recentLow.toFixed(2)),
   };
+}
+
+function calculatePointOfControl(rows: CloudPriceRow[], binCount = 15): number | null {
+  if (rows.length === 0) return null;
+  const minPrice = Math.min(...rows.map((row) => row.low));
+  const maxPrice = Math.max(...rows.map((row) => row.high));
+  if (minPrice === maxPrice) return minPrice;
+
+  const binWidth = (maxPrice - minPrice) / binCount;
+  const volumes = Array<number>(binCount).fill(0);
+  for (const row of rows) {
+    const index = Math.min(binCount - 1, Math.max(0, Math.floor((row.close - minPrice) / binWidth)));
+    volumes[index] += row.volume;
+  }
+  const maxVolume = Math.max(...volumes);
+  const maxVolumeIndex = volumes.indexOf(maxVolume);
+  return minPrice + (maxVolumeIndex + 0.5) * binWidth;
 }
 
 router.get("/api/stock/:id/sr-analysis", async (req, res) => {
@@ -141,36 +138,10 @@ router.get("/api/stock/:id/sr-analysis", async (req, res) => {
 router.get("/api/stock/:id/ma-analysis", async (req, res) => {
   try {
     const rows = await fetchCloudPrices(req.params.id, 512);
-    const closes = rows.map((row) => row.close);
-    if (closes.length < 200) throw new Error("Insufficient Supabase price history");
-    const lastClose = closes.at(-1)!;
-    const ma25 = movingAverage(closes, 25);
-    const ma60 = movingAverage(closes, 60);
-    const ma200 = movingAverage(closes, 200);
-    const deduction = (period: number) => closes.at(-period) ?? null;
-    const trend = (ma: number | null, old: number | null) =>
-      !ma || !old ? "→ 走平" : lastClose > ma && old < ma ? "↑ 上揚" : lastClose < ma && old > ma ? "↓ 下彎" : "→ 走平";
-    const tomorrow = (ma: number | null, old: number | null, period: number) => {
-      if (!ma || !old) return "→";
-      const next = ma + (lastClose - old) / period;
-      return lastClose > next ? "↑" : lastClose < next ? "↓" : "→";
-    };
-    const d25 = deduction(25), d60 = deduction(60), d200 = deduction(200);
-    const arrangement = ma25! > ma60! && ma60! > ma200! ? "多頭排列"
-      : ma25! < ma60! && ma60! < ma200! ? "空頭排列" : "交叉整理";
     return res.json({
       success: true,
       source: "supabase",
-      data: {
-        lastClose,
-        ma25: Number(ma25!.toFixed(2)), ma60: Number(ma60!.toFixed(2)), ma200: Number(ma200!.toFixed(2)),
-        deduction25: d25, deduction60: d60, deduction200: d200,
-        trend25: trend(ma25, d25), trend60: trend(ma60, d60), trend200: trend(ma200, d200),
-        tomorrow25: tomorrow(ma25, d25, 25), tomorrow60: tomorrow(ma60, d60, 60), tomorrow200: tomorrow(ma200, d200, 200),
-        bias: Number((((lastClose - ma60!) / ma60!) * 100).toFixed(2)),
-        maGapPercent: Number((((ma60! - ma200!) / ma200!) * 100).toFixed(2)),
-        arrangement,
-      },
+      data: analyzeMovingAverage(rows),
     });
   } catch (error) {
     return errorResponse(res, error);
@@ -187,6 +158,12 @@ router.get("/api/stock/:id/chips-analysis", async (req, res) => {
     const latestDate = prices.at(-1)?.date;
     if (!latestDate) throw new Error("No Supabase price data");
     const latestShare = shareholding[0];
+    const previousShare = shareholding[1];
+    const whaleChange = latestShare && previousShare
+      ? Number((latestShare.whale_ratio - previousShare.whale_ratio).toFixed(2)) : null;
+    const peopleChange = latestShare?.total_people !== null && latestShare?.total_people !== undefined
+      && previousShare?.total_people !== null && previousShare?.total_people !== undefined
+      ? latestShare.total_people - previousShare.total_people : null;
     return res.json({
       success: true,
       source: "supabase",
@@ -197,6 +174,9 @@ router.get("/api/stock/:id/chips-analysis", async (req, res) => {
         foreignTotal: Math.floor(institutional.reduce((sum, row) => sum + row.foreign_net, 0) / 1000),
         trustTotal: Math.floor(institutional.reduce((sum, row) => sum + row.trust_net, 0) / 1000),
         whaleRatio: latestShare?.whale_ratio ?? null,
+        whaleChange,
+        totalPeople: latestShare?.total_people ?? null,
+        peopleChange,
         retailRatio: latestShare?.retail_ratio ?? null,
         totalShares: latestShare?.total_shares ?? null,
         chipHistory: institutional.slice(0, 10).map((row) => ({
@@ -214,8 +194,8 @@ router.get("/api/stock/:id/chips-analysis", async (req, res) => {
 router.get("/api/stock/:id/pattern-analysis", async (req, res) => {
   try {
     const rows = await fetchCloudPrices(req.params.id, 120);
-    if (rows.length < 20) throw new Error("Insufficient Supabase price history");
-    return res.json({ success: true, data: analyzePattern(rows), source: "supabase" });
+    if (rows.length < 30) throw new Error("Insufficient Supabase price history");
+    return res.json({ success: true, data: analyzeChartPattern(rows), source: "supabase" });
   } catch (error) {
     return errorResponse(res, error);
   }
@@ -260,28 +240,24 @@ router.get("/api/strategy/sr-scan", async (req, res) => {
 
 router.get("/api/strategy/ma-scan", async (req, res) => {
   try {
-    const type = String(req.query.type || "1");
-    const period = type === "1" ? 200 : 60;
-    const label = type === "1" ? "年線(200MA)" : type === "2" ? "季線(60MA)" : "2560戰法";
+    const requestedType = String(req.query.type || "1");
+    const type: MovingAverageScanType = ["1", "2", "3", "4", "5", "6"].includes(requestedType)
+      ? requestedType as MovingAverageScanType : "1";
     const candidates = await scanCandidates(req);
     const scanned = await mapWithConcurrency(candidates, 8, async (candidate) => {
-      const closes = (await fetchCloudPrices(candidate.stock_id, 512)).map((row) => row.close);
-      const ma = movingAverage(closes, period);
-      if (!ma) return null;
-      const bias = ((candidate.close - ma) / ma) * 100;
-      if (bias < 0 || (type === "3" && bias > 5)) return null;
+      const match = scanMovingAverage(await fetchCloudPrices(candidate.stock_id, 512), type);
+      if (!match) return null;
       return {
         stock_id: candidate.stock_id, stock_name: candidate.stock_name, close: candidate.close,
         volume: Math.floor(candidate.volume / 1000),
         amount: Number(((candidate.close * candidate.volume) / 1e8).toFixed(2)),
-        targetMA: Number(ma.toFixed(2)), targetLabel: label, bias: Number(bias.toFixed(2)),
-        touchCount: closes.filter((close) => Math.abs(close - ma) / ma < 0.005).length,
+        ...match,
       };
     });
     const results = scanned.filter((row) => row !== null);
     results.sort(String(req.query.sort || "1") === "1"
       ? (a, b) => Math.abs(a!.bias) - Math.abs(b!.bias)
-      : (a, b) => b!.amount - a!.amount);
+      : (a, b) => b!.volumeRatio - a!.volumeRatio);
     return res.json({ success: true, data: results.slice(0, 40), source: "supabase" });
   } catch (error) {
     return errorResponse(res, error);
@@ -291,21 +267,33 @@ router.get("/api/strategy/ma-scan", async (req, res) => {
 router.get("/api/strategy/chips-scan", async (req, res) => {
   try {
     const type = String(req.query.type || "1");
+    const minimumDays = Math.max(1, Number.parseInt(String(req.query.n_days || "2"), 10) || 2);
     const candidates = await scanCandidates(req);
     const scanned = await mapWithConcurrency(candidates, 8, async (candidate) => {
       const [institutional, shareholding] = await Promise.all([
-        fetchCloudInstitutional(candidate.stock_id, 10),
-        type === "3" ? fetchCloudShareholding(candidate.stock_id, 1) : Promise.resolve([]),
+        type === "3" ? Promise.resolve([]) : fetchCloudInstitutional(candidate.stock_id, 30),
+        type === "3" ? fetchCloudShareholding(candidate.stock_id, 2) : Promise.resolve([]),
       ]);
+      if (type === "3") {
+        const [latest, previous] = shareholding;
+        if (!latest || !previous || latest.total_people === null || previous.total_people === null) return null;
+        const whaleChange = latest.whale_ratio - previous.whale_ratio;
+        const peopleChange = latest.total_people - previous.total_people;
+        if (whaleChange <= 0 || peopleChange >= 0) return null;
+        return {
+          stock_id: candidate.stock_id, stock_name: candidate.stock_name, close: candidate.close,
+          volume: Math.floor(candidate.volume / 1000),
+          amount: Number(((candidate.close * candidate.volume) / 1e8).toFixed(2)),
+          consecutive: 0, netTotal: 0, type: "集保大戶",
+          whaleRatio: latest.whale_ratio, whaleChange, totalPeople: latest.total_people,
+          peopleChange, latestDate: latest.date, previousDate: previous.date,
+        };
+      }
       const key = type === "1" ? "trust_net" : "foreign_net";
-      const label = type === "1" ? "投信" : type === "2" ? "外資" : "大戶比率";
-      const consecutive = type === "3"
-        ? Math.floor(shareholding[0]?.whale_ratio || 0)
-        : countConsecutive(institutional, key);
-      const netTotal = type === "3"
-        ? shareholding[0]?.whale_ratio || 0
-        : institutional.reduce((sum, row) => sum + row[key as "trust_net" | "foreign_net"], 0) / 1000;
-      if (type !== "3" && Math.abs(consecutive) < 1) return null;
+      const label = type === "1" ? "投信" : "外資";
+      const consecutive = countConsecutive(institutional, key);
+      if (consecutive < minimumDays) return null;
+      const netTotal = consecutiveNetTotal(institutional, key, consecutive);
       return {
         stock_id: candidate.stock_id, stock_name: candidate.stock_name, close: candidate.close,
         volume: Math.floor(candidate.volume / 1000),
@@ -314,9 +302,14 @@ router.get("/api/strategy/chips-scan", async (req, res) => {
       };
     });
     const results = scanned.filter((row) => row !== null);
-    results.sort(String(req.query.sort || "1") === "1"
-      ? (a, b) => Math.abs(b!.consecutive) - Math.abs(a!.consecutive)
-      : (a, b) => b!.amount - a!.amount);
+    const sort = String(req.query.sort || "1");
+    results.sort(type === "3"
+      ? sort === "1"
+        ? (a, b) => (b!.whaleChange || 0) - (a!.whaleChange || 0)
+        : (a, b) => (a!.peopleChange || 0) - (b!.peopleChange || 0)
+      : sort === "1"
+        ? (a, b) => a!.consecutive - b!.consecutive || a!.netTotal - b!.netTotal
+        : (a, b) => b!.consecutive - a!.consecutive || b!.netTotal - a!.netTotal);
     return res.json({ success: true, data: results.slice(0, 40), source: "supabase" });
   } catch (error) {
     return errorResponse(res, error);
@@ -327,13 +320,13 @@ router.get("/api/strategy/pattern-scan", async (req, res) => {
   try {
     const candidates = await scanCandidates(req);
     const scanned = await mapWithConcurrency(candidates, 8, async (candidate) => {
-      const pattern = analyzePattern(await fetchCloudPrices(candidate.stock_id, 120));
+      const pattern = analyzeChartPattern(await fetchCloudPrices(candidate.stock_id, 120));
       if (pattern.confidence === 0) return null;
       return {
         stock_id: candidate.stock_id, stock_name: candidate.stock_name, close: candidate.close,
         volume: Math.floor(candidate.volume / 1000),
         amount: Number(((candidate.close * candidate.volume) / 1e8).toFixed(2)),
-        patternName: pattern.patternName, confidence: pattern.confidence,
+        patternName: pattern.patternName, stage: pattern.stage, confidence: pattern.confidence,
       };
     });
     const results = scanned.filter((row) => row !== null);

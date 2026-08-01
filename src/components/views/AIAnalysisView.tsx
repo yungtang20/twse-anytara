@@ -68,9 +68,9 @@ type JobRecord = {
 };
 
 type SettingsStatus = {
-  hasLongcatKey?: boolean;
+  hasNvidiaKey?: boolean;
   hasFinmindKey?: boolean;
-  longcatModel?: string;
+  nvidiaModel?: string;
 };
 
 const STEPS = [
@@ -609,7 +609,7 @@ export function AIAnalysisView() {
           <div className="space-y-4">
             <div className="text-sm">
               股票代碼：<span className="text-blue-300 font-mono">{stockId}</span> ｜ 已選框架：<span className="text-blue-300">{selectedCount}</span> ｜
-              AI：<span className="text-blue-300">{settingsStatus?.hasLongcatKey ? "LongCat" : "Gemini"}</span>
+              AI：<span className="text-blue-300">{settingsStatus?.hasNvidiaKey ? settingsStatus.nvidiaModel || "z-ai/glm-5.2" : "未設定"}</span>
             </div>
             <div className="flex gap-2">
               <button className="px-4 py-2 bg-slate-700 rounded" onClick={() => setStep(1)}>上一步</button>
@@ -730,7 +730,7 @@ export function AIAnalysisView() {
         {showDebug && (
           <div className="p-4 text-xs text-slate-300 space-y-3">
             <div className="flex items-center justify-between">
-              <span>LongCat: {settingsStatus?.hasLongcatKey ? "已設" : "未設"}</span>
+              <span>NVIDIA: {settingsStatus?.hasNvidiaKey ? "已設" : "未設"}</span>
               <span>FinMind: {settingsStatus?.hasFinmindKey ? "已設" : "未設"}</span>
               <button className="px-2 py-1 bg-slate-800 rounded" onClick={() => void fetchDebugInfo()}>
                 <RefreshCw size={12} className={isRefreshingDebug ? "animate-spin" : ""} />
@@ -747,8 +747,8 @@ export function AIAnalysisView() {
                   doneCount,
                   progressPct,
                   settings: {
-                    hasLongcatKey: !!settingsStatus?.hasLongcatKey,
-                    longcatModel: settingsStatus?.longcatModel,
+                    hasNvidiaKey: !!settingsStatus?.hasNvidiaKey,
+                    nvidiaModel: settingsStatus?.nvidiaModel,
                     hasFinmindKey: !!settingsStatus?.hasFinmindKey,
                   },
                 };

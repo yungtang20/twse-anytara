@@ -1,86 +1,132 @@
-import { useState, useEffect } from 'react';
-import { fetchChipsAnalysis, type ChipsAnalysis } from '../../lib/api';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import {
+  fetchStockInstitutional,
+  fetchStockShareholding,
+  type InstitutionalRow,
+  type ShareholdingRow,
+} from '../../lib/api';
 
-interface ChipsPanelProps {
-  stockId: string;
+interface ChipsDetailPanelProps {
+  institutional: InstitutionalRow[];
+  shareholding: ShareholdingRow[];
 }
 
-export function ChipsPanel({ stockId }: ChipsPanelProps) {
-  const [data, setData] = useState<ChipsAnalysis | null>(null);
+type InstitutionalKey = 'foreign_net' | 'trust_net';
+
+export function ChipsDetailPanel({ institutional, shareholding }: ChipsDetailPanelProps) {
+  const recentInstitutional = useMemo(
+    () => [...institutional].sort((left, right) => right.date.localeCompare(left.date)).slice(0, 10),
+    [institutional],
+  );
+  const recentShareholding = useMemo(
+    () => [...shareholding].sort((left, right) => right.date.localeCompare(left.date)).slice(0, 10),
+    [shareholding],
+  );
+
+  return <section className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+    <h3 className="mb-3 border-b border-slate-800 pb-2 text-sm font-bold text-white">3 ⚡ 籌碼動能</h3>
+    {!recentInstitutional.length && !recentShareholding.length
+      ? <div className="py-4 text-center text-xs text-slate-500">無資料</div>
+      : <div className="space-y-2 font-mono text-xs">
+          <ChipsSummary institutional={recentInstitutional} />
+          <ChipsTables institutional={recentInstitutional} shareholding={recentShareholding} />
+        </div>}
+  </section>;
+}
+
+function ChipsSummary({ institutional }: Pick<ChipsDetailPanelProps, 'institutional'>) {
+  return <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+    <TrendSummary label="外資動向" days={countConsecutive(institutional, 'foreign_net')} />
+    <TrendSummary label="投信動向" days={countConsecutive(institutional, 'trust_net')} />
+  </div>;
+}
+
+function TrendSummary({ label, days }: { label: string; days: number }) {
+  const color = days > 0 ? 'text-red-400' : days < 0 ? 'text-emerald-400' : 'text-slate-500';
+  const value = days > 0 ? `連買 ${days} 天` : days < 0 ? `連賣 ${Math.abs(days)} 天` : '無連續';
+  return <div className="flex items-center justify-between rounded-lg border border-slate-800 bg-slate-950 p-2.5">
+    <span className="text-slate-400">{label}</span><b className={color}>{value}</b>
+  </div>;
+}
+
+function ChipsTables({ institutional, shareholding }: ChipsDetailPanelProps) {
+  return <div className="overflow-x-auto">
+    <div className="grid w-max grid-cols-[max-content_max-content] items-start gap-1.5">
+      <DetailTable title="近 10 日法人買賣超" headers={['日期', '外資(張)', '投信(張)']}>
+        {institutional.map((row) => <tr key={row.date} className="border-b border-slate-800/60">
+          <td className="px-2 py-0.5 text-slate-400">{row.date}</td>
+          <SignedLotsCell value={row.foreign_net} /><SignedLotsCell value={row.trust_net} />
+        </tr>)}
+      </DetailTable>
+      <ShareholdingTable rows={shareholding} />
+    </div>
+  </div>;
+}
+
+function ShareholdingTable({ rows }: { rows: ShareholdingRow[] }) {
+  return <DetailTable title="TDCC 千張大戶明細" headers={['週別', '持股比率（較上週）', '股東總人數（較上週）']}>
+    {rows.map((row, index) => {
+      const previous = rows[index + 1];
+      return <tr key={row.date} className="border-b border-slate-800/60">
+        <td className="px-2 py-0.5 text-slate-400">{row.date}</td>
+        <td className="px-2 py-0.5 text-left font-semibold text-cyan-300">{row.ratio.toFixed(2)}% <WeeklyChange current={row.ratio} previous={previous?.ratio} suffix="%" decimals={2} /></td>
+        <td className="px-2 py-0.5 text-left font-semibold text-white">{row.totalPeople === null ? '尚無資料' : `${row.totalPeople.toLocaleString()} 人`}{row.totalPeople !== null && <WeeklyChange current={row.totalPeople} previous={previous?.totalPeople} suffix=" 人" decimals={0} />}</td>
+      </tr>;
+    })}
+  </DetailTable>;
+}
+
+export function ChipsPanel({ stockId }: { stockId: string }) {
+  const [institutional, setInstitutional] = useState<InstitutionalRow[]>([]);
+  const [shareholding, setShareholding] = useState<ShareholdingRow[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!stockId) return;
+    let active = true;
     setLoading(true);
-    fetchChipsAnalysis(stockId)
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
+    Promise.all([fetchStockInstitutional(stockId), fetchStockShareholding(stockId)])
+      .then(([institutions, holders]) => {
+        if (!active) return;
+        setInstitutional(institutions.data); setShareholding(holders.data);
+      })
+      .catch(() => { if (active) { setInstitutional([]); setShareholding([]); } })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [stockId]);
 
-  return (
-    <div className="bg-slate-950/50 border border-slate-800 rounded-xl p-3 hover:border-slate-700/80 transition-all">
-      <h3 className="text-sm sm:text-base font-bold text-white mb-4 flex items-center gap-2 border-b border-slate-800 pb-2">
-        <span className="font-mono text-cyan-400 select-none">3 ⚡</span>
-        籌碼動能 (Institutional Chips)
-      </h3>
+  return loading
+    ? <section className="rounded-xl border border-slate-800 bg-slate-950/50 p-3"><h3 className="mb-3 border-b border-slate-800 pb-2 text-sm font-bold text-white">3 ⚡ 籌碼動能</h3><div className="py-4 text-center text-xs text-slate-500">載入中...</div></section>
+    : <ChipsDetailPanel institutional={institutional} shareholding={shareholding} />;
+}
 
-      {loading && <div className="text-slate-500 text-center py-4 text-xs">載入中...</div>}
-      {!loading && !data && <div className="text-slate-500 text-center py-4 text-xs">無資料</div>}
+function countConsecutive(rows: InstitutionalRow[], key: InstitutionalKey) {
+  const firstValue = rows[0]?.[key] ?? 0;
+  if (firstValue === 0) return 0;
+  const direction = Math.sign(firstValue);
+  let count = 0;
+  for (const row of rows) {
+    if (Math.sign(row[key]) !== direction) break;
+    count += 1;
+  }
+  return count * direction;
+}
 
-      {data && (
-      <div className="space-y-4 font-mono text-xs sm:text-[13px]">
-        <div className="grid grid-cols-2 gap-2">
-          <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-850 flex items-center justify-between">
-            <span className="text-slate-400">🔥 外資動向：</span>
-            <span className={`font-bold ${data.foreignConsecutive >= 0 ? 'text-red-500' : 'text-emerald-400'}`}>
-              {data.foreignConsecutive >= 0 ? `連買 ${data.foreignConsecutive} 天` : `連賣 ${Math.abs(data.foreignConsecutive)} 天`}
-            </span>
-          </div>
-          <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-850 flex items-center justify-between">
-            <span className="text-slate-400">🔥 投信動向：</span>
-            <span className={`font-bold ${data.trustConsecutive >= 0 ? 'text-red-500' : 'text-emerald-400'}`}>
-              {data.trustConsecutive >= 0 ? `連買 ${data.trustConsecutive} 天` : `連賣 ${Math.abs(data.trustConsecutive)} 天`}
-            </span>
-          </div>
-        </div>
+function WeeklyChange({ current, previous, suffix, decimals }: { current: number; previous: number | null | undefined; suffix: string; decimals: number }) {
+  if (previous == null) return <span className="ml-1 text-slate-600">—</span>;
+  const difference = current - previous;
+  if (difference === 0) return <span className="ml-1 text-slate-500">→ 0{suffix}</span>;
+  const display = decimals === 0 ? Math.abs(difference).toLocaleString() : Math.abs(difference).toFixed(decimals);
+  return <span className={`ml-1 ${difference > 0 ? 'text-red-400' : 'text-emerald-400'}`}>{difference > 0 ? '↑' : '↓'} {display}{suffix}</span>;
+}
 
-        {data.whaleRatio !== null && (
-        <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-850 flex items-center justify-between">
-          <span className="text-slate-400">🏛️ 千戶大戶：</span>
-          <span className="text-red-400 font-bold">{data.whaleRatio}%</span>
-        </div>
-        )}
+function SignedLotsCell({ value }: { value: number }) {
+  const lots = Math.trunc(value / 1000);
+  return <td className={`px-2 py-0.5 text-left font-semibold ${lots >= 0 ? 'text-red-400' : 'text-emerald-400'}`}>{lots >= 0 ? '+' : ''}{lots.toLocaleString()}</td>;
+}
 
-        <div className="space-y-2">
-          <div className="font-bold text-slate-400 px-1">📅 近 10 日法人進出明細</div>
-          <div className="overflow-x-auto rounded-lg border border-slate-850 text-xs text-slate-300">
-            <table className="w-full text-center border-collapse bg-slate-950">
-              <thead>
-                <tr className="border-b border-slate-850 text-slate-450 bg-slate-900/40 text-[11px] font-semibold">
-                  <th className="p-2 text-left pl-4">日期</th>
-                  <th className="p-2 text-right">外資買賣(張)</th>
-                  <th className="p-2 text-right pr-4">投信買賣(張)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(data.chipHistory || []).slice(0, 10).map((row, index) => (
-                  <tr key={index} className="hover:bg-slate-900/30 border-b border-slate-850/60 leading-normal">
-                    <td className="p-2 text-left pl-4 text-slate-400">{row.date}</td>
-                    <td className={`p-2 text-right font-semibold ${row.foreign >= 0 ? 'text-red-500' : 'text-emerald-400 font-medium'}`}>
-                      {row.foreign >= 0 ? '+' : ''}{row.foreign.toLocaleString()}
-                    </td>
-                    <td className={`p-2 text-right pr-4 font-semibold ${row.trust >= 0 ? 'text-red-500' : 'text-emerald-400 font-medium'}`}>
-                      {row.trust >= 0 ? '+' : ''}{row.trust.toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-      )}
-    </div>
-  );
+function DetailTable({ title, headers, children }: { title: string; headers: string[]; children: ReactNode }) {
+  return <div className="w-max overflow-hidden rounded-lg border border-slate-800">
+    <div className="border-b border-slate-800 bg-slate-900/60 px-2 py-0.5 text-[11px] font-bold text-slate-300">{title}</div>
+    <table className="w-auto text-xs font-mono"><thead><tr className="border-b border-slate-800 text-slate-500">{headers.map((header) => <th key={header} className="px-2 py-0.5 text-left font-semibold">{header}</th>)}</tr></thead><tbody>{children}</tbody></table>
+  </div>;
 }

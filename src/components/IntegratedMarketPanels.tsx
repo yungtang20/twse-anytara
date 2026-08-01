@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Bar,
   CartesianGrid,
@@ -13,60 +13,20 @@ import {
 } from "recharts";
 import {
   buildIntegratedMarketData,
+  type IntegratedMarketPoint,
   type InstitutionalPoint,
   type ShareholdingPoint,
 } from "../lib/integratedMarketData";
+import { mondayTicks } from "../lib/chartFormatting";
 
 interface IntegratedMarketPanelsProps {
   visibleDates: string[];
+  activeDate?: string;
   institutional: InstitutionalPoint[];
   shareholding: ShareholdingPoint[];
   showForeign: boolean;
   showTrust: boolean;
   showShareholding: boolean;
-}
-
-interface TooltipEntry {
-  dataKey?: string;
-  value?: number;
-  color?: string;
-  fill?: string;
-}
-
-interface PanelTooltipProps {
-  active?: boolean;
-  label?: string;
-  payload?: TooltipEntry[];
-}
-
-const layerLabels: Record<string, string> = {
-  foreign: "外資",
-  trust: "投信",
-  whaleRatio: "千戶大戶",
-};
-
-function PanelTooltip({ active, label, payload }: PanelTooltipProps) {
-  const values = payload?.filter((entry) => entry.value != null) || [];
-  if (!active || values.length === 0) return null;
-  return (
-    <div className="space-y-1 rounded-lg border border-slate-700 bg-slate-950/95 p-2.5 font-mono text-xs shadow-xl">
-      <div className="border-b border-slate-800 pb-1 font-bold text-slate-400">{label}</div>
-      {values.map((entry) => {
-        const key = entry.dataKey || "";
-        const isRatio = key === "whaleRatio";
-        return (
-          <div key={key} className="flex justify-between gap-4">
-            <span style={{ color: entry.color || entry.fill }}>{layerLabels[key] || key}</span>
-            <strong className="text-slate-100">
-              {isRatio
-                ? `${Number(entry.value).toFixed(2)}%`
-                : `${Number(entry.value).toLocaleString()} 張`}
-            </strong>
-          </div>
-        );
-      })}
-    </div>
-  );
 }
 
 function signedDomain(values: Array<number | null>): [number, number] {
@@ -75,18 +35,25 @@ function signedDomain(values: Array<number | null>): [number, number] {
   return [-bound, bound];
 }
 
+function InvisibleTooltip() {
+  return null;
+}
+
 export function IntegratedMarketPanels({
   visibleDates,
+  activeDate,
   institutional,
   shareholding,
   showForeign,
   showTrust,
   showShareholding,
 }: IntegratedMarketPanelsProps) {
+  const [hoveredDate, setHoveredDate] = useState<string | null>(null);
   const data = useMemo(
     () => buildIntegratedMarketData(visibleDates, institutional, shareholding),
     [visibleDates, institutional, shareholding],
   );
+  const weekdayTicks = useMemo(() => mondayTicks(visibleDates), [visibleDates]);
   const institutionalDomain = signedDomain(
     data.flatMap((row) => [
       showForeign ? row.foreign : null,
@@ -99,6 +66,8 @@ export function IntegratedMarketPanels({
   const ratioMin = ratios.length ? Math.max(0, Math.floor(Math.min(...ratios) - 1)) : 0;
   const ratioMax = ratios.length ? Math.min(100, Math.ceil(Math.max(...ratios) + 1)) : 100;
   const showInstitutional = showForeign || showTrust;
+  const selectedDate = hoveredDate ?? activeDate;
+  const activeRow = data.find((row) => row.date === selectedDate) ?? data.at(-1);
 
   if (!showInstitutional && !showShareholding) return null;
 
@@ -106,18 +75,15 @@ export function IntegratedMarketPanels({
     <div className="border-t border-slate-800/80 bg-slate-950/30">
       {showInstitutional && (
         <section className="border-b border-slate-800/70 px-3 py-2">
-          <div className="mb-1 flex flex-wrap items-center gap-3 text-[10px] font-mono">
-            <strong className="text-slate-300">法人買賣超</strong>
-            {showForeign && <span className="text-blue-300">■ 外資</span>}
-            {showTrust && <span className="text-amber-300">■ 投信</span>}
-            <span className="ml-auto text-slate-500">紅＝買超、綠＝賣超（張）</span>
-          </div>
+          <InstitutionalHeader row={activeRow} showForeign={showForeign} showTrust={showTrust} />
           <ResponsiveContainer width="100%" height={118}>
             <ComposedChart
               syncId="integrated-stock-cockpit"
               data={data}
               margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
               barGap={2}
+              onMouseMove={(state) => setHoveredDate(typeof state?.activeLabel === "string" ? state.activeLabel : null)}
+              onMouseLeave={() => setHoveredDate(null)}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.35} />
               <XAxis dataKey="date" tick={false} tickLine={false} axisLine={false} />
@@ -129,7 +95,7 @@ export function IntegratedMarketPanels({
                 axisLine={false}
                 tickFormatter={(value) => Math.abs(value) >= 1000 ? `${(value / 1000).toFixed(0)}K` : `${value}`}
               />
-              <Tooltip content={<PanelTooltip />} />
+              <Tooltip content={<InvisibleTooltip />} cursor={false} />
               <ReferenceLine y={0} stroke="#64748b" />
               {showForeign && (
                 <Bar dataKey="foreign" name="外資" maxBarSize={12}>
@@ -160,20 +126,19 @@ export function IntegratedMarketPanels({
 
       {showShareholding && (
         <section className="px-3 py-2">
-          <div className="mb-1 flex flex-wrap items-center gap-3 text-[10px] font-mono">
-            <strong className="text-slate-300">千戶大戶持股比例</strong>
-            <span className="text-cyan-300">━ 1,000 張以上</span>
-            <span className="ml-auto text-slate-500">TDCC 週資料延續至下一公告日</span>
-          </div>
+          <ShareholdingHeader row={activeRow} />
           <ResponsiveContainer width="100%" height={110}>
             <ComposedChart
               syncId="integrated-stock-cockpit"
               data={data}
               margin={{ top: 4, right: 8, left: 0, bottom: 2 }}
+              onMouseMove={(state) => setHoveredDate(typeof state?.activeLabel === "string" ? state.activeLabel : null)}
+              onMouseLeave={() => setHoveredDate(null)}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.35} />
               <XAxis
                 dataKey="date"
+                ticks={weekdayTicks}
                 interval="preserveStartEnd"
                 minTickGap={30}
                 tick={{ fill: "#64748b", fontSize: 8 }}
@@ -189,7 +154,7 @@ export function IntegratedMarketPanels({
                 axisLine={false}
                 tickFormatter={(value) => `${value}%`}
               />
-              <Tooltip content={<PanelTooltip />} />
+              <Tooltip content={<InvisibleTooltip />} cursor={false} />
               <Line
                 type="stepAfter"
                 dataKey="whaleRatio"
@@ -205,4 +170,32 @@ export function IntegratedMarketPanels({
       )}
     </div>
   );
+}
+
+function InstitutionalHeader({ row, showForeign, showTrust }: {
+  row?: IntegratedMarketPoint;
+  showForeign: boolean;
+  showTrust: boolean;
+}) {
+  return <div className="mb-1 flex min-h-5 flex-wrap items-center gap-3 font-mono text-[10px]">
+    <strong className="text-slate-300">法人買賣超</strong>
+    <span className="text-slate-500">{row?.date ?? '--'}</span>
+    {showForeign && <SignedHeaderValue label="外資" value={row?.foreign} />}
+    {showTrust && <SignedHeaderValue label="投信" value={row?.trust} />}
+    <span className="ml-auto text-slate-500">紅＝買超、綠＝賣超（張）</span>
+  </div>;
+}
+
+function SignedHeaderValue({ label, value }: { label: string; value: number | null | undefined }) {
+  const color = (value ?? 0) >= 0 ? 'text-red-400' : 'text-emerald-400';
+  return <span className={color}>{label} <b>{value == null ? '--' : `${value >= 0 ? '+' : ''}${value.toLocaleString()} 張`}</b></span>;
+}
+
+function ShareholdingHeader({ row }: { row?: IntegratedMarketPoint }) {
+  return <div className="mb-1 flex min-h-5 flex-wrap items-center gap-3 font-mono text-[10px]">
+    <strong className="text-slate-300">千戶大戶持股比例</strong>
+    <span className="text-slate-500">{row?.date ?? '--'}</span>
+    <span className="text-cyan-300">1,000 張以上 <b>{row?.whaleRatio == null ? '--' : `${row.whaleRatio.toFixed(2)}%`}</b></span>
+    <span className="ml-auto text-slate-500">TDCC 週資料延續至下一公告日</span>
+  </div>;
 }

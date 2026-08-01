@@ -3,8 +3,6 @@
 import { Request, Response } from "express";
 import { startJob, getJob, listJobs, cancelJob, deleteJob, deleteAllJobs } from "./lib/jobQueue";
 import { syncTdcc, getTdccSqliteStatus } from "./lib/tdccDownload";
-import { GoogleGenAI } from "@google/genai";
-import { resolveLongcatCompletionsUrl } from "./lib/security";
 import { buildStockSnapshot, formatSnapshotForPrompt, type SnapshotRow, type StockSnapshot } from "./lib/stockSnapshot";
 import { validateEvidenceReport, type EvidenceSummary, type ReportClaim } from "./lib/evidenceReport";
 import { fetchWithOneRetry } from "./lib/fetchRetry";
@@ -12,21 +10,20 @@ import { evaluateFrameworkEligibility, FRAMEWORK_CONTRACTS } from "./lib/framewo
 import { fetchCloudMeta, fetchCloudPrices, fetchCloudShareholding } from "./lib/cloudMarketData";
 import { readFinMindCache, writeFinMindCache } from "./lib/finmindCache";
 import { isOrdinaryStockId } from "./lib/stockUniverse";
+import { generateNvidiaReport, hasNvidiaApiKey, nvidiaModel } from "./lib/nvidiaAi";
 
 const FINMIND = "https://api.finmindtrade.com/api/v4/data";
 
 export interface DynamicSettings {
-  longcatApiKey: string;
-  longcatBaseUrl: string;
-  longcatModel: string;
+  nvidiaApiKey: string;
+  nvidiaModel: string;
   finmindApiKey: string;
 }
 
 export async function getDynamicSettings(): Promise<DynamicSettings> {
   return {
-    longcatApiKey: process.env.LONGCAT_API_KEY || process.env.VITE_LONGCAT_API_KEY || "",
-    longcatBaseUrl: process.env.LONGCAT_BASE_URL || process.env.VITE_LONGCAT_BASE_URL || "",
-    longcatModel: process.env.LONGCAT_MODEL || process.env.VITE_LONGCAT_MODEL || "LongCat-2.0",
+    nvidiaApiKey: process.env.NVIDIA_API_KEY || "",
+    nvidiaModel: nvidiaModel(),
     finmindApiKey: process.env.FINMIND_API_KEY || "",
   };
 }
@@ -340,19 +337,12 @@ export interface FrameworkAnalysisResult {
   claims: ReportClaim[];
   evidence: Record<string, unknown>;
   evidenceSummary: EvidenceSummary;
-  provider?: 'longcat' | 'gemini';
+  provider?: 'nvidia';
 }
 
 export async function runFrameworkAnalysis(stockId: string, frameworkId: string, signal?: AbortSignal, suppliedSnapshot?: AnalysisSnapshot): Promise<FrameworkAnalysisResult> {
   signal?.throwIfAborted();
-  const settings = await getDynamicSettings();
-  const rawGeminiKey = (process.env.GEMINI_API_KEY || "").trim();
-  const hasGemini = !!rawGeminiKey; 
-  const hasLongcat = !!settings.longcatApiKey;
-  
-  if (!hasLongcat && !hasGemini) {
-    throw new Error("未偵測到有效的 Gemini 或 LongCat API 金鑰，請先到 設定 或環境變數中配置。");
-  }
+  if (!hasNvidiaApiKey()) throw new Error("未偵測到 NVIDIA API 金鑰，請先到設定頁配置。");
 
   const prompt = FRAMEWORK_PROMPTS[frameworkId] || FRAMEWORK_PROMPTS.goldman;
   const snapshot = suppliedSnapshot || await fetchAnalysisSnapshot(stockId, signal, [frameworkId]);
@@ -386,79 +376,16 @@ export async function runFrameworkAnalysis(stockId: string, frameworkId: string,
   const deterministicMetricRules = `\n\n數值生成硬規則：\n- 報告中的每個數值都必須引用 [[metric:...]] 或 [[evidence:...]]。\n- 不可自行計算、估算、補寫沒有 metric/evidence 的數值。\n- 如果格式要求某個數字但資料不足，寫「無資料」，並簡述缺少的資料集或 metric。\n- 本報告指定可用指標：${frameworkMetricRules[frameworkId] || "使用 necessaryData 中已列出的 metric；不要自行新增數值。"}`;
   const userMsg = prompt.ask(stockId, necessaryData) + groundingRules + limitations + technicalMetricRules + deterministicMetricRules + formatRules;
 
-  const errors: string[] = [];
-
-  // 1. Prioritize LongCat if configured (since the user explicitly provided this key in Settings)
-  if (hasLongcat) {
-    try {
-      console.log(`[jobQueue] Attempting LongCat for stock ${stockId}, framework ${frameworkId}`);
-      const completionsUrl = resolveLongcatCompletionsUrl(settings.longcatBaseUrl);
-      const res = await fetchWithOneRetry(completionsUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + settings.longcatApiKey },
-        body: JSON.stringify({
-          model: settings.longcatModel || "LongCat-2.0",
-          messages: [{ role: "system", content: `${prompt.sys}\n你是受格式約束的研究報告產生器，禁止自由發揮或偏離指定模板。` }, { role: "user", content: userMsg }],
-          temperature: 0.25,
-          max_tokens: prompt.mtok,
-        }),
-        redirect: "error",
-      // ponytail: LongCat-2.0 agentic reports can exceed 90s; move to an async provider API if the 5m ceiling becomes limiting.
-      }, signal, 300_000);
-      if (!res.ok) {
-        const errText = await res.text().catch(() => "");
-        throw new Error(`LongCat ${res.status}: ${errText.slice(0, 200)}`);
-      }
-      const j = await res.json() as any;
-      if (j.error) throw new Error(`LongCat error: ${JSON.stringify(j.error).slice(0, 200)}`);
-      const report = j.choices?.[0]?.message?.content;
-      if (!report) throw new Error("LongCat 空回覆");
-      console.log(`[jobQueue] LongCat analysis completed successfully for ${stockId} (${frameworkId})`);
-      const validated = validateEvidenceReport(report, snapshot);
-      return { report: validated.markdown, claims: validated.claims, evidence: validated.evidence, evidenceSummary: validated.summary, provider: 'longcat' };
-    } catch (e: any) {
-      if (signal?.aborted || e?.name === "AbortError") throw e;
-      console.error(`[jobQueue] LongCat failed: ${e.message}`);
-      errors.push(`LongCat 錯誤: ${e.message}`);
-    }
-  }
-
-  // 2. Try Gemini if LongCat was not available or if LongCat failed
-  if (hasGemini) {
-    try {
-      console.log(`[jobQueue] Attempting Gemini for stock ${stockId}, framework ${frameworkId}`);
-      const ai = new GoogleGenAI({
-        apiKey: rawGeminiKey,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build',
-          }
-        }
-      });
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: userMsg,
-        config: {
-          systemInstruction: prompt.sys,
-          temperature: 0.25,
-        }
-      });
-      signal?.throwIfAborted();
-      if (response.text) {
-        console.log(`[jobQueue] Gemini analysis completed successfully for ${stockId} (${frameworkId})`);
-        const validated = validateEvidenceReport(response.text, snapshot);
-        return { report: validated.markdown, claims: validated.claims, evidence: validated.evidence, evidenceSummary: validated.summary, provider: 'gemini' };
-      }
-      throw new Error("Gemini 回傳了空的內容。");
-    } catch (e: any) {
-      if (signal?.aborted || e?.name === "AbortError") throw e;
-      console.error(`[jobQueue] Gemini failed: ${e.message}`);
-      errors.push(`Gemini 錯誤: ${e.message}`);
-    }
-  }
-
-  // If both failed, throw combined error
-  throw new Error(`所有 AI 分析引擎皆不可用或呼叫失敗: ${errors.join(" | ")}`);
+  console.log(`[jobQueue] Attempting NVIDIA ${nvidiaModel()} for stock ${stockId}, framework ${frameworkId}`);
+  const report = await generateNvidiaReport({
+    system: `${prompt.sys}\n你是受格式約束的研究報告產生器，禁止自由發揮或偏離指定模板。`,
+    user: userMsg,
+  }, signal);
+  const validated = validateEvidenceReport(report, snapshot);
+  return {
+    report: validated.markdown, claims: validated.claims, evidence: validated.evidence,
+    evidenceSummary: validated.summary, provider: 'nvidia',
+  };
 }
 
 // POST /api/job/batch  — create + fire-forget, returns job_id immediately
@@ -467,10 +394,7 @@ export async function jobBatchHandler(req: Request, res: Response) {
   const requestedFrameworks: string[] = Array.isArray(req.body?.frameworks) ? req.body.frameworks : [];
   if (!isOrdinaryStockId(stockId)) return res.status(400).json({ success: false, error: "只支援普通股代號" });
 
-  const settings = await getDynamicSettings();
-  const hasLongcat = !!settings.longcatApiKey;
-  const geminiKey = process.env.GEMINI_API_KEY;
-  if (!hasLongcat && !geminiKey) return res.status(500).json({ success: false, error: "未偵測到有效的 Gemini 或 LongCat API 金鑰，請先到 設定 或環境變數中配置。" });
+  if (!hasNvidiaApiKey()) return res.status(500).json({ success: false, error: "未偵測到 NVIDIA API 金鑰，請先到設定頁配置。" });
 
   const validIds = Object.keys(FRAMEWORK_PROMPTS);
   const frameworks = requestedFrameworks.filter((f) => validIds.includes(f));

@@ -1,7 +1,8 @@
 import { Router, json, type NextFunction, type Request, type Response } from "express";
 import fs from "fs";
 import path from "path";
-import { isLoopbackRequest, normalizeLongcatBaseUrl, validateEnvValue } from "../lib/security";
+import { isLoopbackRequest, validateEnvValue } from "../lib/security";
+import { hasNvidiaApiKey, nvidiaModel } from "../lib/nvidiaAi";
 import { describeSupabaseError } from "../lib/supabaseDiagnostics";
 import { pruneSupabaseData } from "../lib/syncBridge";
 import { debugState, addLog, pushSyncLog, supabase } from "../services";
@@ -176,10 +177,9 @@ router.post("/api/settings/sync-bridge", json(), (_req: Request, res: Response) 
 router.get("/api/settings", (_req: Request, res: Response) => {
   res.json({
     success: true,
-    hasLongcatKey: Boolean(process.env.LONGCAT_API_KEY || process.env.VITE_LONGCAT_API_KEY),
+    hasNvidiaKey: hasNvidiaApiKey(),
     hasFinmindKey: Boolean(process.env.FINMIND_API_KEY),
-    hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
-    longcatModel: process.env.LONGCAT_MODEL || process.env.VITE_LONGCAT_MODEL || "LongCat-2.0",
+    nvidiaModel: nvidiaModel(),
   });
 });
 
@@ -190,13 +190,12 @@ router.post("/api/settings", json(), async (req: Request, res: Response) => {
   }
   try {
     const updates: Record<string, string> = {};
-    if (req.body.longcatApiKey) updates.LONGCAT_API_KEY = validateEnvValue("LongCat API key", req.body.longcatApiKey);
+    if (req.body.nvidiaApiKey) updates.NVIDIA_API_KEY = validateEnvValue("NVIDIA API key", req.body.nvidiaApiKey);
     if (req.body.finmindApiKey) updates.FINMIND_API_KEY = validateEnvValue("FinMind API key", req.body.finmindApiKey);
-    if (req.body.longcatBaseUrl) updates.LONGCAT_BASE_URL = normalizeLongcatBaseUrl(req.body.longcatBaseUrl);
-    if (req.body.longcatModel) {
-      const model = validateEnvValue("LongCat model", req.body.longcatModel, 100);
-      if (!/^[A-Za-z0-9._:-]+$/.test(model)) throw new Error("LongCat model 格式無效");
-      updates.LONGCAT_MODEL = model;
+    if (req.body.nvidiaModel) {
+      const model = validateEnvValue("NVIDIA model", req.body.nvidiaModel, 100);
+      if (!/^[A-Za-z0-9._:/-]+$/.test(model)) throw new Error("NVIDIA model 格式無效");
+      updates.NVIDIA_MODEL = model;
     }
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ success: false, error: "沒有可儲存的設定" });

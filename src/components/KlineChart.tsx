@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Cell
 } from 'recharts';
@@ -12,14 +12,20 @@ import type {
 import { buildSupportResistanceLines } from '../lib/trendLines';
 import {
   formatPriceAxisTick,
-  formatTrendLegendLabel,
+  mondayTicks,
 } from '../lib/chartFormatting';
 
 const TREND_LINE_ALGORITHM_VERSION = 15;
 
 export interface KlineOverlay {
   hLines?: { value: number; color: string; label?: string; dash?: boolean }[];
-  extraMAs?: { period: number; color: string; label: string }[];
+  indicators?: {
+    movingAverages?: boolean;
+    supportResistance?: boolean;
+    foreign?: boolean;
+    trust?: boolean;
+    shareholding?: boolean;
+  };
 }
 
 interface KlineChartProps {
@@ -33,11 +39,27 @@ interface CandleDatum extends PriceData {
   color: string;
   candleRange: [number, number];
   previousClose: number;
+  ma25: number | null;
+  ma60: number | null;
+  ma200: number | null;
+  volma5: number | null;
+  volma60: number | null;
   vwap: number | null;
   shortResistance: number | null;
   shortSupport: number | null;
   longResistance: number | null;
   longSupport: number | null;
+}
+
+interface MarketDataStripProps {
+  datum?: CandleDatum;
+  showMAs: boolean;
+  showVWAP: boolean;
+  showPOC: boolean;
+  showSupportResistance: boolean;
+  showRecentHighLow: boolean;
+  pocPrice: number | null;
+  recentHighLow: { high: number; low: number };
 }
 
 interface CandlestickShapeProps {
@@ -46,22 +68,6 @@ interface CandlestickShapeProps {
   width?: number;
   height?: number;
   payload?: CandleDatum;
-}
-
-function LineLegend({ items }: { items: Array<{ label: string; color: string }> }) {
-  return (
-    <div className="pointer-events-none absolute right-2 top-1 z-10 flex flex-wrap items-center gap-2 rounded bg-slate-950/80 px-2 py-1 font-mono text-[9px] text-slate-300">
-      {items.map((item) => (
-        <span key={item.label} className="flex items-center gap-1">
-          <span
-            className="inline-block h-0.5 w-4"
-            style={{ backgroundColor: item.color }}
-          />
-          {item.label}
-        </span>
-      ))}
-    </div>
-  );
 }
 
 function CandlestickShape({
@@ -101,18 +107,17 @@ function CandlestickShape({
   );
 }
 
-function MarketDataStrip({ datum }: { datum?: CandleDatum }) {
+function MarketDataStrip(props: MarketDataStripProps) {
+  const { datum } = props;
   if (!datum) return <div className="h-7 border-b border-slate-800" />;
   const change = datum.close - datum.previousClose;
   const changePct = datum.previousClose > 0 ? (change / datum.previousClose) * 100 : 0;
   const directionClass = change >= 0 ? 'text-red-400' : 'text-emerald-400';
   const sign = change >= 0 ? '+' : '';
   return (
-    <div
-      aria-live="polite"
-      className="h-7 overflow-x-auto border-b border-slate-800 bg-slate-950/70 px-2 font-mono text-[10px] text-slate-400"
-    >
-      <div className="flex h-full min-w-max items-center gap-2">
+    <div aria-live="polite" className="border-b border-slate-800 bg-slate-950/70 font-mono text-[10px] text-slate-400">
+      <div className="h-7 overflow-x-auto px-2">
+        <div className="flex h-full min-w-max items-center gap-2">
         <strong className="text-slate-200">{datum.date}</strong>
         <span>開 <b className="text-slate-100">{datum.open.toFixed(2)}</b></span>
         <span>高 <b className="text-red-400">{datum.high.toFixed(2)}</b></span>
@@ -124,13 +129,64 @@ function MarketDataStrip({ datum }: { datum?: CandleDatum }) {
         <span className={directionClass}>
           漲幅 <b>{sign}{changePct.toFixed(2)}%</b>
         </span>
-        <span>量 <b className="text-slate-100">{Math.floor(datum.volume / 1000).toLocaleString()} 張</b></span>
-        {datum.vwap !== null && (
-          <span>VWAP <b className="text-yellow-400">{datum.vwap.toFixed(2)}</b></span>
-        )}
+        </div>
       </div>
+      {hasActiveIndicators(props) && <div className="flex min-h-6 flex-wrap items-center gap-x-3 gap-y-1 border-t border-slate-800/70 px-2 py-1">
+        <ActiveIndicatorValues {...props} datum={datum} />
+      </div>}
     </div>
   );
+}
+
+function hasActiveIndicators(props: MarketDataStripProps) {
+  return props.showMAs || props.showVWAP || props.showPOC
+    || props.showSupportResistance || props.showRecentHighLow;
+}
+
+function ActiveIndicatorValues({
+  datum, showMAs, showVWAP, showPOC, showSupportResistance,
+  showRecentHighLow, pocPrice, recentHighLow,
+}: MarketDataStripProps) {
+  return <>
+    {showMAs && <>
+      <IndicatorValue label="MA25" value={datum?.ma25} color="text-orange-400" />
+      <IndicatorValue label="MA60" value={datum?.ma60} color="text-blue-400" />
+      <IndicatorValue label="MA200" value={datum?.ma200} color="text-pink-400" />
+    </>}
+    {showVWAP && <IndicatorValue label="VWAP" value={datum?.vwap} color="text-yellow-400" />}
+    {showPOC && <IndicatorValue label="POC" value={pocPrice} color="text-rose-400" />}
+    {showSupportResistance && <>
+      <IndicatorValue label="短壓25" value={datum?.shortResistance} color="text-green-400" />
+      <IndicatorValue label="短撐25" value={datum?.shortSupport} color="text-red-400" />
+      <IndicatorValue label="長壓60" value={datum?.longResistance} color="text-green-600" />
+      <IndicatorValue label="長撐60" value={datum?.longSupport} color="text-red-600" />
+    </>}
+    {showRecentHighLow && <>
+      <IndicatorValue label="波段高" value={recentHighLow.high} color="text-sky-400" />
+      <IndicatorValue label="波段低" value={recentHighLow.low} color="text-cyan-400" />
+    </>}
+  </>;
+}
+
+function VolumeDataStrip({ datum, showVolMAs }: { datum?: CandleDatum; showVolMAs: boolean }) {
+  return <div className="flex min-h-7 flex-wrap items-center gap-x-3 gap-y-1 border-b border-slate-800/70 bg-slate-950/60 px-2 py-1 font-mono text-[10px] text-slate-400">
+    <strong className="text-slate-200">{datum?.date ?? '--'}</strong>
+    <IndicatorValue label="成交量" value={datum?.volume} color="text-slate-100" volume />
+    {showVolMAs && <>
+      <IndicatorValue label="VolMA5" value={datum?.volma5} color="text-cyan-400" volume />
+      <IndicatorValue label="VolMA60" value={datum?.volma60} color="text-amber-400" volume />
+    </>}
+  </div>;
+}
+
+function IndicatorValue({ label, value, color, volume = false }: {
+  label: string;
+  value: number | null | undefined;
+  color: string;
+  volume?: boolean;
+}) {
+  const display = value == null ? '--' : volume ? `${Math.trunc(value / 1000).toLocaleString()} 張` : value.toFixed(2);
+  return <span>{label} <b className={color}>{display}</b></span>;
 }
 
 // Rolling VWAP (Volume Weighted Average Price) over 20-day period
@@ -168,6 +224,15 @@ export function KlineChart({
   const [showTrust, setShowTrust] = useState(false);
   const [showShareholding, setShowShareholding] = useState(false);
   const [hoveredDatum, setHoveredDatum] = useState<CandleDatum | null>(null);
+
+  useEffect(() => {
+    if (!overlay?.indicators) return;
+    setShowMAs(Boolean(overlay.indicators.movingAverages));
+    setShowSupportResistance(Boolean(overlay.indicators.supportResistance));
+    setShowForeign(Boolean(overlay.indicators.foreign));
+    setShowTrust(Boolean(overlay.indicators.trust));
+    setShowShareholding(Boolean(overlay.indicators.shareholding));
+  }, [overlay?.indicators]);
 
   const aggregatedData = data;
 
@@ -318,6 +383,7 @@ export function KlineChart({
   }, [visibleChartData]);
 
   const chartData = visibleChartData;
+  const weekdayTicks = useMemo(() => mondayTicks(chartData.map((row) => row.date)), [chartData]);
   const priceDomain = useMemo<[number, number]>(() => {
     if (chartData.length === 0) return [0, 1];
     const lowest = Math.min(...chartData.map((row) => row.low));
@@ -475,38 +541,18 @@ export function KlineChart({
       {/* ── Chart Area ── */}
       <div className="p-3 select-none flex-1 min-h-[420px] flex flex-col gap-2">
         {/* Main Price Chart */}
-        <div className="h-[320px] shrink-0">
-          <MarketDataStrip datum={displayDatum} />
+        <div className="shrink-0">
+          <MarketDataStrip
+            datum={displayDatum}
+            showMAs={showMAs}
+            showVWAP={showVWAP}
+            showPOC={showPOC}
+            showSupportResistance={showSupportResistance}
+            showRecentHighLow={showRecentHighLow}
+            pocPrice={pocPrice}
+            recentHighLow={recentHighLow}
+          />
           <div className="relative h-[292px]">
-            {(showMAs || showSupportResistance) && (
-              <LineLegend
-                items={[
-                  ...(showMAs ? [
-                    { label: 'MA25', color: '#fb923c' },
-                    { label: 'MA60', color: '#60a5fa' },
-                    { label: 'MA200', color: '#f472b6' },
-                  ] : []),
-                  ...(showSupportResistance ? [
-                    {
-                      label: formatTrendLegendLabel('短壓25', displayDatum?.shortResistance),
-                      color: '#22c55e',
-                    },
-                    {
-                      label: formatTrendLegendLabel('短撐25', displayDatum?.shortSupport),
-                      color: '#ef4444',
-                    },
-                    {
-                      label: formatTrendLegendLabel('長壓60', displayDatum?.longResistance),
-                      color: '#15803d',
-                    },
-                    {
-                      label: formatTrendLegendLabel('長撐60', displayDatum?.longSupport),
-                      color: '#dc2626',
-                    },
-                  ] : []),
-                ]}
-              />
-            )}
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart
                 syncId="integrated-stock-cockpit"
@@ -519,6 +565,7 @@ export function KlineChart({
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.5} />
               <XAxis 
                 dataKey="date" 
+                ticks={weekdayTicks}
                 tick={{ fill: '#64748b', fontSize: 9, fontFamily: 'monospace' }} 
                 tickLine={false} 
                 axisLine={false}
@@ -648,16 +695,9 @@ export function KlineChart({
         </div>
 
         {/* Volume Sub-Chart */}
-        <div className="h-[100px] border-t border-slate-850/60 pt-2 relative shrink-0">
-          {showVolMAs && (
-            <LineLegend
-              items={[
-                { label: 'VolMA5', color: '#22d3ee' },
-                { label: 'VolMA60', color: '#f59e0b' },
-              ]}
-            />
-          )}
-          <ResponsiveContainer width="100%" height="100%">
+        <div className="shrink-0 border-t border-slate-850/60">
+          <VolumeDataStrip datum={displayDatum} showVolMAs={showVolMAs} />
+          <ResponsiveContainer width="100%" height={100}>
             <ComposedChart syncId="integrated-stock-cockpit" data={chartData} margin={{ top: 2, right: 8, left: 0, bottom: 4 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" opacity={0.3} />
               <XAxis dataKey="date" tick={false} tickLine={false} axisLine={false} />
@@ -690,6 +730,7 @@ export function KlineChart({
       </div>
       <IntegratedMarketPanels
         visibleDates={chartData.map((row) => row.date)}
+        activeDate={displayDatum?.date}
         institutional={institutional}
         shareholding={shareholding}
         showForeign={showForeign}

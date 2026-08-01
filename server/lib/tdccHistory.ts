@@ -58,8 +58,12 @@ function tableRows(html: string): string[][] {
 
 function parseHistoryRecord(html: string, stockId: string, date: string): TdccRecord | null {
   const rows = tableRows(html).filter((row) => /^\d+$/.test(row[0] || ""));
-  const totalShares = parseInteger(rows.find((row) => row[1]?.includes("合"))?.[3] || "0");
-  const whaleShares = parseInteger(rows.find((row) => row[0] === "15")?.[3] || "0");
+  const totalRow = rows.find((row) => row[1]?.includes("合"));
+  const whaleRow = rows.find((row) => row[0] === "15");
+  const totalShares = parseInteger(totalRow?.[3] || "0");
+  const totalPeople = parseInteger(totalRow?.[2] || "0");
+  const whaleShares = parseInteger(whaleRow?.[3] || "0");
+  const whalePeople = parseInteger(whaleRow?.[2] || "0");
   const retailShares = rows
     .filter((row) => Number(row[0]) >= 1 && Number(row[0]) <= 6)
     .reduce((sum, row) => sum + parseInteger(row[3] || "0"), 0);
@@ -70,6 +74,9 @@ function parseHistoryRecord(html: string, stockId: string, date: string): TdccRe
     total_shares: totalShares,
     whale_ratio: Math.round((whaleShares / totalShares) * 10_000) / 100,
     retail_ratio: Math.round((retailShares / totalShares) * 10_000) / 100,
+    total_people: totalPeople,
+    whale_shares: whaleShares,
+    whale_people: whalePeople,
   };
 }
 
@@ -134,11 +141,11 @@ export async function backfillTdccHistory(
   const dates = session.dates.slice(0, Math.min(Math.max(maxWeeks, 1), 52));
   const { data: existing, error } = await supabaseAdmin
     .from("tdcc_shareholding")
-    .select("date")
+    .select("date,total_people")
     .eq("stock_id", stockId)
     .in("date", dates.map(isoDate));
   if (error) throw new Error(`Cannot read TDCC cloud history: ${error.message}`);
-  const existingDates = new Set((existing || []).map((row) => row.date));
+  const existingDates = new Set((existing || []).filter((row) => row.total_people !== null).map((row) => row.date));
   const missingDates = dates.filter((date) => !existingDates.has(isoDate(date)));
   let insertedWeeks = 0;
   for (const date of missingDates) {

@@ -17,7 +17,7 @@ export interface IntegratedMarketPoint {
 }
 
 const toLots = (shares: number | undefined) =>
-  Number.isFinite(shares) ? Math.round((shares || 0) / 1000) : null;
+  Number.isFinite(shares) ? Math.trunc((shares || 0) / 1000) : null;
 
 export function buildIntegratedMarketData(
   visibleDates: string[],

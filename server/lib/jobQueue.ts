@@ -34,7 +34,7 @@ export async function mapWithConcurrency<T>(items: T[], limit: number, worker: (
 }
 
 function frameworkConcurrency(): number {
-  const configured = Number(process.env.LONGCAT_CONCURRENCY || 3);
+  const configured = Number(process.env.NVIDIA_CONCURRENCY || 3);
   return Number.isFinite(configured) ? Math.min(6, Math.max(1, Math.floor(configured))) : 3;
 }
 

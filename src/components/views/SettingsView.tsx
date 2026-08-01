@@ -1,17 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Key, Eye, EyeOff, Save, CheckCircle2, Shield, Server, Sparkles } from 'lucide-react';
+import { Key, Eye, EyeOff, Save, CheckCircle2, Shield, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export function SettingsView() {
   const [finmindApiKey, setFinmindApiKey] = useState('');
-  const [longcatApiKey, setLongcatApiKey] = useState('');
-  const [longcatBaseUrl, setLongcatBaseUrl] = useState('');
-  const [longcatModel, setLongcatModel] = useState('');
+  const [nvidiaApiKey, setNvidiaApiKey] = useState('');
+  const [nvidiaModel, setNvidiaModel] = useState('z-ai/glm-5.2');
   const [hasFinmindKey, setHasFinmindKey] = useState(false);
-  const [hasLongcatKey, setHasLongcatKey] = useState(false);
+  const [hasNvidiaKey, setHasNvidiaKey] = useState(false);
 
   const [showFinmind, setShowFinmind] = useState(false);
-  const [showLongcat, setShowLongcat] = useState(false);
+  const [showNvidia, setShowNvidia] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -26,9 +25,8 @@ export function SettingsView() {
       if (res.ok) {
         const data = await res.json();
         setHasFinmindKey(Boolean(data.hasFinmindKey));
-        setHasLongcatKey(Boolean(data.hasLongcatKey));
-        setLongcatBaseUrl('https://api.longcat.chat');
-        setLongcatModel(data.longcatModel || '');
+        setHasNvidiaKey(Boolean(data.hasNvidiaKey));
+        setNvidiaModel(data.nvidiaModel || 'z-ai/glm-5.2');
       }
     } catch (error) {
       console.error('Fetch settings error:', error);
@@ -41,12 +39,9 @@ export function SettingsView() {
     setSaveStatus('idle');
 
     try {
-      const body: Record<string, string> = {
-        longcatBaseUrl: longcatBaseUrl || 'https://api.longcat.chat',
-        longcatModel: longcatModel || 'LongCat-2.0',
-      };
+      const body: Record<string, string> = { nvidiaModel: nvidiaModel || 'z-ai/glm-5.2' };
       if (finmindApiKey.trim()) body.finmindApiKey = finmindApiKey.trim();
-      if (longcatApiKey.trim()) body.longcatApiKey = longcatApiKey.trim();
+      if (nvidiaApiKey.trim()) body.nvidiaApiKey = nvidiaApiKey.trim();
 
       const res = await fetch('/api/settings', {
         method: 'POST',
@@ -60,7 +55,7 @@ export function SettingsView() {
       
       setSaveStatus('success');
       setFinmindApiKey('');
-      setLongcatApiKey('');
+      setNvidiaApiKey('');
       await fetchCurrentSettings();
     } catch (error) {
       console.error('Save settings failed:', error);
@@ -120,15 +115,15 @@ export function SettingsView() {
             </p>
           </div>
 
-          {/* Longcat API Key */}
+          {/* NVIDIA API Key */}
           <div className="space-y-1.5">
             <div className="flex justify-between items-center">
               <label className="text-sm font-medium text-slate-200 flex items-center gap-2">
                 <Key size={16} className="text-indigo-400" />
-                LongCat API Key {hasLongcatKey && <span className="text-emerald-400 text-xs">（已設定）</span>}
+                NVIDIA API Key {hasNvidiaKey && <span className="text-emerald-400 text-xs">（已設定）</span>}
               </label>
               <a 
-                href="https://longcat.chat/" 
+                href="https://build.nvidia.com/"
                 target="_blank" 
                 referrerPolicy="no-referrer"
                 className="text-xs text-indigo-400 hover:underline"
@@ -138,23 +133,23 @@ export function SettingsView() {
             </div>
             <div className="relative">
               <input 
-                id="longcat-key-input"
-                type={showLongcat ? "text" : "password"} 
-                value={longcatApiKey}
-                onChange={(e) => setLongcatApiKey(e.target.value)}
-                placeholder={hasLongcatKey ? "留空以保留現有金鑰" : "請輸入 LongCat API 金鑰"}
+                id="nvidia-key-input"
+                type={showNvidia ? "text" : "password"}
+                value={nvidiaApiKey}
+                onChange={(e) => setNvidiaApiKey(e.target.value)}
+                placeholder={hasNvidiaKey ? "留空以保留現有金鑰" : "請輸入 NVIDIA API 金鑰"}
                 className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-3 pr-10 py-2 text-sm text-slate-300 font-mono focus:outline-none focus:border-indigo-500 transition-colors"
               />
               <button
                 type="button"
-                onClick={() => setShowLongcat(!showLongcat)}
+                onClick={() => setShowNvidia(!showNvidia)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
               >
-                {showLongcat ? <EyeOff size={16} /> : <Eye size={16} />}
+                {showNvidia ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
             <p className="text-xs text-slate-500">
-              用於驅動多投行與波克夏董事會大師級框架，生成數萬字深度分析報告。
+              使用 NVIDIA API Catalog 的 GLM-5.2 驅動所有深度分析框架。
             </p>
           </div>
 
@@ -176,28 +171,14 @@ export function SettingsView() {
               >
                 <div className="space-y-1.5">
                   <label className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
-                    <Server size={12} />
-                    LongCat Base URL
-                  </label>
-                  <input
-                    type="text"
-                    value={longcatBaseUrl}
-                    onChange={(e) => setLongcatBaseUrl(e.target.value)}
-                    placeholder="https://api.longcat.chat"
-                    className="w-full bg-slate-950/40 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 font-mono focus:outline-none focus:border-indigo-500 transition-colors"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
                     <Sparkles size={12} />
-                    LongCat Model
+                    NVIDIA Model
                   </label>
                   <input
                     type="text"
-                    value={longcatModel}
-                    onChange={(e) => setLongcatModel(e.target.value)}
-                    placeholder="LongCat-2.0"
+                    value={nvidiaModel}
+                    onChange={(e) => setNvidiaModel(e.target.value)}
+                    placeholder="z-ai/glm-5.2"
                     className="w-full bg-slate-950/40 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 font-mono focus:outline-none focus:border-indigo-500 transition-colors"
                   />
                 </div>

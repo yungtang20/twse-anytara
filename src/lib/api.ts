@@ -178,6 +178,14 @@ export async function fetchMovers(): Promise<MoversResult | null> {
 export interface SRAnalysis {
   lastClose: number;
   atr14: number;
+  vwap: number | null;
+  poc: number | null;
+  shortResistance: number | null;
+  shortSupport: number | null;
+  longResistance: number | null;
+  longSupport: number | null;
+  swingHigh: number | null;
+  swingLow: number | null;
   pressure: { near: number | null; mid: number | null; far: number | null };
   support: { near: number | null; mid: number | null; far: number | null };
   resistances: { level: number; power: number }[];
@@ -195,21 +203,14 @@ export async function fetchSRAnalysis(id: string): Promise<SRAnalysis | null> {
 
 export interface MAAnalysis {
   lastClose: number;
-  ma25: number | null;
-  ma60: number | null;
-  ma200: number | null;
-  deduction25: number | null;
-  deduction60: number | null;
-  deduction200: number | null;
-  trend25: string;
-  trend60: string;
-  trend200: string;
-  tomorrow25: string;
-  tomorrow60: string;
-  tomorrow200: string;
+  previousClose: number;
+  ma25: { ma: number; deduction: number; trend: string; tomorrow: string };
+  ma60: { ma: number; deduction: number; trend: string; tomorrow: string };
+  ma200: { ma: number; deduction: number; trend: string; tomorrow: string };
   bias: number;
   maGapPercent: number;
   arrangement: string;
+  biasLabel: string;
 }
 
 export async function fetchMAAnalysis(id: string): Promise<MAAnalysis | null> {
@@ -226,6 +227,9 @@ export interface ChipsAnalysis {
   foreignTotal: number;
   trustTotal: number;
   whaleRatio: number | null;
+  whaleChange: number | null;
+  totalPeople: number | null;
+  peopleChange: number | null;
   retailRatio: number | null;
   totalShares: number | null;
   chipHistory: { date: string; foreign: number; trust: number }[];
@@ -241,11 +245,19 @@ export async function fetchChipsAnalysis(id: string): Promise<ChipsAnalysis | nu
 export interface PatternAnalysis {
   patternName: string;
   patternDirection: string;
+  stage: 'none' | 'forming' | 'confirmed';
   neckline: number | null;
   target: number | null;
   stopLoss: number | null;
   confidence: number;
   dataPoints: number;
+  firstPivot: { date: string; price: number } | null;
+  middlePivot: { date: string; price: number } | null;
+  secondPivot: { date: string; price: number } | null;
+  breakoutDate: string | null;
+  distanceToNecklinePct: number | null;
+  atr14: number | null;
+  volumeRatio: number | null;
 }
 
 export async function fetchPatternAnalysis(id: string): Promise<PatternAnalysis | null> {
@@ -296,7 +308,12 @@ export interface MAScanItem {
   targetMA: number;
   targetLabel: string;
   bias: number;
-  touchCount: number;
+  retraces: number;
+  volumeRatio: number;
+  previousClose: number;
+  previousVolume: number;
+  signal: string;
+  maTrend: 'up' | 'down' | 'flat';
 }
 
 export interface ChipsScanItem {
@@ -308,6 +325,12 @@ export interface ChipsScanItem {
   consecutive: number;
   netTotal: number;
   type: string;
+  whaleRatio?: number;
+  whaleChange?: number;
+  totalPeople?: number;
+  peopleChange?: number;
+  latestDate?: string;
+  previousDate?: string;
 }
 
 export interface PatternScanItem {
@@ -317,6 +340,7 @@ export interface PatternScanItem {
   volume: number;
   amount: number;
   patternName: string;
+  stage: 'forming' | 'confirmed';
   confidence: number;
 }
 
@@ -336,9 +360,9 @@ export async function fetchMAScan(minVolume = 500, type = '1', sort = '1'): Prom
   return res.success ? res.data : [];
 }
 
-export async function fetchChipsScan(type = '1', sort = '1'): Promise<ChipsScanItem[]> {
+export async function fetchChipsScan(type = '1', sort = '1', nDays = 2): Promise<ChipsScanItem[]> {
   const res = await get<{ success: boolean; data: ChipsScanItem[] }>(
-    `/api/strategy/chips-scan?type=${type}&sort=${sort}`
+    `/api/strategy/chips-scan?type=${type}&sort=${sort}&n_days=${nDays}`
   );
   return res.success ? res.data : [];
 }
@@ -352,6 +376,7 @@ export async function fetchPatternScan(minVolume = 500, sort = '1'): Promise<Pat
 export interface ShareholdingRow {
   date: string;
   ratio: number;
+  totalPeople: number | null;
 }
 
 export async function fetchStockShareholding(id: string): Promise<DataSeries<ShareholdingRow>> {

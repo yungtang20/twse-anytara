@@ -11,8 +11,6 @@ import { SupportResistanceEngine } from "../src/lib/strategy-engine";
 import apiRouter from "../server/routes";
 import {
   isLoopbackAddress,
-  normalizeLongcatBaseUrl,
-  resolveLongcatCompletionsUrl,
   validateEnvValue,
 } from "../server/lib/security";
 import { buildStockSnapshot, formatSnapshotForPrompt } from "../server/lib/stockSnapshot";
@@ -31,6 +29,8 @@ import { resolveDatabasePath } from "../server/db";
 import { listPendingCalendarDates } from "../scripts/lib/syncDates";
 import { sortTrustBuyByDays } from "../server/routes/dashboard";
 import { buildSimulatedPriceProjection } from "../server/lib/priceProjection";
+import { analyzeChartPattern } from "../server/lib/patternStrategy";
+import { DEFAULT_NVIDIA_MODEL, NVIDIA_BASE_URL, nvidiaModel } from "../server/lib/nvidiaAi";
 import { appViewHash, parseAppView } from "../src/lib/navigation";
 import { buildIntegratedMarketData } from "../src/lib/integratedMarketData";
 import {
@@ -41,9 +41,56 @@ import {
 import {
   formatPriceAxisTick,
   formatTrendLegendLabel,
+  mondayTicks,
 } from "../src/lib/chartFormatting";
 
 const rising = Array.from({ length: 20 }, (_, index) => 100 + index);
+assert.equal(NVIDIA_BASE_URL, "https://integrate.api.nvidia.com/v1");
+assert.equal(DEFAULT_NVIDIA_MODEL, "z-ai/glm-5.2");
+assert.equal(nvidiaModel(), process.env.NVIDIA_MODEL || DEFAULT_NVIDIA_MODEL);
+
+function patternFixture(kind: "bottom" | "top", secondIndex = 50, confirmed = true) {
+  const rows = Array.from({ length: 60 }, (_, index) => {
+    const base = kind === "bottom" ? 100 : 120;
+    const date = new Date(Date.UTC(2026, 0, index + 1)).toISOString().slice(0, 10);
+    return {
+      stock_id: "TEST", date, open: base, high: base + 2, low: base - 2,
+      close: base, volume: index === 59 ? 2_000 : 1_000,
+    };
+  });
+  if (kind === "bottom") {
+    rows[30].low = 90;
+    rows[40].high = 110;
+    rows[secondIndex].low = 91;
+    rows[59].close = confirmed ? 112 : 105;
+    rows[59].high = Math.max(rows[59].high, rows[59].close + 1);
+  } else {
+    rows[30].high = 130;
+    rows[40].low = 108;
+    rows[secondIndex].high = 129;
+    rows[59].close = confirmed ? 106 : 115;
+    rows[59].low = Math.min(rows[59].low, rows[59].close - 1);
+  }
+  return rows;
+}
+
+const confirmedBottom = analyzeChartPattern(patternFixture("bottom"));
+assert.equal(confirmedBottom.patternName, "W底");
+assert.equal(confirmedBottom.stage, "confirmed");
+assert.equal(confirmedBottom.secondPivot?.price, 91);
+assert.equal(confirmedBottom.breakoutDate, "2026-03-01");
+assert.ok(confirmedBottom.confidence >= 0.7);
+const formingBottom = analyzeChartPattern(patternFixture("bottom", 50, false));
+assert.equal(formingBottom.patternName, "W底");
+assert.equal(formingBottom.stage, "forming");
+const confirmedTop = analyzeChartPattern(patternFixture("top"));
+assert.equal(confirmedTop.patternName, "M頂");
+assert.equal(confirmedTop.stage, "confirmed");
+assert.equal(
+  analyzeChartPattern(patternFixture("bottom", 45)).stage,
+  "none",
+  "patterns whose second pivot is older than ten bars must not be shown",
+);
 const syncRouteSource = readFileSync(
   path.join(process.cwd(), "server", "routes", "syncBackfill.ts"),
   "utf8",
@@ -75,6 +122,10 @@ const chipsChartSource = readFileSync(
 );
 const klineChartSource = readFileSync(
   path.join(process.cwd(), "src", "components", "KlineChart.tsx"),
+  "utf8",
+);
+const integratedPanelsSource = readFileSync(
+  path.join(process.cwd(), "src", "components", "IntegratedMarketPanels.tsx"),
   "utf8",
 );
 const marketsViewSource = readFileSync(
@@ -134,6 +185,19 @@ assert.deepEqual(
     { stock_id: "2027", trust_days: 6 },
     { stock_id: "2886", trust_days: 10 },
   ],
+);
+assert.deepEqual(
+  buildIntegratedMarketData(
+    ["2026-07-31"],
+    [{ date: "2026-07-31", foreign_net: -3_957_455, trust_net: 7_046_889 }],
+    [],
+  )[0],
+  { date: "2026-07-31", foreign: -3957, trust: 7046, whaleRatio: null },
+  "institutional shares must use the same whole-lot truncation in every chart and table",
+);
+assert.deepEqual(
+  mondayTicks(["2026-07-24", "2026-07-27", "2026-07-31", "2026-08-03"]),
+  ["2026-07-27", "2026-08-03"],
 );
 assert.equal(parseAppView(""), "markets");
 assert.equal(parseAppView("#/ai-analysis"), "ai-analysis");
@@ -371,19 +435,22 @@ assert.match(klineChartSource, /aria-live="polite"/);
 assert.match(klineChartSource, /onMouseMove=\{handleChartMouseMove\}/);
 assert.match(klineChartSource, /domain=\{priceDomain\}/);
 assert.match(klineChartSource, /tickFormatter=\{formatPriceAxisTick\}/);
-assert.match(
-  klineChartSource,
-  /formatTrendLegendLabel\('短壓25', displayDatum\?\.shortResistance\)/,
-);
+assert.match(klineChartSource, /<IndicatorValue label="短壓25"/);
+assert.match(klineChartSource, /<VolumeDataStrip datum=\{displayDatum\} showVolMAs=\{showVolMAs\}/);
+assert.match(klineChartSource, /<IndicatorValue label="VolMA5"/);
+assert.match(klineChartSource, /<IndicatorValue label="VolMA60"/);
+assert.match(klineChartSource, /activeDate=\{displayDatum\?\.date\}/);
+assert.doesNotMatch(klineChartSource, /function LineLegend/);
+assert.match(integratedPanelsSource, /selectedDate = hoveredDate \?\? activeDate/);
+assert.match(integratedPanelsSource, /<InvisibleTooltip \/>/);
+assert.doesNotMatch(integratedPanelsSource, /function PanelTooltip/);
 assert.match(klineChartSource, /allowDataOverflow/);
 assert.doesNotMatch(klineChartSource, /dataKey="wickRange"/);
 assert.doesNotMatch(klineChartSource, /dataKey="boxRange"/);
 assert.doesNotMatch(klineChartSource, /const CustomTooltip/);
-assert.match(klineChartSource, /label: 'MA25', color: '#fb923c'/);
-assert.match(klineChartSource, /label: 'MA60', color: '#60a5fa'/);
-assert.match(klineChartSource, /label: 'MA200', color: '#f472b6'/);
-assert.match(klineChartSource, /label: 'VolMA5', color: '#22d3ee'/);
-assert.match(klineChartSource, /label: 'VolMA60', color: '#f59e0b'/);
+assert.match(klineChartSource, /<IndicatorValue label="MA25"/);
+assert.match(klineChartSource, /<IndicatorValue label="MA60"/);
+assert.match(klineChartSource, /<IndicatorValue label="MA200"/);
 const mvpRouteSource = readFileSync(
   path.join(process.cwd(), "server", "mvpMcpRoutes.ts"),
   "utf8",
@@ -470,17 +537,6 @@ const engineRows = Array.from({ length: 20 }, (_, index) => ({
 }));
 assert.equal(new SupportResistanceEngine(engineRows).atr14, 2, "strategy ATR must use only the latest period");
 
-assert.equal(normalizeLongcatBaseUrl(), "https://api.longcat.chat");
-assert.equal(normalizeLongcatBaseUrl("https://api.longcat.chat/openai"), "https://api.longcat.chat/openai");
-assert.equal(normalizeLongcatBaseUrl("https://api.longcat.chat/openai/v1/"), "https://api.longcat.chat/openai/v1");
-assert.equal(resolveLongcatCompletionsUrl("https://api.longcat.chat/openai"), "https://api.longcat.chat/openai/v1/chat/completions");
-assert.equal(resolveLongcatCompletionsUrl("https://api.longcat.chat/openai/v1"), "https://api.longcat.chat/openai/v1/chat/completions");
-for (const unsafe of [
-  "http://api.longcat.chat",
-  "https://api.longcat.chat.evil.example/openai/v1",
-  "https://api.longcat.chat@evil.example/openai/v1",
-  "https://api.longcat.chat/openai/v1?redirect=evil",
-]) assert.throws(() => normalizeLongcatBaseUrl(unsafe));
 
 assert.equal(isLoopbackAddress("127.0.0.1"), true);
 assert.equal(isLoopbackAddress("::1"), true);
@@ -504,7 +560,7 @@ await mapWithConcurrency([1, 2, 3, 4, 5], 3, async () => {
   await new Promise((resolve) => setTimeout(resolve, 5));
   activeWorkers--;
 });
-assert.equal(peakWorkers, 3, "LongCat worker pool must honor its concurrency limit");
+assert.equal(peakWorkers, 3, "AI worker pool must honor its concurrency limit");
 
 const pgrst002 = describeSupabaseError(
   { code: "PGRST002", message: "Could not query the database for the schema cache. Retrying." },
@@ -664,9 +720,11 @@ try {
   assert.equal(parsedTdcc.records.length, 2);
   assert.deepEqual(parsedTdcc.records.find((record) => record.stock_id === "2330"), {
     stock_id: "2330", date: "2026-07-18", total_shares: 1_000, whale_ratio: 30, retail_ratio: 30,
+    total_people: 36, whale_shares: 300, whale_people: 5,
   });
   assert.deepEqual(parsedTdcc.records.find((record) => record.stock_id === "2317"), {
     stock_id: "2317", date: "2026-07-18", total_shares: 400, whale_ratio: 75, retail_ratio: 25,
+    total_people: 12, whale_shares: 300, whale_people: 2,
   });
   await saveTdccToSQLite(parsedTdcc.records, "contract_test", migrationDb);
   await saveTdccToSQLite(parsedTdcc.records, "contract_test", migrationDb);
@@ -744,7 +802,7 @@ try {
   const baseUrl = `http://127.0.0.1:${address.port}`;
   const settings = await fetch(`${baseUrl}/api/settings`).then((response) => response.json()) as Record<string, unknown>;
   assert.equal(settings.success, true);
-  for (const secret of ["longcatApiKey", "finmindApiKey", "geminiApiKey", "webhookUrl"]) {
+  for (const secret of ["nvidiaApiKey", "longcatApiKey", "finmindApiKey", "geminiApiKey", "webhookUrl"]) {
     assert.equal(Object.hasOwn(settings, secret), false, `/api/settings must not expose ${secret}`);
   }
   const legacy = await fetch(`${baseUrl}/api/ai-analysis`, { method: "POST" });

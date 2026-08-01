@@ -20,6 +20,17 @@ export interface CloudInstitutionalRow {
   institutional_net: number;
 }
 
+export interface CloudShareholdingRow {
+  stock_id: string;
+  date: string;
+  total_shares: number;
+  whale_ratio: number;
+  retail_ratio: number;
+  total_people: number | null;
+  whale_shares: number | null;
+  whale_people: number | null;
+}
+
 function client() {
   if (!supabase) throw new Error("Supabase is not configured");
   return supabase;
@@ -53,12 +64,12 @@ export async function fetchCloudInstitutional(
 export async function fetchCloudShareholding(stockId: string, limit = 512) {
   const { data, error } = await client()
     .from("tdcc_shareholding")
-    .select("stock_id,date,total_shares,whale_ratio,retail_ratio")
+    .select("stock_id,date,total_shares,whale_ratio,retail_ratio,total_people,whale_shares,whale_people")
     .eq("stock_id", stockId)
     .order("date", { ascending: false })
     .limit(Math.min(limit, 512));
   if (error) throw new Error(error.message);
-  return data || [];
+  return (data || []) as CloudShareholdingRow[];
 }
 
 export async function fetchCloudMeta(stockId: string) {

@@ -222,15 +222,11 @@ export function MarketsView() {
         </div>
 
         {/* REPLACED WITH REAL PANELS */}
-        <div className="p-3 grid grid-cols-[repeat(auto-fit,minmax(320px,1fr))] gap-3 bg-slate-900 text-slate-300">
-          <div className="space-y-3">
-            <SRPanel stockId={stock.id} />
-            <MAPanel stockId={stock.id} change={stock.change ?? 0} changePercent={stock.changePercent ?? 0} />
-            <PatternPanel stockId={stock.id} />
-          </div>
-          <div className="space-y-3">
-            <ChipsPanel stockId={stock.id} />
-          </div>
+        <div className="flex flex-col gap-3 bg-slate-900 p-3 text-slate-300">
+          <SRPanel stockId={stock.id} />
+          <MAPanel stockId={stock.id} change={stock.change ?? 0} changePercent={stock.changePercent ?? 0} />
+          <ChipsPanel stockId={stock.id} />
+          <PatternPanel stockId={stock.id} />
         </div>
 
         {/* Footer command bar */}

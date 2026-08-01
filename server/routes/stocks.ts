@@ -334,7 +334,7 @@ router.get("/api/stock/:id/shareholding", async (req: Request, res: Response) =>
     try {
       const { data, error } = await supabase
         .from("tdcc_shareholding")
-        .select("date, whale_ratio, total_shares")
+        .select("date, whale_ratio, total_shares, total_people")
         .eq("stock_id", id)
         .order("date", { ascending: false })
         .limit(512);
@@ -342,7 +342,8 @@ router.get("/api/stock/:id/shareholding", async (req: Request, res: Response) =>
       const rows = (data || []).map((row) => ({
         date: row.date,
         ratio: row.whale_ratio,
-        count: null,
+        count: row.total_people,
+        totalPeople: row.total_people,
         shares: row.total_shares,
       }));
       const quality = dataQuality(
@@ -364,7 +365,7 @@ router.get("/api/stock/:id/shareholding", async (req: Request, res: Response) =>
   if (db) {
     try {
       const rows = db.prepare(
-        "SELECT date, whale_ratio as ratio, NULL as count, total_shares as shares FROM tdcc_shareholding WHERE stock_id = ? ORDER BY date DESC LIMIT 1000"
+        "SELECT date, whale_ratio as ratio, NULL as count, NULL as totalPeople, total_shares as shares FROM tdcc_shareholding WHERE stock_id = ? ORDER BY date DESC LIMIT 1000"
       ).all(id) as any[];
       const quality = dataQuality("tdcc_sqlite", rows[0]?.date, rows.length === 0 ? ["shareholding_data_missing"] : rows.length < 10 ? [`insufficient_history:${rows.length}`] : []);
       return res.json({ success: true, data: rows, ...quality, dataQuality: quality });
