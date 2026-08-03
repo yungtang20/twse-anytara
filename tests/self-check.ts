@@ -679,9 +679,11 @@ assert.deepEqual(
   ],
   "Supabase catch-up must not skip dates between the cloud maximum and today",
 );
+const sqliteResolutionCwd = path.resolve("fixtures", "runtime");
+const sqliteResolutionRelative = path.join("nested", "smoke.db");
 assert.equal(
-  resolveDatabasePath("D:\\app", "fixtures\\smoke.db"),
-  "D:\\app\\fixtures\\smoke.db",
+  resolveDatabasePath(sqliteResolutionCwd, sqliteResolutionRelative),
+  path.resolve(sqliteResolutionCwd, sqliteResolutionRelative),
   "configured SQLite paths must resolve relative to the process directory",
 );
 const freshLocalRows = Array.from({ length: 30 }, (_, index) => ({
