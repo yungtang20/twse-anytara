@@ -9,6 +9,7 @@ test("npm test registers every cloud SQLite boundary suite", async () => {
   const command = pkg.scripts?.test ?? "";
   assert.match(command, /tests\/self-check\.ts/);
   for (const suite of [
+    "daily-sync-dispatch.test.ts",
     "cloud-lifecycle-boundary.test.ts",
     "cloud-api-boundary.test.ts",
     "cloud-admin-sqlite-boundary.test.ts",

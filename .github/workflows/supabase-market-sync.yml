@@ -1,9 +1,9 @@
-name: Supabase market sync
+name: Supabase daily market or TDCC sync
 
 on:
   schedule:
-    # 18:00 Asia/Taipei, Monday through Friday (UTC+8, no DST).
-    - cron: "0 10 * * 1-5"
+    # 18:00 Asia/Taipei every day (UTC+8, no DST).
+    - cron: "0 10 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 jobs:
-  sync-market:
+  dispatch-and-sync:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -34,5 +34,14 @@ jobs:
         run: |
           test -n "$SUPABASE_URL" || { echo "Missing SUPABASE_URL"; exit 1; }
           test -n "$SUPABASE_SERVICE_ROLE_KEY" || { echo "Missing SUPABASE_SERVICE_ROLE_KEY"; exit 1; }
+      - name: Resolve official trading-calendar branch
+        id: dispatch
+        run: npx tsx scripts/dispatchDailySync.ts
       - name: Sync TWSE and TPEX market data
+        if: steps.dispatch.outputs.mode == 'market'
+        env:
+          SYNC_TARGET_DATE: ${{ steps.dispatch.outputs.target_date }}
         run: npx tsx scripts/syncData.ts
+      - name: Download and sync official TDCC weekly data
+        if: steps.dispatch.outputs.mode == 'tdcc'
+        run: npx tsx scripts/syncOfficialTdccCloud.ts --execute

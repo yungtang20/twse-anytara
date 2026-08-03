@@ -1,21 +1,16 @@
-name: Supabase TDCC sync
+name: TDCC historical sync guidance
 
 on:
   workflow_dispatch:
-
-concurrency:
-  group: supabase-cloud-sync
-  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  sync-tdcc:
+  guidance:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     steps:
-      - name: Explain local-first TDCC synchronization
+      - name: Explain TDCC synchronization boundaries
         run: |
-          echo "Cloud-only TDCC download is disabled."
-          echo "Run the local Saturday 18:00 scheduler: official download -> local whitelist -> SQLite -> same batch to Supabase."
+          echo "The daily workflow owns current official TDCC open-data synchronization."
+          echo "Historical 52-week backfill remains local-first and requires explicit approval."

@@ -100,6 +100,16 @@ function taipeiToday(): string {
   }).format(new Date());
 }
 
+function syncTargetDate(): string {
+  const value = process.env.SYNC_TARGET_DATE || taipeiToday();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error("Invalid SYNC_TARGET_DATE");
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (!Number.isFinite(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== value) {
+    throw new Error("Invalid SYNC_TARGET_DATE");
+  }
+  return value;
+}
+
 function parseNumber(value: unknown): number {
   const parsed = Number.parseFloat(String(value ?? "").replace(/,/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
@@ -608,7 +618,7 @@ async function syncMarketScope(
 ): Promise<void> {
   const latestBefore = await getLatestCloudDate();
   const maxDays = Number.parseInt(process.env.SUPABASE_SYNC_MAX_DAYS || "14", 10);
-  const dates = listPendingCalendarDates(latestBefore, taipeiToday(), maxDays);
+  const dates = listPendingCalendarDates(latestBefore, syncTargetDate(), maxDays);
   console.log(`[Sync] Supabase latest date before sync: ${latestBefore || "none"}`);
   for (const date of dates) {
     const records = await syncDate(date);
