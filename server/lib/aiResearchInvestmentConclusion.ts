@@ -107,7 +107,6 @@ function validateRecommendation(candidate: InvestmentRecommendationCandidate,
   } else {
     if (candidate.supportingFindingIds.length === 0) errors.push(`recommendation_supporting_findings_required:${candidate.verdict}`);
     if (candidate.supportingFindingIds.length < 2) errors.push(`recommendation_directional_support_minimum:${candidate.verdict}`);
-    if (candidate.opposingFindingIds.length + candidate.riskFindingIds.length === 0) errors.push(`recommendation_opposition_or_risk_required:${candidate.verdict}`);
     const domains = new Set(candidate.supportingFindingIds.map((id) => known.get(id)).filter(Boolean)
       .map((item) => findingDomain(item!)));
     if (domains.size < 2) errors.push(`recommendation_domain_coverage_insufficient:${candidate.verdict}`);

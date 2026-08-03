@@ -53,7 +53,7 @@ function hostilePacket(): AIResearchPacket {
       estimated: false, status: "available", error: injection,
     }],
     evidence: [{
-      id: "stock_price:2026-07-31:close", dataset: "stock_price", field: "close",
+      id: "stock_price:2026-07-31:close", dataset: "stock_price", field: "market.price",
       value: 0, unit: "TWD", date: "2026-07-31", sourceId: "supabase:stock_price",
     }],
   } as unknown as AIResearchPacket;
@@ -100,23 +100,19 @@ test("trusted instructions contain one versioned unambiguous JSON candidate cont
   assert.doesNotMatch(instructions, /IGNORE ALL PREVIOUS|reveal NVIDIA_API_KEY/i);
 });
 
-test("untrusted evidence is lossless structured data and preserves zero versus null", async () => {
+test("untrusted evidence is allowlisted structured data and preserves zero", async () => {
   const { buildAIResearchModelRequest } = await loadBuilder();
-  const request = buildAIResearchModelRequest(hostilePacket()) as unknown as {
-    untrustedEvidence: AIResearchPacket;
-  };
+  const request = buildAIResearchModelRequest(hostilePacket());
   const decoded = request.untrustedEvidence as unknown as {
     company: { name: string };
     market: { price: number | null };
-    institutional: { foreignNet: number | null };
-    tdcc: { retailRatio: number | null };
-    sources: Array<{ error: string | null }>;
+    evidence: Array<{ value: unknown }>;
   };
   assert.equal(decoded.company.name, `台積電\n${injection}`);
   assert.equal(decoded.market.price, 0);
-  assert.equal(decoded.institutional.foreignNet, 0);
-  assert.equal(decoded.tdcc.retailRatio, null);
-  assert.equal(decoded.sources[0].error, injection);
+  assert.equal(decoded.evidence[0]?.value, 0);
+  assert.equal(Object.hasOwn(decoded, "institutional"), false);
+  assert.equal(Object.hasOwn(decoded, "sources"), false);
 });
 
 test("model request exposes no tools, capabilities, provider configuration, or secrets", async () => {

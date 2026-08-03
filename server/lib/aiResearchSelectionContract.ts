@@ -121,8 +121,8 @@ export function hydrateAIResearchSelection(value: unknown, packet: AIResearchPac
     .map((fragment) => fragment.evidenceId)))].sort();
   return { schemaVersion: 1, stockId: packet.stockId, asOf: packet.asOf,
     contextFingerprint: packet.contextFingerprint, dataQuality: structuredClone(packet.dataQuality), findings,
-    conclusion: { verdict: conclusionVerdict[verdict], supportingFindingIds: groups.positive,
-      opposingFindingIds: groups.negative, limitationFindingIds: groups.limitations,
+    conclusion: { verdict: conclusionVerdict[verdict], supportingFindingIds: supporting,
+      opposingFindingIds: opposing, limitationFindingIds: groups.limitations,
       aiConfidence: selected.aiConfidence, investmentCertainty: selected.investmentCertainty },
     citations, recommendation: { verdict, horizonMonths: selected.horizonMonths,
       confidence: selected.confidence, supportingFindingIds: supporting,

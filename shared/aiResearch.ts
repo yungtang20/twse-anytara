@@ -202,9 +202,16 @@ export interface AIResearchFindingCatalogEntry {
   evidenceIds: string[];
 }
 
-export type AIResearchModelEvidence = Readonly<AIResearchPacket> & {
+export interface AIResearchModelEvidence {
+  readonly stockId: AIResearchPacket["stockId"];
+  readonly asOf: AIResearchPacket["asOf"];
+  readonly contextFingerprint: AIResearchPacket["contextFingerprint"];
+  readonly dataQuality: AIResearchPacket["dataQuality"];
+  readonly company: AIResearchPacket["company"];
+  readonly market: AIResearchPacket["market"];
   readonly findingCatalog: readonly AIResearchFindingCatalogEntry[];
-};
+  readonly evidence: readonly ResearchEvidence[];
+}
 
 export interface ResearchAuditDraft {
   status: "mechanical-preview-only";

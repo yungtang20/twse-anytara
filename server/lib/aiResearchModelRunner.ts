@@ -7,6 +7,7 @@ import {
 } from "./aiResearchModelGateway";
 import { RouterAIResearchModelGateway } from "./aiResearchRouterAdapter";
 import { gateResearchPublication } from "./aiResearchPublicationGate";
+import { buildAIResearchCorrectionRequest } from "./aiResearchModelRequest";
 import { AIResearchSelectionContractError, hydrateAIResearchSelection } from "./aiResearchSelectionContract";
 
 export interface AIResearchModelRunnerResult {
@@ -56,6 +57,17 @@ function failure(error: AIResearchModelRunnerResult["error"], providerMetadata: 
     providerMetadata, ...(auditDiagnostics ? { auditDiagnostics } : {}) };
 }
 
+function gatewayFailure(error: AIResearchModelGatewayError): AIResearchModelRunnerResult["error"] {
+  if (error.code === "aborted") return "ai_research_aborted";
+  if (error.code === "local_contract") return "ai_research_contract_error";
+  if (error.code === "timeout") return "ai_research_provider_timeout";
+  if (error.code === "invalid_json" || error.code === "empty_response") return "ai_research_provider_response_invalid";
+  if (error.code === "rate_limited") return "ai_research_provider_rate_limited";
+  if (error.code === "provider_rejected") return "ai_research_provider_rejected";
+  if (error.code === "server_error") return "ai_research_provider_server_error";
+  return "ai_research_provider_unavailable";
+}
+
 export class AIResearchModelRunner implements AIResearchModelRunnerContract {
   constructor(
     private readonly gateway: AIResearchModelGateway,
@@ -65,38 +77,32 @@ export class AIResearchModelRunner implements AIResearchModelRunnerContract {
   async generateAudited(request: AIResearchModelRequest, packet: AIResearchPacket,
     options: { signal?: AbortSignal } = {}): Promise<AIResearchModelRunnerResult> {
     if (options.signal?.aborted) return failure("ai_research_aborted");
-    let providerMetadata: AIResearchProviderMetadata[] = [];
-    try {
-      const generated = await this.gateway.generateCandidate(request, { signal: options.signal });
-      if (options.signal?.aborted) return failure("ai_research_aborted");
-      providerMetadata = [sanitizeAIResearchProviderMetadata(generated)];
-      const audit = this.auditor(generated.candidate, packet);
-      if (options.signal?.aborted) return failure("ai_research_aborted", providerMetadata);
-      if (!audit.mechanicalPassed) {
-        return failure("ai_research_model_output_invalid", providerMetadata, diagnostics(audit));
-      }
-      return { success: true, publicationReady: audit.publicationReady,
-        semanticGrounding: audit.semanticGrounding, publishedReport: audit.publishedReport,
-        audit, providerMetadata };
-    } catch (error) {
-      if (error instanceof AIResearchSelectionContractError) {
-        return failure("ai_research_model_output_invalid", providerMetadata, {
+    const providerMetadata: AIResearchProviderMetadata[] = [];
+    let nextRequest = request;
+    let lastDiagnostics: AIResearchAuditDiagnostics | undefined;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const generated = await this.gateway.generateCandidate(nextRequest, { signal: options.signal });
+        providerMetadata.push(sanitizeAIResearchProviderMetadata(generated));
+        if (options.signal?.aborted) return failure("ai_research_aborted", providerMetadata);
+        const audit = this.auditor(generated.candidate, packet);
+        if (audit.mechanicalPassed) return { success: true, publicationReady: audit.publicationReady,
+          semanticGrounding: audit.semanticGrounding, publishedReport: audit.publishedReport,
+          audit, providerMetadata };
+        lastDiagnostics = diagnostics(audit);
+      } catch (error) {
+        if (error instanceof AIResearchSelectionContractError) lastDiagnostics = {
           reasonCodes: [error.message.match(/^[a-z][a-z0-9_]*/)?.[0] ?? "selection_contract_invalid"],
-          invalidCitationCount: 0, unsupportedFindingCount: 0, prohibitedClaimCount: 0,
-        });
+          invalidCitationCount: 0, unsupportedFindingCount: 0, prohibitedClaimCount: 0 };
+        else if (error instanceof AIResearchModelGatewayError) {
+          return failure(gatewayFailure(error), providerMetadata);
+        } else return failure("ai_research_contract_error", providerMetadata);
       }
-      if (!(error instanceof AIResearchModelGatewayError)) return failure("ai_research_contract_error");
-      if (error.code === "aborted") return failure("ai_research_aborted");
-      if (error.code === "local_contract") return failure("ai_research_contract_error");
-      if (error.code === "timeout") return failure("ai_research_provider_timeout");
-      if (error.code === "invalid_json" || error.code === "empty_response") {
-        return failure("ai_research_provider_response_invalid");
+      if (attempt === 0 && lastDiagnostics) {
+        nextRequest = buildAIResearchCorrectionRequest(request, lastDiagnostics.reasonCodes);
       }
-      if (error.code === "rate_limited") return failure("ai_research_provider_rate_limited");
-      if (error.code === "provider_rejected") return failure("ai_research_provider_rejected");
-      if (error.code === "server_error") return failure("ai_research_provider_server_error");
-      return failure("ai_research_provider_unavailable");
     }
+    return failure("ai_research_model_output_invalid", providerMetadata, lastDiagnostics);
   }
 }
 

@@ -129,10 +129,12 @@ function validateConclusionReferences(conclusion: StructuredResearchConclusion |
   for (const id of all.filter((item, index) => all.indexOf(item) !== index)) errors.push(`duplicate_conclusion_finding:${id}`);
   for (const id of all) if (!known.has(id)) errors.push(`unknown_conclusion_finding:${id}`);
   for (const id of conclusion.supportingFindingIds) {
-    if (known.get(id)?.stance !== "positive" || known.get(id)?.kind === "limitation") errors.push(`invalid_supporting_stance:${id}`);
+    const expected = conclusion.verdict === "negative" ? "negative" : "positive";
+    if (known.get(id)?.stance !== expected || known.get(id)?.kind === "limitation") errors.push(`invalid_supporting_stance:${id}`);
   }
   for (const id of conclusion.opposingFindingIds) {
-    if (known.get(id)?.stance !== "negative" || known.get(id)?.kind === "limitation") errors.push(`invalid_opposing_stance:${id}`);
+    const expected = conclusion.verdict === "negative" ? "positive" : "negative";
+    if (known.get(id)?.stance !== expected || known.get(id)?.kind === "limitation") errors.push(`invalid_opposing_stance:${id}`);
   }
   for (const id of conclusion.limitationFindingIds) {
     if (known.get(id)?.kind !== "limitation") errors.push(`invalid_conclusion_limitation:${id}`);
@@ -141,8 +143,8 @@ function validateConclusionReferences(conclusion: StructuredResearchConclusion |
     if (!conclusion.limitationFindingIds.includes(finding.id)) errors.push(`unreferenced_limitation_finding:${finding.id}`);
   }
   if (["positive", "negative"].includes(conclusion.verdict)
-    && (conclusion.supportingFindingIds.length === 0 || conclusion.opposingFindingIds.length === 0)) {
-    errors.push("directional_conclusion_requires_support_and_opposition");
+    && conclusion.supportingFindingIds.length === 0) {
+    errors.push("directional_conclusion_requires_support");
   }
   if (conclusion.verdict === "insufficient-data" && conclusion.limitationFindingIds.length === 0) {
     errors.push("insufficient_data_requires_limitation");

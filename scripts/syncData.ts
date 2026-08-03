@@ -588,15 +588,16 @@ async function finishSyncRun(
 
 async function prepareCloudWrite(): Promise<void> {
   if (DRY_RUN) return;
-  const deletedRows = await enforceRetention();
-  const storage = await getStorageStatus();
-  console.log(
-    `[Sync] Pre-sync retention deleted ${deletedRows} rows; database size ` +
-    `${(storage.database_bytes / 1024 / 1024).toFixed(1)} MiB.`,
-  );
+  let storage = await getStorageStatus();
   if (storage.database_bytes >= WRITE_CEILING_BYTES) {
-    throw new Error("Supabase is at or above the 450 MiB write ceiling; prune before uploading");
+    const deletedRows = await enforceRetention();
+    storage = await getStorageStatus();
+    console.log(`[Sync] Pre-sync emergency retention deleted ${deletedRows} rows.`);
   }
+  if (storage.database_bytes >= WRITE_CEILING_BYTES) {
+    throw new Error("Supabase remains at or above the 450 MiB write ceiling after retention");
+  }
+  console.log(`[Sync] Pre-sync database size ${(storage.database_bytes / 1024 / 1024).toFixed(1)} MiB.`);
 }
 
 async function verifyCloudBudget(): Promise<number> {
