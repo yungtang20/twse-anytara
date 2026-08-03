@@ -12,8 +12,6 @@ const sqliteMaintenanceScripts = [
   "check_sqlite.ts",
   "check_sqlite_progress.ts",
   "wait_for_sqlite.ts",
-  "scripts/_inspect_db.ts",
-  "scripts/_status.ts",
   "scripts/backfillTdccLocal.ts",
   "scripts/bulk_load_512.ts",
   "scripts/check_sqlite.ts",
