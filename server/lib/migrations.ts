@@ -127,6 +127,13 @@ const MIGRATIONS = [
       }
     },
   },
+  {
+    version: 6,
+    name: "stock_trade_risk",
+    apply(db: MigrationDb) {
+      ensureCanonicalSchema(db);
+    },
+  },
 ] as const;
 
 export function runMigrations(db: MigrationDb): void {

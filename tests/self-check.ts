@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import "./tdcc-local-check";
 import { once } from "node:events";
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
@@ -20,18 +21,45 @@ import { fetchWithOneRetry } from "../server/lib/fetchRetry";
 import { withAbortSignal } from "../server/lib/mcpClient";
 import { createJobDedupeKey, mapWithConcurrency } from "../server/lib/jobQueue";
 import { selectFinMindDatasetNames } from "../server/mvpMcpRoutes";
-import { parseTdccCSV, saveTdccToSQLite } from "../server/lib/tdccDownload";
+import {
+  filterTdccRecordsByEligibleStocks,
+  classifyTdccCleanupCandidates,
+  ingestTdccCSV,
+  parseTdccCSV,
+  saveTdccToSQLite,
+  selectCoreCompleteTdccDates,
+  selectTdccBackfillCandidates,
+  summarizeTdccExclusionCounts,
+  summarizeTdccCoverage,
+} from "../server/lib/tdccDownload";
+import { syncTdccPages } from "../server/lib/syncBridge";
 import { isOrdinaryStockId } from "../server/lib/stockUniverse";
 import { describeSupabaseError } from "../server/lib/supabaseDiagnostics";
 import { ensureCanonicalSchema } from "../server/lib/sqliteSchema";
 import { hasUsableLocalPriceRows } from "../server/lib/marketDataRepository";
 import { resolveDatabasePath } from "../server/db";
+import {
+  applyTradeRiskPolicy, applyTradeRiskPolicyRows, buildStockTradeRiskResponse,
+  TRADE_RISK_POLICY_ERROR, type StoredTradeRisk,
+} from "../server/lib/tradeRisks";
 import { listPendingCalendarDates } from "../scripts/lib/syncDates";
 import { sortTrustBuyByDays } from "../server/routes/dashboard";
 import { buildSimulatedPriceProjection } from "../server/lib/priceProjection";
 import { analyzeChartPattern } from "../server/lib/patternStrategy";
 import { DEFAULT_NVIDIA_MODEL, NVIDIA_BASE_URL, nvidiaModel } from "../server/lib/nvidiaAi";
 import { parseInstitutionalHoldingSeries } from "../server/lib/institutionalHoldings";
+import {
+  INSTITUTIONAL_SELECT_COLUMNS,
+  parseTpexInstitutionalRow,
+} from "../server/lib/institutionalFlow";
+import {
+  createFinMindMemoryCache,
+  FINMIND_CACHE_TTL_MS,
+} from "../server/lib/finmindCache";
+import {
+  detectStatementBasis,
+  normalizeFinancialSnapshot,
+} from "../server/lib/financialNormalization";
 import { appViewHash, parseAppView } from "../src/lib/navigation";
 import { buildIntegratedMarketData } from "../src/lib/integratedMarketData";
 import {
@@ -52,9 +80,130 @@ assert.equal(nvidiaModel(), process.env.NVIDIA_MODEL || DEFAULT_NVIDIA_MODEL);
 const holdingSnapshot = parseInstitutionalHoldingSeries("2330", "https://example.test/2330.json", [
   { date: "2026-07-30", foreign_ratio: 68, trust_ratio: 1, dealer_ratio: 0.5, three_inst_ratio: 69.5 },
   { date: "2026-07-31", foreign_ratio: 69, trust_ratio: 1.1, dealer_ratio: 0.6, three_inst_ratio: 70.7 },
-]);
+], "2026-08-01");
 assert.equal(holdingSnapshot.date, "2026-07-31");
 assert.equal(holdingSnapshot.totalRatio, 70.7);
+assert.equal(holdingSnapshot.ageDays, 1);
+assert.equal(holdingSnapshot.stale, false);
+assert.equal(Number(holdingSnapshot.trustRatioChange?.toFixed(4)), 0.1);
+assert.equal(FINMIND_CACHE_TTL_MS, 30 * 60 * 1000);
+
+let cacheNow = 0;
+let cacheLoads = 0;
+const memoryCache = createFinMindMemoryCache({ capacity: 2, ttlMs: 100, now: () => cacheNow });
+const cacheRequest = { stockId: "2330", dataset: "TaiwanStockFinancialStatements", startDate: "2023-01-01", endDate: "2026-01-01" };
+assert.equal((await memoryCache.load(cacheRequest, async () => { cacheLoads++; return [{ value: 1 }]; })).status, "miss");
+assert.equal((await memoryCache.load(cacheRequest, async () => { cacheLoads++; return [{ value: 2 }]; })).status, "hit");
+assert.equal(cacheLoads, 1, "fresh FinMind memory cache entries must skip the loader");
+cacheNow = 101;
+assert.equal((await memoryCache.load(cacheRequest, async () => { cacheLoads++; return [{ value: 3 }]; })).status, "miss");
+assert.equal(cacheLoads, 2, "expired FinMind memory cache entries must reload");
+
+let releaseFinMindLoad: ((rows: Array<Record<string, unknown>>) => void) | undefined;
+const sharedRequest = { ...cacheRequest, dataset: "TaiwanStockBalanceSheet" };
+const firstLoad = memoryCache.load(sharedRequest, () => new Promise((resolve) => { cacheLoads++; releaseFinMindLoad = resolve; }));
+const sharedLoad = memoryCache.load(sharedRequest, async () => { cacheLoads++; return [{ value: 5 }]; });
+await Promise.resolve();
+assert.ok(releaseFinMindLoad);
+releaseFinMindLoad([{ value: 4 }]);
+assert.deepEqual((await Promise.all([firstLoad, sharedLoad])).map((result) => result.status), ["miss", "shared"]);
+assert.equal(cacheLoads, 3, "identical in-flight FinMind requests must share one loader");
+
+let boundedLoads = 0;
+const boundedCache = createFinMindMemoryCache({ capacity: 1, ttlMs: 100 });
+const loadBounded = async (request: typeof cacheRequest) => boundedCache.load(request, async () => [{ value: ++boundedLoads }]);
+await loadBounded(cacheRequest);
+await loadBounded({ ...cacheRequest, dataset: "TaiwanStockCashFlowsStatement" });
+await loadBounded(cacheRequest);
+assert.equal(boundedLoads, 3, "FinMind memory cache must evict entries beyond its capacity");
+
+type FinancialFixtureOptions = {
+  cashBasis?: "single-quarter" | "ytd-cumulative";
+  positiveCapex?: boolean;
+  omitIncomeDate?: string;
+  financialIndustry?: boolean;
+};
+
+function financialFixture(options: FinancialFixtureOptions = {}) {
+  const dates = ["2024-12-31", "2025-03-31", "2025-06-30", "2025-09-30", "2025-12-31"];
+  const ytd = [40, 10, 30, 60, 100];
+  const incomeTypes = ["Revenue", "GrossProfit", "OperatingIncome", "IncomeAfterTaxes", "EPS"];
+  const incomeFactors = [1, 0.5, 0.3, 0.2, 0.1];
+  const income = dates.flatMap((date, dateIndex) => incomeTypes.map((type, typeIndex) => ({
+    date, type, value: ytd[dateIndex] * incomeFactors[typeIndex],
+    origin_name: type === "Revenue" ? "營業收入合計" : type,
+    period_type: "ytd-cumulative",
+  }))).filter((row) => row.date !== options.omitIncomeDate);
+  income.push({ date: "2025-12-31", type: "Revenue", value: 9999, origin_name: "其他收入", period_type: "ytd-cumulative" });
+  const cfo = [40, 10, 25, 45, 70];
+  const capex = [-8, -2, -5, -9, -14].map((value) => options.positiveCapex ? Math.abs(value) : value);
+  const cash = dates.flatMap((date, index) => [
+    { date, type: "CashFlowsFromOperatingActivities", value: cfo[index], origin_name: "營業活動之淨現金流入", period_type: options.cashBasis || "ytd-cumulative" },
+    { date, type: "PropertyAndPlantAndEquipment", value: capex[index], origin_name: "取得不動產、廠房及設備", period_type: options.cashBasis || "ytd-cumulative" },
+  ]);
+  const balance = dates.flatMap((date, index) => [
+    { date, type: "CurrentAssets", value: 200 + index * 10, origin_name: "流動資產" },
+    { date, type: "CurrentLiabilities", value: 100 + index * 5, origin_name: "流動負債" },
+    { date, type: "Liabilities", value: 80 + index * 5, origin_name: "負債總額" },
+    { date, type: "Equity", value: 90 + index * 10, origin_name: "權益總額" },
+    { date, type: "CashAndCashEquivalents", value: 50 + index, origin_name: "現金及約當現金" },
+  ]);
+  return normalizeFinancialSnapshot("TEST", [
+    { dataset: "TaiwanStockFinancialStatements", rows: income },
+    { dataset: "TaiwanStockCashFlowsStatement", rows: cash },
+    { dataset: "TaiwanStockBalanceSheet", rows: balance },
+  ], options.financialIndustry ? { industry: "金融保險業" } : { industry: "半導體業" }, "2026-01-15T00:00:00.000Z");
+}
+
+const normalizedFinancials = financialFixture();
+assert.equal(detectStatementBasis("TaiwanStockFinancialStatements", [{ period_type: "ytd-cumulative" }]), "ytd-cumulative");
+assert.equal(detectStatementBasis("TaiwanStockCashFlowsStatement", []), "ytd-cumulative");
+assert.equal(detectStatementBasis("TaiwanStockBalanceSheet", []), "point-in-time");
+const normalized2025 = normalizedFinancials.quarters.filter((quarter) => quarter.date.startsWith("2025"));
+assert.deepEqual(normalized2025.map((quarter) => quarter.metrics.revenue.value), [10, 20, 30, 40], "Q1-Q4 cumulative income values must become single quarters");
+assert.deepEqual(normalized2025.map((quarter) => quarter.metrics.eps.value), [1, 2, 3, 4], "EPS must use the same cumulative-to-quarter conversion");
+assert.deepEqual(normalized2025.map((quarter) => quarter.metrics.operatingCashFlow.value), [10, 15, 20, 25]);
+assert.deepEqual(normalized2025.map((quarter) => quarter.metrics.capitalExpenditure.value), [2, 3, 4, 5], "CapEx outflows must normalize to positive spend");
+assert.deepEqual(normalized2025.map((quarter) => quarter.metrics.freeCashFlow.value), [8, 12, 16, 20], "FCF must equal CFO minus absolute CapEx");
+assert.equal(normalized2025[1].metrics.equity.value, 110, "balance-sheet stocks must never be quarter-subtracted");
+assert.equal(normalized2025[1].metrics.currentRatio.periodBasis, "point-in-time");
+assert.equal(normalizedFinancials.ttm.revenue.value, 100);
+assert.equal(normalizedFinancials.ttm.eps.value, 10);
+assert.equal(normalizedFinancials.ttm.operatingCashFlow.value, 70);
+assert.equal(normalizedFinancials.ttm.freeCashFlow.value, 56);
+assert.equal(normalizedFinancials.ttm.roe.periodBasis, "ttm");
+assert.equal(normalized2025.at(-1)?.metrics.revenue.sources[0].originName, "營業收入合計", "duplicate metric selection must use deterministic origin priority");
+
+const positiveCapex = financialFixture({ cashBasis: "single-quarter", positiveCapex: true });
+assert.equal(positiveCapex.quarters.find((quarter) => quarter.date === "2025-03-31")?.metrics.freeCashFlow.value, 8, "positive or negative reported CapEx must produce the same normalized FCF rule");
+const missingQuarter = financialFixture({ omitIncomeDate: "2025-06-30" });
+assert.equal(missingQuarter.quarters.find((quarter) => quarter.date === "2025-09-30")?.metrics.revenue.missingReason, "missing_previous_cumulative_quarter");
+assert.equal(missingQuarter.ttm.revenue.value, null, "TTM must not bridge a missing quarter");
+const bankFinancials = financialFixture({ financialIndustry: true });
+const bankLatest = bankFinancials.quarters.at(-1)!;
+for (const metric of [bankLatest.metrics.grossMargin, bankLatest.metrics.currentRatio, bankLatest.metrics.debtRatio, bankLatest.metrics.freeCashFlow]) {
+  assert.equal(metric.value, null);
+  assert.equal(metric.missingReason, "not_applicable_financial_industry");
+}
+assert.notEqual(bankLatest.metrics.eps.value, null);
+assert.notEqual(bankLatest.metrics.netIncome.value, null);
+assert.notEqual(bankLatest.metrics.equity.value, null);
+assert.notEqual(bankFinancials.ttm.roe.value, null);
+assert.equal(bankLatest.metrics.currentRatio.periodBasis, "point-in-time");
+assert.equal(bankFinancials.ttm.freeCashFlow.periodBasis, "ttm");
+assert.equal(normalizeFinancialSnapshot("2881", [], { companyName: "富邦金", industry: "" }).isFinancialIndustry, true, "financial stock IDs and names must work when stock_meta industry is blank");
+
+let failedCacheLoads = 0;
+const failureCache = createFinMindMemoryCache({ capacity: 2, ttlMs: 100 });
+await assert.rejects(failureCache.load(cacheRequest, async () => { failedCacheLoads++; throw new Error("FinMind unavailable"); }));
+const recovered = await failureCache.load(cacheRequest, async () => { failedCacheLoads++; return [{ value: 7 }]; });
+assert.equal(recovered.status, "miss");
+assert.equal(failedCacheLoads, 2, "failed FinMind responses must not be cached as data");
+
+for (const runtimeFile of ["server/lib/finmindCache.ts", "server/mvpMcpRoutes.ts", "server/routes/fundamentals.ts"]) {
+  const source = readFileSync(path.join(process.cwd(), runtimeFile), "utf8");
+  assert.equal(source.includes("stock_dataset_cache"), false, `${runtimeFile} must not access Supabase stock_dataset_cache`);
+}
 
 function patternFixture(kind: "bottom" | "top", secondIndex = 50, confirmed = true) {
   const rows = Array.from({ length: 60 }, (_, index) => {
@@ -168,18 +317,58 @@ assert.match(cloudSyncSource, /INITIAL_INSTITUTIONAL_DATES = 60/);
 assert.match(cloudSyncSource, /INSTITUTIONAL_RETENTION = 512/);
 assert.match(cloudSyncSource, /TDCC_RETENTION = 512/);
 assert.match(cloudSyncSource, /PRICE_RETENTION - status\.price_dates/);
-assert.match(cloudSyncSource, /SYNC_SCOPE !== "tdcc"/);
-assert.match(cloudSyncSource, /SYNC_SCOPE !== "market"/);
-assert.match(marketWorkflowSource, /cron: "0 10 \* \* 1-5"/);
+assert.doesNotMatch(cloudSyncSource, /downloadTdccCSV|syncTdccCloud/, "cloud market sync must not independently download TDCC");
+assert.match(marketWorkflowSource, /cron: "0 10 \* \* \*"/);
+assert.match(marketWorkflowSource, /scripts\/dispatchDailySync\.ts/);
+assert.match(marketWorkflowSource, /scripts\/syncOfficialTdccCloud\.ts --execute/);
 assert.match(marketWorkflowSource, /SYNC_SCOPE: market/);
-assert.match(tdccWorkflowSource, /cron: "0 10 \* \* 6"/);
-assert.match(tdccWorkflowSource, /SYNC_SCOPE: tdcc/);
+assert.doesNotMatch(tdccWorkflowSource, /cron:/, "cloud-only TDCC schedule must remain disabled");
+assert.match(tdccWorkflowSource, /Historical 52-week backfill remains local-first/);
 assert.doesNotMatch(marketsViewSource, /\/api\/sync-status|\/api\/trigger-update/);
 assert.match(marketsViewSource, /Supabase 資料庫日期/);
 assert.equal(isOrdinaryStockId("2330"), true);
 assert.equal(isOrdinaryStockId("9910"), true);
 assert.equal(isOrdinaryStockId("0050"), false);
 assert.equal(isOrdinaryStockId("9103"), false);
+
+const tpexInstitutionalFixture = JSON.parse(readFileSync(
+  path.join(process.cwd(), "tests", "fixtures", "tpex-institutional-24-columns.json"),
+  "utf8",
+)) as { date: string; row: unknown[] };
+assert.equal(tpexInstitutionalFixture.row.length, 24, "TPEx official institutional fixture must have exactly 24 columns");
+const parsedTpexInstitutional = parseTpexInstitutionalRow(
+  tpexInstitutionalFixture.row,
+  tpexInstitutionalFixture.date,
+);
+assert.ok(parsedTpexInstitutional);
+assert.equal(parsedTpexInstitutional.foreign_net, 800);
+assert.equal(parsedTpexInstitutional.trust_net, -200);
+assert.equal(parsedTpexInstitutional.dealer_net, 50);
+assert.equal(parsedTpexInstitutional.institutional_net, 650);
+assert.equal(
+  parsedTpexInstitutional.institutional_net,
+  parsedTpexInstitutional.foreign_net + parsedTpexInstitutional.trust_net + parsedTpexInstitutional.dealer_net,
+  "institutional_net must always be recomputed from the three institutional net fields",
+);
+const invalidTpexTotal = [...tpexInstitutionalFixture.row];
+invalidTpexTotal[23] = "999";
+assert.throws(
+  () => parseTpexInstitutionalRow(invalidTpexTotal, tpexInstitutionalFixture.date),
+  /TPEx institutional total mismatch/,
+);
+assert.equal(
+  INSTITUTIONAL_SELECT_COLUMNS,
+  "date, foreign_net, trust_net, dealer_net, institutional_net",
+);
+const stockRoutesInstitutionalSource = readFileSync(
+  path.join(process.cwd(), "server", "routes", "stocks.ts"),
+  "utf8",
+);
+assert.match(
+  stockRoutesInstitutionalSource,
+  /stock_institutional"\)[\s\S]*?\.select\(INSTITUTIONAL_SELECT_COLUMNS\)/,
+  "quote API must select foreign, trust, dealer and institutional net fields together",
+);
 assert.equal(isOrdinaryStockId("2881A"), false);
 assert.deepEqual(
   sortTrustBuyByDays([
@@ -196,10 +385,10 @@ assert.deepEqual(
 assert.deepEqual(
   buildIntegratedMarketData(
     ["2026-07-31"],
-    [{ date: "2026-07-31", foreign_net: -3_957_455, trust_net: 7_046_889 }],
+    [{ date: "2026-07-31", foreign_net: -3_957_455, trust_net: 7_046_889, dealer_net: 2_724_666 }],
     [],
   )[0],
-  { date: "2026-07-31", foreign: -3957, trust: 7046, whaleRatio: null },
+  { date: "2026-07-31", foreign: -3957, trust: 7046, dealer: 2724, whaleRatio: null },
   "institutional shares must use the same whole-lot truncation in every chart and table",
 );
 assert.deepEqual(
@@ -220,8 +409,8 @@ assert.deepEqual(
   buildIntegratedMarketData(
     ["2026-07-23", "2026-07-24", "2026-07-27", "T+1", "T+5"],
     [
-      { date: "2026-07-24", foreign_net: 1_500_000, trust_net: -250_000 },
-      { date: "2026-07-27", foreign_net: -500_000, trust_net: 100_000 },
+      { date: "2026-07-24", foreign_net: 1_500_000, trust_net: -250_000, dealer_net: 75_000 },
+      { date: "2026-07-27", foreign_net: -500_000, trust_net: 100_000, dealer_net: -25_000 },
     ],
     [
       { date: "2026-07-18", ratio: 60.5 },
@@ -229,11 +418,11 @@ assert.deepEqual(
     ],
   ),
   [
-    { date: "2026-07-23", foreign: null, trust: null, whaleRatio: 60.5 },
-    { date: "2026-07-24", foreign: 1500, trust: -250, whaleRatio: 60.5 },
-    { date: "2026-07-27", foreign: -500, trust: 100, whaleRatio: 61.25 },
-    { date: "T+1", foreign: null, trust: null, whaleRatio: null },
-    { date: "T+5", foreign: null, trust: null, whaleRatio: null },
+    { date: "2026-07-23", foreign: null, trust: null, dealer: null, whaleRatio: 60.5 },
+    { date: "2026-07-24", foreign: 1500, trust: -250, dealer: 75, whaleRatio: 60.5 },
+    { date: "2026-07-27", foreign: -500, trust: 100, dealer: -25, whaleRatio: 61.25 },
+    { date: "T+1", foreign: null, trust: null, dealer: null, whaleRatio: null },
+    { date: "T+5", foreign: null, trust: null, dealer: null, whaleRatio: null },
   ],
 );
 const trendRows: PriceData[] = Array.from({ length: 60 }, (_, index) => ({
@@ -490,9 +679,11 @@ assert.deepEqual(
   ],
   "Supabase catch-up must not skip dates between the cloud maximum and today",
 );
+const sqliteResolutionCwd = path.resolve("fixtures", "runtime");
+const sqliteResolutionRelative = path.join("nested", "smoke.db");
 assert.equal(
-  resolveDatabasePath("D:\\app", "fixtures\\smoke.db"),
-  "D:\\app\\fixtures\\smoke.db",
+  resolveDatabasePath(sqliteResolutionCwd, sqliteResolutionRelative),
+  path.resolve(sqliteResolutionCwd, sqliteResolutionRelative),
   "configured SQLite paths must resolve relative to the process directory",
 );
 const freshLocalRows = Array.from({ length: 30 }, (_, index) => ({
@@ -686,8 +877,9 @@ try {
     "stock_price compatibility writes must land in canonical stock_history",
   );
   runMigrations(migrationDb);
+  const migrationCount = (migrationDb.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get() as { count: number }).count;
   runMigrations(migrationDb);
-  assert.equal((migrationDb.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get() as { count: number }).count, 5, "migrations must be idempotent");
+  assert.equal((migrationDb.prepare("SELECT COUNT(*) AS count FROM schema_migrations").get() as { count: number }).count, migrationCount, "migrations must be idempotent");
   assert.throws(
     () => migrationDb.prepare(
       "INSERT INTO stock_meta (stock_id, stock_name) VALUES ('0050', 'ETF must be rejected')",
@@ -733,12 +925,202 @@ try {
     stock_id: "2317", date: "2026-07-18", total_shares: 400, whale_ratio: 75, retail_ratio: 25,
     total_people: 12, whale_shares: 300, whale_people: 2,
   });
+  const tdccEligibilityCsv = readFileSync(
+    path.join(process.cwd(), "tests", "fixtures", "tdcc-eligibility.csv"),
+    "utf8",
+  );
+  const eligibilityParsed = parseTdccCSV(tdccEligibilityCsv);
+  const eligibleIds = new Set(["2330", "4130"]);
+  const eligibilityFiltered = filterTdccRecordsByEligibleStocks(eligibilityParsed, eligibleIds);
+  assert.deepEqual(eligibilityParsed.rawSymbols, ["0050", "1107", "2330"]);
+  assert.deepEqual(eligibilityParsed.parsedSymbols, ["1107", "2330"]);
+  assert.deepEqual(eligibilityFiltered.records.map((record) => record.stock_id), ["2330"]);
+  assert.deepEqual(eligibilityFiltered.report, {
+    rawSymbols: 3,
+    parsedSymbols: 2,
+    eligibleSymbols: 2,
+    matchedSymbols: 1,
+    excludedSymbols: 1,
+    eligibleButMissingSymbols: 1,
+    recordsToWrite: 1,
+    excludedStockIds: ["1107"],
+    eligibleButMissingStockIds: ["4130"],
+  });
+  let sqliteStockIds: string[] = [];
+  let supabaseStockIds: string[] = [];
+  const eligibilityIngest = await ingestTdccCSV(tdccEligibilityCsv, {
+    eligibleStockIds: eligibleIds,
+    writeLocal: async (records) => {
+      sqliteStockIds = records.map((record) => record.stock_id);
+      return records.length;
+    },
+    writeCloud: async (records) => {
+      supabaseStockIds = records.map((record) => record.stock_id);
+      return { attempted: true, synced: true };
+    },
+    log: () => {},
+  });
+  assert.deepEqual(sqliteStockIds, ["2330"]);
+  assert.deepEqual(supabaseStockIds, sqliteStockIds, "Supabase and SQLite must receive the same filtered TDCC stock set");
+  assert.equal(eligibilityIngest.report.eligibleButMissingStockIds[0], "4130");
   await saveTdccToSQLite(parsedTdcc.records, "contract_test", migrationDb);
   await saveTdccToSQLite(parsedTdcc.records, "contract_test", migrationDb);
   assert.equal((migrationDb.prepare("SELECT COUNT(*) AS count FROM tdcc_shareholding").get() as { count: number }).count, 2, "TDCC upsert must be idempotent");
+
+  const coverageRows = [
+    ...Array.from({ length: 52 }, (_, index) => ({
+      stock_id: "2454", date: `2025-${String(Math.floor(index / 4) + 1).padStart(2, "0")}-${String((index % 4) * 7 + 1).padStart(2, "0")}`,
+      total_shares: 1_000, whale_ratio: 50,
+      retail_ratio: null, total_people: null, whale_shares: null, whale_people: null,
+    })),
+    ...Array.from({ length: 52 }, (_, index) => ({
+      stock_id: "3008", date: `2025-${String(Math.floor(index / 4) + 1).padStart(2, "0")}-${String((index % 4) * 7 + 1).padStart(2, "0")}`,
+      total_shares: 1_000, whale_ratio: index === 51 ? null : 50,
+      retail_ratio: 10, total_people: 100, whale_shares: 500, whale_people: 10,
+    })),
+    { stock_id: "2317", date: "2026-07-24", total_shares: 1_000, whale_ratio: 50, retail_ratio: 10, total_people: 100, whale_shares: 500, whale_people: 10 },
+    { stock_id: "2317", date: "2026-07-31", total_shares: 1_000, whale_ratio: 50, retail_ratio: 10, total_people: 100, whale_shares: 500, whale_people: 10 },
+    { stock_id: "2317", date: "2026-07-31", total_shares: 1_000, whale_ratio: 50, retail_ratio: 10, total_people: 100, whale_shares: 500, whale_people: 10 },
+  ];
+  const coverageSummary = summarizeTdccCoverage(new Set(["2317", "2330", "2454", "3008"]), coverageRows);
+  assert.deepEqual(
+    { reached52Weeks: coverageSummary.reached52Weeks, partial: coverageSummary.partial, missing: coverageSummary.missing },
+    { reached52Weeks: 1, partial: 2, missing: 1 },
+    "52-week completion must require 52 distinct dates with core fields",
+  );
+  assert.deepEqual(
+    coverageSummary.perStock.find((stock) => stock.stockId === "2317"),
+    { stockId: "2317", distinctWeeks: 2, coreCompleteWeeks: 2, latestDate: "2026-07-31", detailIncompleteRows: 0 },
+    "coverage and latest date must be calculated per stock and deduplicate dates",
+  );
+  assert.equal(coverageSummary.perStock.find((stock) => stock.stockId === "2454")?.detailIncompleteRows, 52);
+  assert.equal(coverageSummary.perStock.find((stock) => stock.stockId === "3008")?.coreCompleteWeeks, 51);
+  assert.deepEqual(
+    selectTdccBackfillCandidates(coverageSummary.perStock),
+    ["2330", "2317", "3008"],
+    "zero-row, partial and 52-date core-incomplete stocks must all remain backfill candidates",
+  );
+  assert.deepEqual(
+    [...selectCoreCompleteTdccDates([
+      { date: "2026-07-03", total_shares: 1_000, whale_ratio: 50 },
+      { date: "2026-07-10", total_shares: null, whale_ratio: 50 },
+      { date: "2026-07-17", total_shares: 1_000, whale_ratio: null },
+    ])],
+    ["2026-07-03"],
+    "existingDates must contain only dates whose TDCC core fields are complete",
+  );
+
+  const cleanupClassification = classifyTdccCleanupCandidates(
+    ["0050", "1107", "1234", "2330", "7777", "8888", "9999"].flatMap((stockId) => [{ stock_id: stockId }, { stock_id: stockId }]),
+    [
+      { stock_id: "0050", status: "active", type: "ETF", market: "TSE", source: "TWSE", last_trade_date: "2026-07-31" },
+      { stock_id: "2330", status: "active", type: "COMMON", market: "TSE", source: "quotes", last_trade_date: "2026-07-31" },
+      { stock_id: "1107", status: "inactive", type: "COMMON", market: "TSE", source: "TWSE", last_trade_date: "2026-07-31" },
+      { stock_id: "7777", status: "active", type: "COMMON", market: "TSE", source: "TWSE", last_trade_date: "2026-07-30" },
+      { stock_id: "8888", status: "active", type: "COMMON", market: "ESB", source: "TPEx", last_trade_date: "2026-07-31" },
+      { stock_id: "9999", status: "active", type: "ETF", market: "TSE", source: "quotes", last_trade_date: "2026-07-31" },
+    ],
+    [
+      { stock_id: "0050", status: "active", type: "ETF", market: "TSE", source: "TWSE", last_trade_date: "2026-07-31" },
+      { stock_id: "2330", status: "active", type: "stock", market: "TSE", source: "FinMind", last_trade_date: "2026-07-30" },
+      { stock_id: "1107", status: "inactive", type: "COMMON", market: "TSE", source: "TWSE", last_trade_date: "2026-07-31" },
+      { stock_id: "7777", status: "active", type: "COMMON", market: "TSE", source: "TWSE", last_trade_date: "2026-07-31" },
+      { stock_id: "8888", status: "active", type: "COMMON", market: "ESB", source: "TPEx", last_trade_date: "2026-07-31" },
+      { stock_id: "9999", status: "active", type: "ETF", market: "TSE", source: "quotes", last_trade_date: "2026-07-31" },
+    ],
+    new Set(["2330"]),
+  );
+  assert.deepEqual(cleanupClassification.categories.confirmed_nonordinary.stockIds, ["0050"]);
+  assert.deepEqual(cleanupClassification.categories.inactive.stockIds, ["1107"]);
+  assert.deepEqual(cleanupClassification.categories.missing_meta.stockIds, ["1234"]);
+  assert.deepEqual(cleanupClassification.categories.local_cloud_mismatch.stockIds, ["7777", "9999"]);
+  assert.deepEqual(cleanupClassification.categories.unsupported_market.stockIds, ["8888"]);
+  assert.equal(cleanupClassification.projectedDeleteSymbols, 1, "only confirmed official nonordinary metadata may be cleanup-eligible");
+  assert.equal(cleanupClassification.projectedDeleteRows, 2);
+  assert.equal(cleanupClassification.dryRun, true);
+  assert.deepEqual(summarizeTdccExclusionCounts(cleanupClassification), {
+    missingStockMeta: 1,
+    excludedNonOrdinary: 1,
+    inactive: 1,
+    metadataMismatch: 2,
+    unsupportedMarket: 1,
+  }, "status exclusion categories must remain distinct");
 } finally {
   migrationDb.close();
 }
+
+const legacyTdccDb = new Database(":memory:");
+try {
+  legacyTdccDb.exec(`
+    CREATE TABLE tdcc_shareholding (
+      stock_id TEXT NOT NULL, date TEXT NOT NULL, total_shares INTEGER,
+      whale_ratio REAL, retail_ratio REAL, total_people INTEGER,
+      whale_shares INTEGER, whale_people INTEGER, source TEXT, updated_at TEXT,
+      PRIMARY KEY(stock_id, date)
+    );
+    INSERT INTO tdcc_shareholding VALUES
+      ('2330','2026-07-31',1000,50,10,100,500,10,'legacy','2026-08-01');
+  `);
+  ensureCanonicalSchema(legacyTdccDb);
+  assert.equal(
+    (legacyTdccDb.prepare("SELECT type FROM sqlite_master WHERE name = 'tdcc_shareholding'").get() as { type: string }).type,
+    "view",
+    "legacy physical TDCC table must become a compatibility view",
+  );
+  assert.deepEqual(
+    legacyTdccDb.prepare("SELECT stock_id,date,total_shares,whale_ratio FROM tdcc_shareholding").all(),
+    [{ stock_id: "2330", date: "2026-07-31", total_shares: 1000, whale_ratio: 50 }],
+    "legacy TDCC rows must survive compatibility migration",
+  );
+} finally {
+  legacyTdccDb.close();
+}
+
+const tdccPageFixture = Array.from({ length: 15_001 }, (_, index) => ({
+  stock_id: "2330",
+  date: new Date(Date.UTC(1980, 0, index + 1)).toISOString().slice(0, 10),
+  total_shares: 1_000,
+  whale_ratio: 50,
+  retail_ratio: 10,
+  total_people: 100,
+  whale_shares: 500,
+  whale_people: 10,
+}));
+const syncedTdccRows = new Map<string, (typeof tdccPageFixture)[number]>();
+const readTdccPage = async (cursor: { date: string; stockId: string } | null, limit: number) => {
+  const start = cursor
+    ? tdccPageFixture.findIndex((row) => row.date > cursor.date || (row.date === cursor.date && row.stock_id > cursor.stockId))
+    : 0;
+  return start < 0 ? [] : tdccPageFixture.slice(start, start + limit);
+};
+const upsertTdccPage = async (rows: typeof tdccPageFixture) => {
+  for (const row of rows) syncedTdccRows.set(`${row.stock_id}:${row.date}`, row);
+};
+assert.equal((await syncTdccPages(readTdccPage, upsertTdccPage, new Set(["2330"]), 500)).pushed, 15_001);
+assert.equal(syncedTdccRows.size, 15_001, "all TDCC rows beyond the former 15,000 cap must be delivered");
+await syncTdccPages(readTdccPage, upsertTdccPage, new Set(["2330"]), 500);
+assert.equal(syncedTdccRows.size, 15_001, "a second TDCC sync must not create duplicate keys");
+
+const packageJson = JSON.parse(readFileSync(path.join(process.cwd(), "package.json"), "utf8")) as { scripts: Record<string, string> };
+assert.equal(packageJson.scripts["backfill:tdcc"], "tsx scripts/backfillTdccLocal.ts", "TDCC backfill command must be local-only");
+const tdccLocalBackfillSource = readFileSync(path.join(process.cwd(), "scripts", "backfillTdccLocal.ts"), "utf8");
+const tdccBackfillSource = readFileSync(path.join(process.cwd(), "server", "lib", "tdccBackfill.ts"), "utf8");
+assert.match(tdccLocalBackfillSource, /buildLocalTdccBackfillPlan/);
+assert.match(tdccLocalBackfillSource, /selectExistingCoreCompleteDates/);
+assert.match(tdccBackfillSource, /total_shares IS NOT NULL[\s\S]*whale_ratio IS NOT NULL/i);
+assert.match(tdccBackfillSource, /loadEligibleOrdinaryStockIds/, "local TDCC backfill must use the canonical ordinary-stock universe");
+const retiredCloudBackfillSource = readFileSync(path.join(process.cwd(), "scripts", "backfillTdccUniverse.ts"), "utf8");
+assert.doesNotMatch(retiredCloudBackfillSource, /supabaseAdmin|\.from\("stock_meta"\)|backfillTdccHistory/, "retired cloud TDCC backfill must not maintain an independent universe or execute history fetches");
+assert.match(retiredCloudBackfillSource, /disabled|停用/i);
+const syncBridgeSource = readFileSync(path.join(process.cwd(), "server", "lib", "syncBridge.ts"), "utf8");
+assert.doesNotMatch(syncBridgeSource, /LIMIT 15000/, "TDCC SQLite-to-Supabase sync must not stop at a global row cap");
+assert.match(syncBridgeSource, /ORDER BY date, stock_id/i, "TDCC sync pages must use a stable compound sort");
+const tdccDownloadSource = readFileSync(path.join(process.cwd(), "server", "lib", "tdccDownload.ts"), "utf8");
+assert.doesNotMatch(
+  tdccDownloadSource.slice(tdccDownloadSource.indexOf("getTdccCleanupDryRun"), tdccDownloadSource.indexOf("// Master sync flow")),
+  /\.delete\(|\bDELETE\b/i,
+  "TDCC cleanup must remain dry-run and contain no delete operation",
+);
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -801,6 +1183,10 @@ for (const route of [
   "GET /api/twse-stats",
   "GET /api/otc-stats",
   "GET /api/debug-status",
+  "GET /api/stock/:id/trade-risks",
+  "GET /api/market/trade-risks",
+  "GET /api/status/trade-risk",
+  "POST /api/trade-risks/sync",
 ]) assert.ok(routeIds.includes(route), `${route} must remain registered`);
 const server = app.listen(0, "127.0.0.1");
 await once(server, "listening");
@@ -810,7 +1196,7 @@ try {
   const baseUrl = `http://127.0.0.1:${address.port}`;
   const settings = await fetch(`${baseUrl}/api/settings`).then((response) => response.json()) as Record<string, unknown>;
   assert.equal(settings.success, true);
-  for (const secret of ["nvidiaApiKey", "longcatApiKey", "finmindApiKey", "geminiApiKey", "webhookUrl"]) {
+  for (const secret of ["nvidiaApiKey", "finmindApiKey", "webhookUrl"]) {
     assert.equal(Object.hasOwn(settings, secret), false, `/api/settings must not expose ${secret}`);
   }
   const legacy = await fetch(`${baseUrl}/api/ai-analysis`, { method: "POST" });
@@ -823,5 +1209,78 @@ try {
   server.close();
   await once(server, "close");
 }
+
+const riskFixtureBase = {
+  id: 1, stock_id: "2330", market: "TWSE" as const,
+  reason: "fixture", restrictions: "fixture restriction", announced_date: "2026-08-01",
+  start_date: "2026-08-03", end_date: "2026-08-14", source: "fixture",
+  source_url: "https://www.twse.com.tw/", source_updated_at: "2026-08-01",
+  fetched_at: "2026-08-01T00:00:00Z", is_active: 0,
+};
+const emptyRisk = buildStockTradeRiskResponse("2330", [], "sqlite", "2026-08-01");
+assert.equal(emptyRisk.hasActiveRisk, false);
+assert.deepEqual(emptyRisk.risks, []);
+const multipleRisks = buildStockTradeRiskResponse("2330", [
+  { ...riskFixtureBase, risk_type: "attention", risk_level: "medium" },
+  { ...riskFixtureBase, id: 2, risk_type: "disposition", risk_level: "high" },
+], "sqlite", "2026-08-01");
+assert.deepEqual(multipleRisks.risks.map((risk) => risk.type), ["disposition", "attention"]);
+assert.equal(multipleRisks.risks[0].daysUntilStart, 2);
+assert.equal(multipleRisks.risks[0].daysUntilEnd, 13);
+const policyRows: StoredTradeRisk[] = [
+  { ...riskFixtureBase, stock_id: "2330", risk_type: "attention", risk_level: "medium", start_date: "2026-07-01", is_active: 1 },
+  { ...riskFixtureBase, id: 2, stock_id: "2454", risk_type: "disposition", risk_level: "high", start_date: "2026-07-01", is_active: 1 },
+  { ...riskFixtureBase, id: 3, stock_id: "2317", risk_type: "trading_halt", risk_level: "critical", start_date: "2026-07-01", is_active: 1 },
+];
+const filtered = applyTradeRiskPolicyRows(
+  [{ stock_id: "2330" }, { stock_id: "2454" }, { stock_id: "2317" }], policyRows,
+);
+assert.deepEqual(filtered.map((row) => row.stock_id), ["2330"]);
+assert.equal(filtered[0].riskFlags[0].action, "warn", "attention must warn without exclusion");
+assert.deepEqual(
+  applyTradeRiskPolicyRows([{ stock_id: "2454" }], policyRows, true).map((row) => row.stock_id),
+  ["2454"], "disposition opt-in must preserve the candidate",
+);
+const ineffectiveRisks: StoredTradeRisk[] = [
+  { ...riskFixtureBase, stock_id: "2330", risk_type: "disposition", risk_level: "high", is_active: 0 },
+  { ...riskFixtureBase, id: 2, stock_id: "2454", risk_type: "trading_halt", risk_level: "critical",
+    start_date: "2099-01-01", is_active: 1 },
+  { ...riskFixtureBase, id: 3, stock_id: "2317", risk_type: "attention", risk_level: "medium", start_date: "2026-07-01", end_date: "2026-07-31", is_active: 1 },
+];
+assert.deepEqual(
+  applyTradeRiskPolicyRows([{ stock_id: "2330" }, { stock_id: "2454" }, { stock_id: "2317" }], ineffectiveRisks),
+  [
+    { stock_id: "2330", riskFlags: [] },
+    { stock_id: "2454", riskFlags: [] },
+    { stock_id: "2317", riskFlags: [] },
+  ],
+  "stored inactive, future, and expired risks must not filter strategy candidates",
+);
+const previousTradeRiskFilter = process.env.TRADE_RISK_FILTER_ENABLED;
+delete process.env.TRADE_RISK_FILTER_ENABLED;
+await assert.rejects(
+  applyTradeRiskPolicy([{ stock_id: "2330" }], false, async () => { throw new Error("cloud down"); }),
+  new RegExp(TRADE_RISK_POLICY_ERROR),
+  "trade-risk lookup failure must fail closed",
+);
+process.env.TRADE_RISK_FILTER_ENABLED = "false";
+assert.equal((await applyTradeRiskPolicy([{ stock_id: "2330" }])).riskPolicy, "disabled");
+if (previousTradeRiskFilter === undefined) delete process.env.TRADE_RISK_FILTER_ENABLED;
+else process.env.TRADE_RISK_FILTER_ENABLED = previousTradeRiskFilter;
+const tradeRiskMigration = readFileSync(
+  path.join(process.cwd(), "supabase", "migrations", "20260801060757_stock_trade_risk.sql"), "utf8",
+);
+assert.match(tradeRiskMigration, /enable row level security/i);
+assert.match(tradeRiskMigration, /for select to anon, authenticated/i);
+assert.match(tradeRiskMigration, /grant all on table public\.stock_trade_risk to service_role/i);
+assert.doesNotMatch(tradeRiskMigration, /for (?:insert|update|delete) to anon/i);
+const tradeRiskSource = readFileSync(path.join(process.cwd(), "server", "lib", "tradeRisks.ts"), "utf8");
+assert.match(tradeRiskSource, /onConflict: "record_key"/);
+assert.doesNotMatch(tradeRiskSource, /catch\s*\{\s*return items\.map/, "trade-risk cloud failures must never fail open");
+const tradeRiskBannerSource = readFileSync(path.join(process.cwd(), "src", "components", "TradeRiskBanner.tsx"), "utf8");
+assert.match(tradeRiskBannerSource, /交易風險資料載入中/);
+assert.match(tradeRiskBannerSource, /交易風險資料暫時無法取得/);
+assert.match(tradeRiskBannerSource, /risks\.length === 0\) return null/);
+assert.match(tradeRiskBannerSource, /官方未公告結束日/);
 
 console.log("self-check: ok");

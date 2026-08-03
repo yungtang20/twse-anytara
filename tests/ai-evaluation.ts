@@ -34,8 +34,8 @@ function completeInputs(): SnapshotDatasetInput[] {
     { date, type: "Liabilities", value: 100 + index * 5 },
   ]);
   const cashFlows = quarterDates.flatMap((date) => [
-    { date, type: "CashFlowsFromOperatingActivities", value: 20 },
-    { date, type: "PropertyAndPlantAndEquipment", value: -5 },
+    { date, type: "CashFlowsFromOperatingActivities", value: 20, period_type: "single-quarter" },
+    { date, type: "PropertyAndPlantAndEquipment", value: -5, period_type: "single-quarter" },
   ]);
   return [
     { dataset: "TaiwanStockPrice", rows: prices },
@@ -68,7 +68,7 @@ function etfInputs(): SnapshotDatasetInput[] {
 
 const cases = [
   { category: "electronics", stockId: "9001", industry: "電子", framework: "berkshire", inputs: completeInputs(), eligible: true },
-  { category: "financial", stockId: "9002", industry: "金融", framework: "jpmorgan", inputs: completeInputs(), eligible: true },
+  { category: "financial", stockId: "9002", industry: "金融", framework: "morgan_stanley", inputs: completeInputs(), eligible: true },
   { category: "shipping", stockId: "9003", industry: "航運", framework: "bridgewater", inputs: completeInputs(), eligible: true },
   { category: "biotech", stockId: "9004", industry: "生技", framework: "morgan_stanley", inputs: completeInputs(), eligible: true },
   { category: "traditional", stockId: "9005", industry: "傳產", framework: "industry", inputs: completeInputs(), eligible: true },
@@ -111,16 +111,24 @@ for (const testCase of cases) {
   }
 
   if (testCase.inputs.length > 3) {
-    const expected = { latest_close: 229.5, monthly_revenue_yoy: 20, net_income_ttm: 52, eps_ttm: 5.2, free_cash_flow_ttm: 60, gross_margin: 50, rsi14: 100 };
-    for (const [metric, value] of Object.entries(expected)) {
+    const expected = { latest_close: 229.5, monthly_revenue_yoy: 20, net_income_ttm: 52, eps_ttm: 5.2, rsi14: 100 };
+    const industryExpected = snapshot.financials.isFinancialIndustry
+      ? {}
+      : { free_cash_flow_ttm: 60, gross_margin: 50 };
+    for (const [metric, value] of Object.entries({ ...expected, ...industryExpected })) {
       const deviation = Math.abs(snapshot.metrics[metric].value - value);
       maxMetricDeviation = Math.max(maxMetricDeviation, deviation);
       assert.ok(deviation < 1e-9, `${testCase.category}:${metric} deviation=${deviation}`);
+    }
+    if (snapshot.financials.isFinancialIndustry) {
+      assert.equal(snapshot.metrics.free_cash_flow_ttm, undefined);
+      assert.equal(snapshot.metrics.gross_margin, undefined);
     }
   }
 }
 
 const referenceSnapshot = buildStockSnapshot("9999", completeInputs(), {}, "2026-05-19T00:00:00.000Z");
+assert.equal(referenceSnapshot.metrics.free_cash_flow_ttm.value, 60);
 const beforeEligibility = JSON.stringify(referenceSnapshot);
 for (const frameworkId of Object.keys(FRAMEWORK_CONTRACTS)) {
   const eligibility = evaluateFrameworkEligibility(referenceSnapshot, frameworkId);

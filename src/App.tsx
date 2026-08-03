@@ -9,7 +9,7 @@ import { DashboardView } from "./components/views/DashboardView";
 import { MarketsView } from "./components/views/MarketsView";
 import { StrategiesView } from "./components/views/StrategiesView";
 import { SettingsView } from "./components/views/SettingsView";
-import { AIAnalysisView } from "./components/views/AIAnalysisView";
+import { AIResearchView } from "./components/views/AIResearchView";
 import { AppView } from "./types";
 import { appViewHash, parseAppView } from "./lib/navigation";
 
@@ -35,8 +35,7 @@ export default function App() {
       {currentView === 'markets' && <MarketsView />}
       {currentView === 'strategies' && <StrategiesView />}
       {currentView === 'settings' && <SettingsView />}
-      {currentView === 'ai-analysis' && <AIAnalysisView />}
+      {currentView === 'ai-analysis' && <AIResearchView />}
     </Layout>
   );
 }
-

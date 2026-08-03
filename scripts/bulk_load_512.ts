@@ -1,6 +1,6 @@
 import Database from "better-sqlite3";
-import path from "path";
 import { createSupabaseAdminClient } from "./lib/supabaseAdmin";
+import { requireExplicitSqlitePath } from "./lib/sqlitePath";
 
 const RETAIN_ROWS = 512;
 const BATCH_SIZE = 500;
@@ -20,12 +20,6 @@ interface PriceRow {
 }
 
 type SupabaseAdminClient = ReturnType<typeof createSupabaseAdminClient>;
-
-function getDatabasePath(): string {
-  return process.env.SQLITE_DB_PATH
-    ? path.resolve(process.env.SQLITE_DB_PATH)
-    : path.join(process.cwd(), "twstock", "taiwan_stock_unified.db");
-}
 
 async function upsertWithRetry(
   supabase: SupabaseAdminClient,
@@ -60,7 +54,7 @@ function selectLatestRows(db: Database): PriceRow[] {
 
 async function run(): Promise<void> {
   const execute = process.argv.includes("--execute");
-  const db = new Database(getDatabasePath(), { readonly: true, fileMustExist: true });
+  const db = new Database(requireExplicitSqlitePath(), { readonly: true, fileMustExist: true });
   try {
     const rows = selectLatestRows(db);
     console.log(`[BulkLoad] Prepared ${rows.length} rows (latest ${RETAIN_ROWS} per stock).`);

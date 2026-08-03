@@ -222,6 +222,7 @@ export function KlineChart({
   const [showPOC, setShowPOC] = useState(false);
   const [showForeign, setShowForeign] = useState(false);
   const [showTrust, setShowTrust] = useState(false);
+  const [showDealer, setShowDealer] = useState(false);
   const [showShareholding, setShowShareholding] = useState(false);
   const [hoveredDatum, setHoveredDatum] = useState<CandleDatum | null>(null);
 
@@ -461,6 +462,7 @@ export function KlineChart({
           {([
             { label: '外資', state: showForeign, set: setShowForeign, color: 'text-blue-400' },
             { label: '投信', state: showTrust, set: setShowTrust, color: 'text-amber-400' },
+            { label: '自營商', state: showDealer, set: setShowDealer, color: 'text-violet-400' },
           ] as const).map((item) => {
             return (
               <button
@@ -735,6 +737,7 @@ export function KlineChart({
         shareholding={shareholding}
         showForeign={showForeign}
         showTrust={showTrust}
+        showDealer={showDealer}
         showShareholding={showShareholding}
       />
     </div>

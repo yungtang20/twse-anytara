@@ -1,7 +1,11 @@
 import { createSupabaseAdminClient } from "./lib/supabaseAdmin";
 import { listPendingCalendarDates } from "./lib/syncDates";
-import { downloadTdccCSV, parseTdccCSV } from "../server/lib/tdccDownload";
 import { isOrdinaryStockId } from "../server/lib/stockUniverse";
+import {
+  parseTpexInstitutionalRow,
+  parseTwseInstitutionalRow,
+  type InstitutionalRecord,
+} from "../server/lib/institutionalFlow";
 
 const supabase = createSupabaseAdminClient();
 const UPSERT_BATCH = 500;
@@ -14,7 +18,7 @@ const WRITE_CEILING_BYTES = 450 * 1024 * 1024;
 const DRY_RUN = process.argv.includes("--dry-run");
 const SYNC_SCOPE = process.env.SYNC_SCOPE || "all";
 
-if (!["all", "market", "tdcc"].includes(SYNC_SCOPE)) {
+if (!["all", "market"].includes(SYNC_SCOPE)) {
   throw new Error(`Unsupported SYNC_SCOPE: ${SYNC_SCOPE}`);
 }
 
@@ -62,16 +66,6 @@ interface FinMindInfoRow {
   type: "twse" | "tpex" | "emerging";
 }
 
-interface InstitutionalRecord {
-  stock_id: string;
-  date: string;
-  foreign_net: number;
-  trust_net: number;
-  dealer_net: number;
-  institutional_net: number;
-  source: string;
-}
-
 interface StorageStatus {
   database_bytes: number;
   public_tables_bytes: number;
@@ -104,6 +98,16 @@ function taipeiToday(): string {
     month: "2-digit",
     day: "2-digit",
   }).format(new Date());
+}
+
+function syncTargetDate(): string {
+  const value = process.env.SYNC_TARGET_DATE || taipeiToday();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error("Invalid SYNC_TARGET_DATE");
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (!Number.isFinite(parsed.valueOf()) || parsed.toISOString().slice(0, 10) !== value) {
+    throw new Error("Invalid SYNC_TARGET_DATE");
+  }
+  return value;
 }
 
 function parseNumber(value: unknown): number {
@@ -193,40 +197,6 @@ function parseTpexPrice(row: unknown[], date: string): PriceRecord | null {
   };
 }
 
-function parseTwseInstitutional(row: unknown[], date: string): InstitutionalRecord | null {
-  const stockId = String(row[0] ?? "").trim();
-  if (!isOrdinaryStockId(stockId)) return null;
-  const foreignBuy = parseNumber(row[2]);
-  const foreignSell = parseNumber(row[3]);
-  const trustBuy = parseNumber(row[8]);
-  const trustSell = parseNumber(row[9]);
-  const dealerBuy = parseNumber(row[12]) + parseNumber(row[15]);
-  const dealerSell = parseNumber(row[13]) + parseNumber(row[16]);
-  return {
-    stock_id: stockId,
-    date,
-    foreign_net: foreignBuy - foreignSell,
-    trust_net: trustBuy - trustSell,
-    dealer_net: dealerBuy - dealerSell,
-    institutional_net: parseNumber(row[18]),
-    source: "twse",
-  };
-}
-
-function parseTpexInstitutional(row: unknown[], date: string): InstitutionalRecord | null {
-  const stockId = String(row[0] ?? "").trim();
-  if (!isOrdinaryStockId(stockId)) return null;
-  return {
-    stock_id: stockId,
-    date,
-    foreign_net: parseNumber(row[10]),
-    trust_net: parseNumber(row[13]),
-    dealer_net: parseNumber(row[22]),
-    institutional_net: parseNumber(row[24]),
-    source: "tpex",
-  };
-}
-
 async function fetchJson(url: string): Promise<MarketResponse> {
   const response = await fetch(url, {
     headers: { "User-Agent": "Mozilla/5.0" },
@@ -266,7 +236,7 @@ async function fetchTwseInstitutional(date: string): Promise<InstitutionalRecord
   const response = await fetchJson(url);
   if (response.stat !== "OK") return [];
   return (response.data || [])
-    .map((row) => parseTwseInstitutional(row, date))
+    .map((row) => parseTwseInstitutionalRow(row, date))
     .filter((row): row is InstitutionalRecord => row !== null);
 }
 
@@ -275,7 +245,7 @@ async function fetchTpexInstitutional(date: string): Promise<InstitutionalRecord
   const response = await fetchJson(url);
   const rows = response.tables?.[0]?.data || [];
   return rows
-    .map((row) => parseTpexInstitutional(row, date))
+    .map((row) => parseTpexInstitutionalRow(row, date))
     .filter((row): row is InstitutionalRecord => row !== null);
 }
 
@@ -524,19 +494,6 @@ async function backfillInstitutionalHistory(): Promise<number> {
   return uploaded;
 }
 
-async function syncTdccCloud(): Promise<number> {
-  const { records, date } = parseTdccCSV(await downloadTdccCSV());
-  if (!date || records.length === 0) throw new Error("TDCC open-data file contained no usable records");
-  if (!DRY_RUN) {
-    await upsertRows("tdcc_shareholding", records.map((record) => ({
-      ...record,
-      source: "tdcc_opendata",
-    })));
-  }
-  console.log(`[Sync] TDCC ${date}: ${DRY_RUN ? "validated" : "uploaded"} ${records.length} rows.`);
-  return records.length;
-}
-
 async function fetchTwseDividends(): Promise<DividendRecord[]> {
   const response = await fetch("https://openapi.twse.com.tw/v1/exchangeReport/TWT48U_ALL", {
     headers: { "User-Agent": "Mozilla/5.0" },
@@ -661,7 +618,7 @@ async function syncMarketScope(
 ): Promise<void> {
   const latestBefore = await getLatestCloudDate();
   const maxDays = Number.parseInt(process.env.SUPABASE_SYNC_MAX_DAYS || "14", 10);
-  const dates = listPendingCalendarDates(latestBefore, taipeiToday(), maxDays);
+  const dates = listPendingCalendarDates(latestBefore, syncTargetDate(), maxDays);
   console.log(`[Sync] Supabase latest date before sync: ${latestBefore || "none"}`);
   for (const date of dates) {
     const records = await syncDate(date);
@@ -682,8 +639,7 @@ async function run(): Promise<void> {
   const runId = await createSyncRun();
   const totals = { prices: 0, institutional: 0, meta: 0 };
   try {
-    if (SYNC_SCOPE !== "tdcc") await syncMarketScope(totals);
-    if (SYNC_SCOPE !== "market") await syncTdccCloud();
+    await syncMarketScope(totals);
     await verifyCloudBudget();
     await finishSyncRun(runId, "success", totals, `Cloud ${SYNC_SCOPE} sync completed`);
   } catch (error: unknown) {

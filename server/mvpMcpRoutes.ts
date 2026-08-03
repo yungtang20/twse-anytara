@@ -2,18 +2,21 @@
 // All data fetching is parameterized by stockId. Exported `runFrameworkAnalysis` is reused by jobQueue.
 import { Request, Response } from "express";
 import { startJob, getJob, listJobs, cancelJob, deleteJob, deleteAllJobs } from "./lib/jobQueue";
-import { syncTdcc, getTdccSqliteStatus } from "./lib/tdccDownload";
+import { syncTdcc, getTdccSqliteStatus, getTdccUniverseStatus } from "./lib/tdccDownload";
 import { buildStockSnapshot, formatSnapshotForPrompt, type SnapshotRow, type StockSnapshot } from "./lib/stockSnapshot";
+import { resolveRuntimeMode } from "./lib/runtimeMode";
 import { validateEvidenceReport, type EvidenceSummary, type ReportClaim } from "./lib/evidenceReport";
 import { fetchWithOneRetry } from "./lib/fetchRetry";
 import { evaluateFrameworkEligibility, FRAMEWORK_CONTRACTS } from "./lib/frameworkEligibility";
 import { fetchCloudMeta, fetchCloudPrices, fetchCloudShareholding } from "./lib/cloudMarketData";
-import { readFinMindCache, writeFinMindCache } from "./lib/finmindCache";
+import { createBoundedMemoryCache, finMindMemoryCache, type FinMindCacheResult } from "./lib/finmindCache";
+import { FINANCIAL_DATASETS, normalizeFinancialSnapshot, type NormalizedFinancialSnapshot } from "./lib/financialNormalization";
 import { isOrdinaryStockId } from "./lib/stockUniverse";
 import { generateNvidiaReport, hasNvidiaApiKey, nvidiaModel } from "./lib/nvidiaAi";
 import { fetchInstitutionalHoldingSnapshot, formatInstitutionalHoldingEvidence } from "./lib/institutionalHoldings";
 
 const FINMIND = "https://api.finmindtrade.com/api/v4/data";
+const normalizedFinancialCache = createBoundedMemoryCache<NormalizedFinancialSnapshot>({ capacity: 64 });
 
 export interface DynamicSettings {
   nvidiaApiKey: string;
@@ -82,17 +85,27 @@ interface FinMindResult {
   error?: string;
 }
 
+interface FinMindPayload {
+  status?: unknown;
+  msg?: unknown;
+  message?: unknown;
+  data?: unknown;
+}
+
 async function requestFinMind(
   url: string,
   token: string,
   signal?: AbortSignal,
-): Promise<{ response: globalThis.Response; payload: any }> {
+): Promise<{ response: globalThis.Response; payload: FinMindPayload }> {
   const request = async (apiToken: string) => {
     const response = await fetchWithOneRetry(url, {
       headers: apiToken ? { Authorization: `Bearer ${apiToken}` } : {},
     }, signal, 20_000);
-    let payload: any = {};
-    try { payload = await response.json(); } catch { /* handled by caller */ }
+    let payload: FinMindPayload = {};
+    try {
+      const parsed: unknown = await response.json();
+      if (parsed && typeof parsed === "object") payload = parsed as FinMindPayload;
+    } catch { /* handled by caller */ }
     return { response, payload };
   };
   const first = await request(token);
@@ -101,25 +114,38 @@ async function requestFinMind(
   return token && failed ? request("") : first;
 }
 
+function waitForFinMindCache(result: Promise<FinMindCacheResult>, signal?: AbortSignal): Promise<FinMindCacheResult> {
+  if (!signal) return result;
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(signal.reason || new DOMException("Aborted", "AbortError"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    result.then(resolve, reject).finally(() => signal.removeEventListener("abort", onAbort));
+  });
+}
+
 const fetchFinMind = async (ds: string, stockId: string, sd: string, ed: string, finmindApiKey: string, signal?: AbortSignal): Promise<FinMindResult> => {
-  const cached = await readFinMindCache(stockId, ds, sd, ed);
-  if (cached) return { dataset: ds, rows: cached.length, text: `[${ds}] rows=${cached.length} cache=supabase`, data: cached };
   try {
-    const query = new URLSearchParams({ dataset: ds, data_id: stockId, start_date: sd, end_date: ed });
-    const { response: r, payload: j } = await requestFinMind(`${FINMIND}?${query}`, finmindApiKey, signal);
-    if (!r.ok) return { dataset: ds, rows: 0, text: `[${ds}: HTTP ${r.status}]`, data: [], error: `http_${r.status}` };
-    if (j.status !== undefined && Number(j.status) !== 200) {
-      const error = String(j.msg || j.message || `status ${j.status}`).slice(0, 200);
-      return { dataset: ds, rows: 0, text: `[${ds}: ${error}]`, data: [], error };
-    }
-    const data = Array.isArray(j.data) ? j.data as SnapshotRow[] : [];
+    const cached = await waitForFinMindCache(finMindMemoryCache.load(
+      { stockId, dataset: ds, startDate: sd, endDate: ed },
+      async () => {
+        const query = new URLSearchParams({ dataset: ds, data_id: stockId, start_date: sd, end_date: ed });
+        const { response, payload } = await requestFinMind(`${FINMIND}?${query}`, finmindApiKey);
+        if (!response.ok) throw new Error(`http_${response.status}`);
+        if (payload.status !== undefined && Number(payload.status) !== 200) {
+          throw new Error(String(payload.msg || payload.message || `status_${payload.status}`).slice(0, 200));
+        }
+        return Array.isArray(payload.data) ? payload.data as SnapshotRow[] : [];
+      },
+    ), signal);
+    const data = cached.rows;
     const rows = data.length;
     if (rows === 0) return { dataset: ds, rows: 0, text: `[${ds}: 0 rows]`, data: [], error: "no_rows" };
-    await writeFinMindCache(stockId, ds, data);
-    return { dataset: ds, rows, text: `[${ds}] rows=${rows}`, data };
-  } catch (e: any) {
-    if (signal?.aborted || e?.name === "AbortError") throw e;
-    return { dataset: ds, rows: 0, text: `[${ds}: ${e.message}]`, data: [], error: e.message };
+    return { dataset: ds, rows, text: `[${ds}] rows=${rows} cache=memory_${cached.status}`, data };
+  } catch (error: unknown) {
+    if (signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw error;
+    const message = error instanceof Error ? error.message : "finmind_request_failed";
+    return { dataset: ds, rows: 0, text: `[${ds}: ${message}]`, data: [], error: message };
   }
 };
 
@@ -135,10 +161,62 @@ export function selectFinMindDatasetNames(frameworkIds: string[] = []): string[]
     const contract = FRAMEWORK_CONTRACTS[frameworkId] || FRAMEWORK_CONTRACTS.morgan_stanley;
     for (const dataset of contract.datasets) required.add(dataset);
   }
+  if (FINANCIAL_DATASETS.some((dataset) => required.has(dataset))) {
+    for (const dataset of FINANCIAL_DATASETS) required.add(dataset);
+  }
   return FINMIND_DATASETS.map(({ ds }) => ds).filter((dataset) => required.has(dataset));
 }
 
+async function fetchIdentity(stockId: string): Promise<{ companyName?: string | null; market?: string | null; industry?: string | null }> {
+  try {
+    const row = await fetchCloudMeta(stockId);
+    return { companyName: row?.stock_name || null, market: row?.market || null, industry: row?.industry_category || null };
+  } catch {
+    return {};
+  }
+}
+
+async function normalizedFinancials(
+  stockId: string,
+  inputs: Array<{ dataset: string; rows: SnapshotRow[]; error?: string }>,
+  identity: { companyName?: string | null; industry?: string | null },
+  fetchedAt: string,
+): Promise<NormalizedFinancialSnapshot> {
+  const financialInputs = inputs.filter((input) => FINANCIAL_DATASETS.includes(input.dataset as typeof FINANCIAL_DATASETS[number]));
+  if (!financialInputs.length) return normalizeFinancialSnapshot(stockId, [], identity, fetchedAt);
+  const range = financialInputs.flatMap((input) => input.rows.map((row) => String(row.date || ""))).filter(Boolean).sort();
+  const key = [stockId, "normalized-financials", identity.industry || "", identity.companyName || "", range[0] || "none", range.at(-1) || "none"].join(":");
+  const result = await normalizedFinancialCache.load(key, async () => normalizeFinancialSnapshot(stockId, financialInputs, identity, fetchedAt));
+  return result.value;
+}
+
+export interface FundamentalDatasetResult {
+  rows: SnapshotRow[];
+  source: "FinMind";
+  asOf: string | null;
+  fetchedAt: string;
+  stale: boolean;
+  missingDatasets: string[];
+  cacheStatus: "hit" | "miss" | "shared";
+}
+
+export async function fetchFundamentalDataset(stockId: string, datasetName: string, signal?: AbortSignal): Promise<FundamentalDatasetResult> {
+  const dataset = FINMIND_DATASETS.find((item) => item.ds === datasetName);
+  if (!dataset || !FINANCIAL_DATASETS.includes(datasetName as typeof FINANCIAL_DATASETS[number])) throw new Error(`unsupported_financial_dataset:${datasetName}`);
+  const settings = await getDynamicSettings();
+  const { sd, ed } = dataset.getDates();
+  const result = await fetchFinMind(datasetName, stockId, sd, ed, settings.finmindApiKey, signal);
+  if (result.error) throw new Error(`${datasetName}:${result.error}`);
+  const dates = result.data.map((row) => String(row.date || "")).filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)).sort();
+  const asOf = dates.at(-1) || null;
+  const fetchedAt = new Date().toISOString();
+  const stale = asOf ? new Date(fetchedAt).getTime() - new Date(`${asOf}T23:59:59+08:00`).getTime() > 150 * 86_400_000 : false;
+  const cacheStatus = result.text.includes("memory_hit") ? "hit" : result.text.includes("memory_shared") ? "shared" : "miss";
+  return { rows: result.data, source: "FinMind", asOf, fetchedAt, stale, missingDatasets: [], cacheStatus };
+}
+
 export async function fetchAnalysisSnapshot(stockId: string, signal?: AbortSignal, frameworkIds: string[] = []): Promise<AnalysisSnapshot> {
+  const retrievedAt = new Date().toISOString();
   const settings = await getDynamicSettings();
   const selectedDatasets = new Set(selectFinMindDatasetNames(frameworkIds));
   let cloudPriceRows: SnapshotRow[] = [];
@@ -171,23 +249,49 @@ export async function fetchAnalysisSnapshot(stockId: string, signal?: AbortSigna
   } catch {
     datasetRows.InstitutionalHoldingsLatest = 0;
   }
-  let identity: { companyName?: string | null; market?: string | null; industry?: string | null } = {};
-  try {
-    const row = await fetchCloudMeta(stockId);
-    identity = { companyName: row?.stock_name || null, market: row?.market || null, industry: row?.industry_category || null };
-  } catch { /* metadata is optional */ }
-  const snapshot = buildStockSnapshot(stockId, [
+  const identity = await fetchIdentity(stockId);
+  const inputs = [
     ...(cloudPriceRows.length > 0
       ? [{ dataset: "TaiwanStockPrice", source: "supabase" as const, rows: cloudPriceRows }]
       : []),
     ...results.map(({ ds, result }) => ({ dataset: ds, rows: result.data, error: result.error })),
     { dataset: "TDCCShareholding", source: "tdcc_supabase" as const, rows: tdccRows },
-  ], identity);
+  ];
+  const financials = await normalizedFinancials(stockId, inputs, identity, retrievedAt);
+  const snapshot = buildStockSnapshot(stockId, inputs, identity, retrievedAt, financials);
   const canonicalBlock = [formatSnapshotForPrompt(snapshot), holdingEvidence].filter(Boolean).join("\n\n");
   return {
     ...snapshot,
     datasetRows,
     dataBlock: canonicalBlock,
+  };
+}
+
+export async function fetchFinancialSnapshot(
+  stockId: string,
+  signal?: AbortSignal,
+  identityOverride: { companyName?: string | null; market?: string | null; industry?: string | null } = {},
+): Promise<AnalysisSnapshot> {
+  const retrievedAt = new Date().toISOString();
+  const settings = await getDynamicSettings();
+  const selected = FINMIND_DATASETS.filter(({ ds }) => FINANCIAL_DATASETS.includes(ds as typeof FINANCIAL_DATASETS[number]));
+  const results = await Promise.all(selected.map(async (dataset) => {
+    const { sd, ed } = dataset.getDates();
+    return { ...dataset, result: await fetchFinMind(dataset.ds, stockId, sd, ed, settings.finmindApiKey, signal) };
+  }));
+  const coreDatasets = new Set(["TaiwanStockFinancialStatements", "TaiwanStockBalanceSheet", "TaiwanStockCashFlowsStatement"]);
+  if (results.filter(({ ds }) => coreDatasets.has(ds)).every(({ result }) => result.error)) {
+    throw new Error("FinMind 核心財務報表取得失敗");
+  }
+  const cloudIdentity = await fetchIdentity(stockId);
+  const identity = { ...cloudIdentity, ...Object.fromEntries(Object.entries(identityOverride).filter(([, value]) => value != null)) };
+  const inputs = results.map(({ ds, result }) => ({ dataset: ds, rows: result.data, error: result.error }));
+  const financials = await normalizedFinancials(stockId, inputs, identity, retrievedAt);
+  const snapshot = buildStockSnapshot(stockId, inputs, identity, retrievedAt, financials);
+  return {
+    ...snapshot,
+    datasetRows: Object.fromEntries(results.map(({ ds, result }) => [ds, result.rows])),
+    dataBlock: formatSnapshotForPrompt(snapshot),
   };
 }
 
@@ -397,8 +501,18 @@ export async function runFrameworkAnalysis(stockId: string, frameworkId: string,
   };
 }
 
+function rejectCloudLocalOperation(res: Response): boolean {
+  if (resolveRuntimeMode() !== "cloud") return false;
+  res.status(410).json({
+    success: false,
+    error: "Cloud mode does not run local job queue or TDCC operations",
+  });
+  return true;
+}
+
 // POST /api/job/batch  — create + fire-forget, returns job_id immediately
 export async function jobBatchHandler(req: Request, res: Response) {
+  if (rejectCloudLocalOperation(res)) return;
   const stockId = String(req.body?.stock_id || "").trim();
   const requestedFrameworks: string[] = Array.isArray(req.body?.frameworks) ? req.body.frameworks : [];
   if (!isOrdinaryStockId(stockId)) return res.status(400).json({ success: false, error: "只支援普通股代號" });
@@ -421,6 +535,7 @@ export async function jobBatchHandler(req: Request, res: Response) {
 
 // GET /api/job/:id  — poll status + reports
 export async function jobGetHandler(req: Request, res: Response) {
+  if (rejectCloudLocalOperation(res)) return;
   const id = req.params.id;
   const job = getJob(id);
   if (!job) return res.status(404).json({ success: false, error: "job 不存在" });
@@ -428,6 +543,7 @@ export async function jobGetHandler(req: Request, res: Response) {
 }
 
 export async function jobCancelHandler(req: Request, res: Response) {
+  if (rejectCloudLocalOperation(res)) return;
   const job = cancelJob(req.params.id);
   if (!job) return res.status(404).json({ success: false, error: "job 不存在" });
   res.json({ success: true, job });
@@ -435,25 +551,29 @@ export async function jobCancelHandler(req: Request, res: Response) {
 
 // GET /api/jobs?limit=20
 export async function jobListHandler(_req: Request, res: Response) {
+  if (rejectCloudLocalOperation(res)) return;
   const limit = Math.min(Number((_req as any).query?.limit) || 20, 100);
   res.json({ success: true, jobs: listJobs(limit) });
 }
 
 export async function jobDeleteHandler(req: Request, res: Response) {
+  if (rejectCloudLocalOperation(res)) return;
   const ok = deleteJob(req.params.id);
   if (!ok) return res.status(404).json({ success: false, error: "job not found" });
   res.json({ success: true });
 }
 
 export async function jobDeleteAllHandler(_req: Request, res: Response) {
+  if (rejectCloudLocalOperation(res)) return;
   const deleted = deleteAllJobs();
   res.json({ success: true, deleted });
 }
 
 // POST /api/tdcc/sync  — manual TDCC fetch (best-effort Supabase)
 export async function tdccSyncHandler(req: Request, res: Response) {
+  if (rejectCloudLocalOperation(res)) return;
   try {
-    const r = await syncTdcc({ toSqlite: false, toSupabase: true, log: (m) => console.log("[tdcc-api]", m) });
+    const r = await syncTdcc({ toSqlite: true, toSupabase: true, log: (m) => console.log("[tdcc-api]", m) });
     res.json({
       success: true,
       count: r.count,
@@ -461,6 +581,7 @@ export async function tdccSyncHandler(req: Request, res: Response) {
       date: r.date,
       supabaseSynced: r.cloud.synced,
       warning: r.cloud.error || null,
+      filterReport: r.report,
     });
   } catch (e: any) {
     res.status(500).json({ success: false, error: e.message?.slice(0, 200) });
@@ -469,11 +590,17 @@ export async function tdccSyncHandler(req: Request, res: Response) {
 
 // GET /api/tdcc/status  — per-stock latest TDCC date / total in SQLite
 export async function tdccStatusHandler(_req: Request, res: Response) {
-  res.json({ success: true, status: getTdccSqliteStatus() });
+  if (rejectCloudLocalOperation(res)) return;
+  try {
+    res.json({ success: true, status: await getTdccUniverseStatus() });
+  } catch (error) {
+    res.status(503).json({ success: false, error: error instanceof Error ? error.message : String(error) });
+  }
 }
 
 // 向後相容: POST /api/analysis-mvp (舊 single-framework 叫用 => 改 golden batch)
 export async function mvpMcpHandler(req: Request, res: Response) {
+  if (rejectCloudLocalOperation(res)) return;
   (req.body as any).frameworks = (req.body as any).frameworks || ["goldman"];
   return jobBatchHandler(req, res);
 }

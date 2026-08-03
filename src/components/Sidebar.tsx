@@ -19,7 +19,7 @@ export function Sidebar({ currentView, onViewChange }: SidebarProps) {
         <NavItem id="dashboard" icon={<LayoutDashboard size={18} />} label="儀表板" active={currentView === "dashboard"} onClick={() => onViewChange("dashboard")} />
         <NavItem id="markets" icon={<TrendingUp size={18} />} label="市場分析" active={currentView === "markets"} onClick={() => onViewChange("markets")} />
         <NavItem id="strategies" icon={<BarChart3 size={18} />} label="策略模組" active={currentView === "strategies"} onClick={() => onViewChange("strategies")} />
-        <NavItem id="ai-analysis" icon={<Bot size={18} />} label="AI 深度分析" active={currentView === "ai-analysis"} onClick={() => onViewChange("ai-analysis")} />
+        <NavItem id="ai-analysis" icon={<Bot size={18} />} label="AI 綜合研究" active={currentView === "ai-analysis"} onClick={() => onViewChange("ai-analysis")} />
         <div className="pt-4 pb-1">
           <p className="px-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">系統</p>
         </div>

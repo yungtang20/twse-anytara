@@ -11,6 +11,8 @@ import {
   parseTwseIndex,
   parseTwseUpDown,
 } from "./lib/marketParsers";
+
+const useTestSqlite = process.env.MARKET_DATA_MODE === "test";
 export {
   calcTwseLimit,
   fetchFollowRedirects,
@@ -27,13 +29,13 @@ export {
 
 /** Get the latest available trading date from SQLite database */
 export const getLatestTradingDate = (): string => {
-  try {
-    const db = getDb();
-    if (db) {
-      const row = db.prepare("SELECT MAX(date) as d FROM stock_price").get();
-      if (row?.d) return row.d.replace(/-/g, '');
-    }
-  } catch { /* ignore */ }
+  if (useTestSqlite) try {
+      const db = getDb();
+      if (db) {
+        const row = db.prepare("SELECT MAX(date) as d FROM stock_price").get();
+        if (row?.d) return row.d.replace(/-/g, '');
+      }
+    } catch { /* ignore */ }
   const taipeiNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
   return formatDateStr(taipeiNow);
 };
@@ -74,6 +76,7 @@ export function hasOtcCache(): boolean {
 
 /** Calculate TWSE stats from SQLite database */
 export const getTwseStatsFromDb = (dateStr: string) => {
+  if (!useTestSqlite) return null;
   const db = getDb();
   if (!db) return null;
   try {
@@ -169,7 +172,7 @@ export const getTwseStats = async (): Promise<CacheEntry | { success: false; err
     return lastTwseCache;
   }
 
-  const db = getDb();
+  const db = useTestSqlite ? getDb() : null;
   let date = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
   let maxDbDate: Date | null = null;
   try {
@@ -387,11 +390,12 @@ export const getTwseStats = async (): Promise<CacheEntry | { success: false; err
     addLog('TWSE', 'ERROR', `SQLite 智能大盤備援計算失敗: ${e.message}`);
   }
 
-  return lastTwseCache;
+  return { success: false, error: 'All TWSE cloud and official data sources failed.', _source: 'error' };
 };
 
 /** Calculate OTC stats from SQLite database */
 export const getOtcStatsFromDb = (date: string) => {
+  if (!useTestSqlite) return null;
   const db = getDb();
   if (!db) return null;
   try {
@@ -454,7 +458,7 @@ export const getOtcStats = async (): Promise<CacheEntry | { success: false; erro
     return lastOtcCache;
   }
 
-  const db = getDb();
+  const db = useTestSqlite ? getDb() : null;
   let date = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }));
   let maxDbDate: Date | null = null;
   try {
@@ -716,7 +720,7 @@ export const getOtcStats = async (): Promise<CacheEntry | { success: false; erro
     addLog('TPEX', 'ERROR', `SQLite 智能櫃買備援計算失敗: ${e.message}`);
   }
 
-  return lastOtcCache;
+  return { success: false, error: 'All TPEX cloud and official data sources failed.', _source: 'error' };
 };
 
 export function calcIndicators(prices: Array<{date:string; open:number; high:number; low:number; close:number; volume:number}>) {

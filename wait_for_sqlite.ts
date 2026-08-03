@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
-import { execSync } from "child_process";
+import { requireExplicitSqlitePath } from "./scripts/lib/sqlitePath";
 
-const db = new Database("twstock/taiwan_stock_unified.db");
+const db = new Database(requireExplicitSqlitePath(), { readonly: true, fileMustExist: true });
 
 async function wait() {
   while (true) {

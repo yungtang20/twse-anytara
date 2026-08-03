@@ -12,7 +12,7 @@ export function BottomNav({ currentView, onViewChange }: BottomNavProps) {
     { id: 'dashboard', icon: <LayoutDashboard size={20} />, label: "儀表板" },
     { id: 'markets', icon: <TrendingUp size={20} />, label: "分析" },
     { id: 'strategies', icon: <BarChart3 size={20} />, label: "策略" },
-    { id: 'ai-analysis', icon: <Bot size={20} />, label: "AI分析" },
+    { id: 'ai-analysis', icon: <Bot size={20} />, label: "AI 綜合研究" },
     { id: 'settings', icon: <Settings size={20} />, label: "設定" },
   ] as const;
 

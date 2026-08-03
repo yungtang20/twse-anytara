@@ -2,6 +2,7 @@ export interface InstitutionalPoint {
   date: string;
   foreign_net: number;
   trust_net: number;
+  dealer_net?: number;
 }
 
 export interface ShareholdingPoint {
@@ -13,6 +14,7 @@ export interface IntegratedMarketPoint {
   date: string;
   foreign: number | null;
   trust: number | null;
+  dealer: number | null;
   whaleRatio: number | null;
 }
 
@@ -38,6 +40,7 @@ export function buildIntegratedMarketData(
         date,
         foreign: null,
         trust: null,
+        dealer: null,
         whaleRatio: null,
       };
     }
@@ -53,6 +56,7 @@ export function buildIntegratedMarketData(
       date,
       foreign: institutionalRow ? toLots(institutionalRow.foreign_net) : null,
       trust: institutionalRow ? toLots(institutionalRow.trust_net) : null,
+      dealer: institutionalRow ? toLots(institutionalRow.dealer_net) : null,
       whaleRatio: shareholdingRow?.ratio ?? null,
     };
   });

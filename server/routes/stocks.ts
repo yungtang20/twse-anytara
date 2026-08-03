@@ -1,9 +1,6 @@
 import { Router, type Request, type Response } from "express";
-import { scrapePriceFromYahoo } from "../lib/yahooPrice";
 import { getDb } from "../db";
 import { calcIndicators, supabase } from "../services";
-import { backfillTdccHistory } from "../lib/tdccHistory";
-import { isLoopbackRequest } from "../lib/security";
 import {
   hasUsableLocalPriceRows,
   readLocalInstitutionalRows,
@@ -13,9 +10,10 @@ import {
   searchLocalStocks,
 } from "../lib/marketDataRepository";
 import { isOrdinaryStockId } from "../lib/stockUniverse";
+import { INSTITUTIONAL_SELECT_COLUMNS } from "../lib/institutionalFlow";
 
 const router = Router();
-const useLocalMarketData = process.env.MARKET_DATA_MODE === "local";
+const useTestMarketData = process.env.MARKET_DATA_MODE === "test";
 
 function dataQuality(source: string, asOf?: string | null, warnings: string[] = []) {
   // ponytail: seven calendar days is a conservative stale-data heuristic; use the exchange calendar if holiday precision becomes necessary.
@@ -29,13 +27,34 @@ function dataQuality(source: string, asOf?: string | null, warnings: string[] = 
   };
 }
 
+// Build data-quality metadata for a shareholding row, flagging partial bootstrap rows.
+function shareholdingRowQuality(row: {
+  source?: string | null;
+  total_shares?: number | null;
+  whale_ratio?: number | null;
+  retail_ratio?: number | null;
+  total_people?: number | null;
+}): { partialFields: boolean; approximateTotalShares: boolean; source: string | null } {
+  const src = row.source || null;
+  const isGoodinfo = src === "goodinfo_tdcc_bootstrap";
+  const partialFields = isGoodinfo && (
+    row.retail_ratio === null || row.retail_ratio === undefined ||
+    row.total_people === null || row.total_people === undefined
+  );
+  return {
+    partialFields,
+    approximateTotalShares: isGoodinfo,
+    source: src,
+  };
+}
+
 
 // ── Search stocks by ID or name
 router.get("/api/stock/search", async (req: Request, res: Response) => {
   const q = String(req.query.q || "").trim().replace(/[%,()\"']/g, "");
   if (!q) return res.json({ success: true, data: [] });
 
-  if (useLocalMarketData) try {
+  if (useTestMarketData) try {
     const localRows = searchLocalStocks(q);
     if (localRows.length > 0) {
       return res.json({ success: true, data: localRows, source: "sqlite" });
@@ -59,12 +78,12 @@ router.get("/api/stock/search", async (req: Request, res: Response) => {
     }
   }
 
-  if (!useLocalMarketData) {
+  if (!useTestMarketData) {
     return res.status(503).json({ success: false, error: "Supabase stock metadata is unavailable" });
   }
   const db = getDb();
   if (!db) return res.json({ success: false, error: "DB not connected" });
-  if (useLocalMarketData) try {
+  if (useTestMarketData) try {
     const rows = db.prepare(
       "SELECT stock_id, stock_name, market, industry_category FROM stock_meta WHERE (stock_id LIKE ? OR stock_name LIKE ?) AND length(stock_id) = 4 AND stock_id NOT GLOB '*[A-Z]*' LIMIT 10"
     ).all(`%${q}%`, `%${q}%`);
@@ -79,7 +98,7 @@ router.get("/api/stock/:id/history", async (req: Request, res: Response) => {
   const id = req.params.id;
   const days = Math.min(parseInt(String(req.query.days || "120")), 1000);
 
-  if (useLocalMarketData) try {
+  if (useTestMarketData) try {
     const localPrices = readLocalPriceRows(id, Math.max(days, 30));
     if (hasUsableLocalPriceRows(localPrices)) {
       const prices = localPrices.slice(0, days);
@@ -143,54 +162,17 @@ router.get("/api/stock/:id/history", async (req: Request, res: Response) => {
     }
   }
 
-  if (!useLocalMarketData) {
+  if (!useTestMarketData) {
     return res.status(503).json({ success: false, error: "Supabase price history is unavailable" });
   }
   const db = getDb();
   if (!db) return res.json({ success: false, error: "DB not connected" });
-  if (useLocalMarketData) try {
+  if (useTestMarketData) try {
     let meta = db.prepare("SELECT stock_id, stock_name, market FROM stock_meta WHERE stock_id = ?").get(id) as any;
     if (!meta) {
       meta = { stock_id: id, stock_name: id, market: '' };
     }
 
-    const countRow = db.prepare("SELECT count(*) as c FROM stock_price WHERE stock_id = ?").get(id) as any;
-    if (!countRow || countRow.c < 30) {
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - 180);
-      const startDateStr = startDate.toISOString().split("T")[0];
-      const market = meta?.market || "TSE";
-      try {
-        const priceData = await scrapePriceFromYahoo(id, startDateStr, undefined, market);
-        if (priceData && priceData.length > 0) {
-          const insertStmt = db.prepare(`
-            INSERT OR REPLACE INTO stock_price (
-              stock_id, date, open, high, low, close, volume, amount, trade_count, spread, adj_factor, adj_close, source
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1.0, ?, 'yahoo')
-          `);
-          db.transaction(() => {
-            for (const r of priceData) {
-              insertStmt.run(
-                id,
-                r.date,
-                r.open,
-                r.high,
-                r.low,
-                r.close,
-                r.volume,
-                r.amount,
-                r.trade_count,
-                r.spread,
-                r.adj_close
-              );
-            }
-          })();
-        }
-      } catch (err: any) {
-        console.warn(`[History Backfill] Failed on-the-fly Yahoo backfill for ${id}: ${err.message}`);
-      }
-    }
-    
     const rows = db.prepare(
       "SELECT date, open, high, low, close, volume FROM stock_price WHERE stock_id = ? ORDER BY date DESC LIMIT ?"
     ).all(id, days) as any[];
@@ -216,7 +198,7 @@ router.get("/api/stock/:id/history", async (req: Request, res: Response) => {
 router.get("/api/stock/:id/indicators", async (req: Request, res: Response) => {
   const id = req.params.id;
 
-  if (useLocalMarketData) try {
+  if (useTestMarketData) try {
     const prices = readLocalPriceRows(id, 1_000);
     if (hasUsableLocalPriceRows(prices)) {
       const indicators = calcIndicators([...prices].reverse());
@@ -248,12 +230,12 @@ router.get("/api/stock/:id/indicators", async (req: Request, res: Response) => {
     }
   }
 
-  if (!useLocalMarketData) {
+  if (!useTestMarketData) {
     return res.status(503).json({ success: false, error: "Supabase indicator source data is unavailable" });
   }
   const db = getDb();
   if (!db) return res.json({ success: false, error: "DB not connected" });
-  if (useLocalMarketData) try {
+  if (useTestMarketData) try {
     const rows = db.prepare(
       "SELECT date, open, high, low, close, volume FROM stock_price WHERE stock_id = ? ORDER BY date DESC LIMIT 1000"
     ).all(id) as any[];
@@ -273,7 +255,7 @@ router.get("/api/stock/:id/indicators", async (req: Request, res: Response) => {
 router.get("/api/stock/:id/institutional", async (req: Request, res: Response) => {
   const id = req.params.id;
 
-  if (useLocalMarketData) try {
+  if (useTestMarketData) try {
     const institutional = readLocalInstitutionalRows(id);
     if (institutional.length > 0) {
       const warnings = institutional.length < 10
@@ -295,7 +277,7 @@ router.get("/api/stock/:id/institutional", async (req: Request, res: Response) =
     try {
       const { data: instData, error: instErr } = await supabase
         .from("stock_institutional")
-        .select("date, foreign_net, trust_net, dealer_net, institutional_net")
+        .select(INSTITUTIONAL_SELECT_COLUMNS)
         .eq("stock_id", id)
         .order("date", { ascending: false })
         .limit(512);
@@ -311,7 +293,7 @@ router.get("/api/stock/:id/institutional", async (req: Request, res: Response) =
     }
   }
 
-  if (!useLocalMarketData) {
+  if (!useTestMarketData) {
     return res.status(503).json({ success: false, error: "Supabase institutional data is unavailable" });
   }
   const db = getDb();
@@ -357,7 +339,7 @@ router.get("/api/stock/:id/shareholding", async (req: Request, res: Response) =>
     }
   }
 
-  if (!useLocalMarketData) {
+  if (!useTestMarketData) {
     return res.status(503).json({ success: false, error: "Supabase shareholding data is unavailable" });
   }
 
@@ -379,23 +361,17 @@ router.get("/api/stock/:id/shareholding", async (req: Request, res: Response) =>
 });
 
 router.post("/api/stock/:id/shareholding/backfill", async (req: Request, res: Response) => {
-  if (!isLoopbackRequest(req)) {
-    return res.status(403).json({ success: false, error: "TDCC 歷史回補只能從本機觸發" });
-  }
-  try {
-    const result = await backfillTdccHistory(req.params.id, 52);
-    return res.json({ success: true, data: result });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    return res.status(502).json({ success: false, error: message });
-  }
+  return res.status(410).json({
+    success: false,
+    error: "HTML server 的 TDCC 歷史回補已停用；請由 Python twstock 資料流程執行",
+  });
 });
 
 // Get full quote (price + indicators + institutional)
 router.get("/api/stock/:id/quote", async (req: Request, res: Response) => {
   const id = req.params.id;
 
-  if (useLocalMarketData) try {
+  if (useTestMarketData) try {
     const local = readLocalStockData(id);
     const latest = local.prices[0];
     if (latest && hasUsableLocalPriceRows(local.prices)) {
@@ -462,7 +438,7 @@ router.get("/api/stock/:id/quote", async (req: Request, res: Response) => {
 
       const { data: instData } = await supabase
         .from("stock_institutional")
-        .select("date, foreign_net, trust_net")
+        .select(INSTITUTIONAL_SELECT_COLUMNS)
         .eq("stock_id", id)
         .order("date", { ascending: false })
         .limit(10);
@@ -511,7 +487,7 @@ router.get("/api/stock/:id/quote", async (req: Request, res: Response) => {
     }
   }
 
-  if (!useLocalMarketData) {
+  if (!useTestMarketData) {
     return res.status(503).json({ success: false, error: "Supabase quote data is unavailable" });
   }
 
@@ -523,50 +499,15 @@ router.get("/api/stock/:id/quote", async (req: Request, res: Response) => {
       meta = { stock_id: id, stock_name: id, market: '', industry_category: null };
     }
 
-    const countRow = db.prepare("SELECT count(*) as c FROM stock_price WHERE stock_id = ?").get(id) as any;
-    if (!countRow || countRow.c < 30) {
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - 180);
-      const startDateStr = startDate.toISOString().split("T")[0];
-      const market = meta?.market || "TSE";
-      try {
-        const priceData = await scrapePriceFromYahoo(id, startDateStr, undefined, market);
-        if (priceData && priceData.length > 0) {
-          const insertStmt = db.prepare(`
-            INSERT OR REPLACE INTO stock_price (
-              stock_id, date, open, high, low, close, volume, amount, trade_count, spread, adj_factor, adj_close, source
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1.0, ?, 'yahoo')
-          `);
-          db.transaction(() => {
-            for (const r of priceData) {
-              insertStmt.run(
-                id,
-                r.date,
-                r.open,
-                r.high,
-                r.low,
-                r.close,
-                r.volume,
-                r.amount,
-                r.trade_count,
-                r.spread,
-                r.adj_close
-              );
-            }
-          })();
-        }
-      } catch (err: any) {
-        console.warn(`[Quote Backfill] Failed on-the-fly Yahoo backfill for ${id}: ${err.message}`);
-      }
-    }
-
     const latest = db.prepare("SELECT * FROM stock_price WHERE stock_id = ? ORDER BY date DESC LIMIT 1").get(id) as any;
     if (!latest) return res.json({ success: false, error: "No price data" });
 
     const prev = db.prepare("SELECT * FROM stock_price WHERE stock_id = ? ORDER BY date DESC LIMIT 1 OFFSET 1").get(id) as any;
     const hist = db.prepare("SELECT date, open, high, low, close, volume FROM stock_price WHERE stock_id = ? ORDER BY date DESC LIMIT 1000").all(id).reverse() as any[];
     const indicators = calcIndicators(hist);
-    const inst = db.prepare("SELECT date, foreign_net, trust_net FROM stock_institutional WHERE stock_id = ? ORDER BY date DESC LIMIT 10").all(id);
+    const inst = db.prepare(
+      "SELECT date, foreign_net, trust_net, dealer_net, institutional_net FROM stock_institutional WHERE stock_id = ? ORDER BY date DESC LIMIT 10",
+    ).all(id);
     const shareholding = db.prepare("SELECT date, whale_ratio, retail_ratio FROM tdcc_shareholding WHERE stock_id = ? ORDER BY date DESC LIMIT 1").get(id);
 
     const change = prev ? parseFloat((latest.close - prev.close).toFixed(2)) : 0;

@@ -1,6 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 import Database from "better-sqlite3";
-import path from "path";
+import { requireExplicitSqlitePath } from "./lib/sqlitePath.js";
+
+if (!process.argv.includes("--execute")) {
+  throw new Error("Refusing legacy SQLite sync without --execute");
+}
 
 const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
 const key = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
@@ -11,10 +15,10 @@ if (!url || !key) {
 }
 
 const supabase = createClient(url, key);
-const dbPath = path.join(process.cwd(), "twstock", "taiwan_stock_unified.db");
+const dbPath = requireExplicitSqlitePath();
 
 console.log("📍 Fast Sync DB Path:", dbPath);
-const db = new Database(dbPath);
+const db = new Database(dbPath, { fileMustExist: true });
 
 // Fast download filter: just the last 35 days
 const cutoff = new Date();

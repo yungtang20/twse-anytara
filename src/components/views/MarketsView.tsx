@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, AlertTriangle, Terminal as TerminalIcon, ChartLine } from "lucide-react";
 import { MarketDetailDashboard } from '../MarketDetailDashboard';
+import { CompanyFinancialAnalysis } from '../CompanyFinancialAnalysis';
 
 import { StockData } from '../../types/stock';
 import { SRPanel } from "./SRPanel";
@@ -177,6 +178,8 @@ export function MarketsView() {
               <MarketDetailDashboard stockId={stock.id} />
             </div>
           </div>
+
+          <CompanyFinancialAnalysis stockId={stock.id} />
 
           {/* 雙重歷史股價摘要比較盒 */}
           <div className="bg-slate-950/65 px-3 py-3 font-mono select-none border-b border-slate-800/80">
