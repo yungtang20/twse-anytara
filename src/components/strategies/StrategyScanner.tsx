@@ -9,6 +9,7 @@ import {
   type MAScanItem,
   type PatternScanItem,
   type SRScanItem,
+  type TradeRiskFlag,
 } from '../../lib/api';
 
 export type StrategyId = 'support-resistance' | 'ma-trend' | 'chips-flow' | 'pattern-shape';
@@ -21,6 +22,20 @@ interface StrategyScannerProps {
 
 const thClass = 'whitespace-nowrap px-2 py-1.5 text-left text-[10px] font-semibold text-slate-500';
 const cellClass = 'whitespace-nowrap px-2 py-1.5';
+
+const riskLabels: Record<TradeRiskFlag['type'], string> = {
+  attention: '注意', disposition: '處置', trading_halt: '停牌', margin_restricted: '停資',
+  short_sale_restricted: '停券', daytrade_restricted: '當沖限制',
+};
+
+function RiskFlags({ flags = [] }: { flags?: TradeRiskFlag[] }) {
+  if (!flags.length) return null;
+  return <span className="ml-1 inline-flex gap-1">{flags.map((flag) => (
+    <span key={flag.type} title={flag.reason} className="rounded bg-amber-500/15 px-1 text-[9px] text-amber-300">
+      {riskLabels[flag.type]}
+    </span>
+  ))}</span>;
+}
 
 function ScanTable({ strategyId, items, onSelectStock }: StrategyScannerProps & { items: ScanItem[] }) {
   if (strategyId === 'support-resistance') {
@@ -102,7 +117,7 @@ function SRTable({ items, onSelectStock }: { items: SRScanItem[]; onSelectStock:
   const columns: Array<SortableColumn<SRScanItem>> = [
     { key: 'score', label: '強', value: (item) => item.score, render: (item) => <div className={`${cellClass} text-cyan-400`}>{item.score}</div> },
     { key: 'stock_id', label: '代號', value: (item) => item.stock_id, render: (item) => <div className={`${cellClass} text-fuchsia-400`}>{item.stock_id}</div> },
-    { key: 'stock_name', label: '名稱', value: (item) => item.stock_name, render: (item) => <div className={`${cellClass} text-white`}>{item.stock_name}</div> },
+    { key: 'stock_name', label: '名稱', value: (item) => item.stock_name, render: (item) => <div className={`${cellClass} text-white`}>{item.stock_name}<RiskFlags flags={item.riskFlags} /></div> },
     { key: 'close', label: '收盤', value: (item) => item.close, render: (item) => <div className={`${cellClass} text-right text-yellow-400`}>{item.close.toFixed(2)}</div> },
     { key: 'volume', label: '量(張)', value: (item) => item.volume, render: (item) => <div className={`${cellClass} text-right text-green-400`}>{item.volume.toLocaleString()}</div> },
     { key: 'amount', label: '額(億)', value: (item) => item.amount, render: (item) => <div className={`${cellClass} text-right text-yellow-300`}>{item.amount.toFixed(2)}</div> },
@@ -115,7 +130,7 @@ function SRTable({ items, onSelectStock }: { items: SRScanItem[]; onSelectStock:
 function MATable({ items, onSelectStock }: { items: MAScanItem[]; onSelectStock: StrategyScannerProps['onSelectStock'] }) {
   const columns: Array<SortableColumn<MAScanItem>> = [
     { key: 'stock_id', label: '代號', value: (item) => item.stock_id, render: (item) => <div className={`${cellClass} text-fuchsia-400`}>{item.stock_id}</div> },
-    { key: 'stock_name', label: '名稱', value: (item) => item.stock_name, render: (item) => <div className={`${cellClass} text-white`}>{item.stock_name}</div> },
+    { key: 'stock_name', label: '名稱', value: (item) => item.stock_name, render: (item) => <div className={`${cellClass} text-white`}>{item.stock_name}<RiskFlags flags={item.riskFlags} /></div> },
     { key: 'close', label: '收盤', value: (item) => item.close, render: (item) => <div className={`${cellClass} text-right text-yellow-400`}>{item.close.toFixed(2)}</div> },
     { key: 'volume', label: '量(張／日增)', value: (item) => item.volume, render: (item) => <div className={`${cellClass} text-right text-green-400`}>{item.volume.toLocaleString()} <span className="text-[10px] text-slate-500">({item.volumeRatio >= 0 ? '+' : ''}{item.volumeRatio.toFixed(1)}%)</span></div> },
     { key: 'amount', label: '額(億)', value: (item) => item.amount, render: (item) => <div className={`${cellClass} text-right text-yellow-300`}>{item.amount.toFixed(2)}</div> },
@@ -130,7 +145,7 @@ function ChipsTable({ items, onSelectStock }: { items: ChipsScanItem[]; onSelect
   if (items[0]?.type === '集保大戶') {
     const columns: Array<SortableColumn<ChipsScanItem>> = [
       { key: 'stock_id', label: '代號', value: (item) => item.stock_id, render: (item) => <div className={`${cellClass} text-fuchsia-400`}>{item.stock_id}</div> },
-      { key: 'stock_name', label: '名稱', value: (item) => item.stock_name, render: (item) => <div className={`${cellClass} text-white`}>{item.stock_name}</div> },
+      { key: 'stock_name', label: '名稱', value: (item) => item.stock_name, render: (item) => <div className={`${cellClass} text-white`}>{item.stock_name}<RiskFlags flags={item.riskFlags} /></div> },
       { key: 'close', label: '收盤', value: (item) => item.close, render: (item) => <div className={`${cellClass} text-left text-yellow-400`}>{item.close.toFixed(2)}</div> },
       { key: 'volume', label: '量(張)', value: (item) => item.volume, render: (item) => <div className={`${cellClass} text-left text-green-400`}>{item.volume.toLocaleString()}</div> },
       { key: 'amount', label: '額(億)', value: (item) => item.amount, render: (item) => <div className={`${cellClass} text-left text-yellow-300`}>{item.amount.toFixed(2)}</div> },
@@ -150,7 +165,7 @@ function InstitutionalChipsTable({ items, onSelectStock }: {
 }) {
   const columns: Array<SortableColumn<ChipsScanItem>> = [
     { key: 'stock_id', label: '代號', value: (item) => item.stock_id, render: (item) => <div className={`${cellClass} text-fuchsia-400`}>{item.stock_id}</div> },
-    { key: 'stock_name', label: '名稱', value: (item) => item.stock_name, render: (item) => <div className={`${cellClass} text-white`}>{item.stock_name}</div> },
+    { key: 'stock_name', label: '名稱', value: (item) => item.stock_name, render: (item) => <div className={`${cellClass} text-white`}>{item.stock_name}<RiskFlags flags={item.riskFlags} /></div> },
     { key: 'close', label: '收盤', value: (item) => item.close, render: (item) => <div className={`${cellClass} text-left text-yellow-400`}>{item.close.toFixed(2)}</div> },
     { key: 'volume', label: '量(張)', value: (item) => item.volume, render: (item) => <div className={`${cellClass} text-left text-green-400`}>{item.volume.toLocaleString()}</div> },
     { key: 'amount', label: '額(億)', value: (item) => item.amount, render: (item) => <div className={`${cellClass} text-left text-yellow-300`}>{item.amount.toFixed(2)}</div> },
@@ -163,7 +178,7 @@ function InstitutionalChipsTable({ items, onSelectStock }: {
 function PatternTable({ items, onSelectStock }: { items: PatternScanItem[]; onSelectStock: StrategyScannerProps['onSelectStock'] }) {
   const columns: Array<SortableColumn<PatternScanItem>> = [
     { key: 'stock_id', label: '代號', value: (item) => item.stock_id, render: (item) => <div className={`${cellClass} text-fuchsia-400`}>{item.stock_id}</div> },
-    { key: 'stock_name', label: '名稱', value: (item) => item.stock_name, render: (item) => <div className={`${cellClass} text-white`}>{item.stock_name}</div> },
+    { key: 'stock_name', label: '名稱', value: (item) => item.stock_name, render: (item) => <div className={`${cellClass} text-white`}>{item.stock_name}<RiskFlags flags={item.riskFlags} /></div> },
     { key: 'close', label: '收盤', value: (item) => item.close, render: (item) => <div className={`${cellClass} text-right text-yellow-400`}>{item.close.toFixed(2)}</div> },
     { key: 'volume', label: '量(張)', value: (item) => item.volume, render: (item) => <div className={`${cellClass} text-right text-green-400`}>{item.volume.toLocaleString()}</div> },
     { key: 'amount', label: '額(億)', value: (item) => item.amount, render: (item) => <div className={`${cellClass} text-right text-yellow-300`}>{item.amount.toFixed(2)}</div> },

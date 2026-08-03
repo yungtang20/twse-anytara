@@ -2,12 +2,15 @@ import { Router, json, type NextFunction, type Request, type Response } from "ex
 import fs from "fs";
 import path from "path";
 import { isLoopbackRequest, validateEnvValue } from "../lib/security";
-import { hasNvidiaApiKey, nvidiaModel } from "../lib/nvidiaAi";
 import { describeSupabaseError } from "../lib/supabaseDiagnostics";
 import { pruneSupabaseData } from "../lib/syncBridge";
 import { debugState, addLog, pushSyncLog, supabase } from "../services";
+import { resolveRuntimeMode } from "../lib/runtimeMode";
 
 const router = Router();
+const hasAIResearchApiKey = () => Boolean(
+  (process.env.AI_RESEARCH_API_KEY || "").trim(),
+);
 
 router.use((req: Request, res: Response, next: NextFunction) => {
   if (!isLoopbackRequest(req)) return res.status(403).json({ success: false, error: "設定與同步管理只能從本機使用" });
@@ -126,6 +129,12 @@ USING (true);`,
 
 // API to trigger database pruning and cleanup fallback
 router.post("/api/settings/cleanup", json(), async (req: Request, res: Response) => {
+  if (resolveRuntimeMode() === "cloud") {
+    return res.status(410).json({
+      success: false,
+      error: "Cloud mode does not run data pruning; use the Python twstock authority",
+    });
+  }
   if (debugState.activeSyncProcess.running) {
     return res.status(400).json({ success: false, error: "另一個背景工作（爬蟲、清理或同步）仍在運行中" });
   }
@@ -177,9 +186,10 @@ router.post("/api/settings/sync-bridge", json(), (_req: Request, res: Response) 
 router.get("/api/settings", (_req: Request, res: Response) => {
   res.json({
     success: true,
-    hasNvidiaKey: hasNvidiaApiKey(),
+    hasAiResearchKey: hasAIResearchApiKey(),
     hasFinmindKey: Boolean(process.env.FINMIND_API_KEY),
-    nvidiaModel: nvidiaModel(),
+    aiResearchProvider: "Router",
+    aiResearchModel: "glm-5.2",
   });
 });
 
@@ -190,13 +200,10 @@ router.post("/api/settings", json(), async (req: Request, res: Response) => {
   }
   try {
     const updates: Record<string, string> = {};
-    if (req.body.nvidiaApiKey) updates.NVIDIA_API_KEY = validateEnvValue("NVIDIA API key", req.body.nvidiaApiKey);
-    if (req.body.finmindApiKey) updates.FINMIND_API_KEY = validateEnvValue("FinMind API key", req.body.finmindApiKey);
-    if (req.body.nvidiaModel) {
-      const model = validateEnvValue("NVIDIA model", req.body.nvidiaModel, 100);
-      if (!/^[A-Za-z0-9._:/-]+$/.test(model)) throw new Error("NVIDIA model 格式無效");
-      updates.NVIDIA_MODEL = model;
+    if (req.body.aiResearchApiKey) {
+      updates.AI_RESEARCH_API_KEY = validateEnvValue("AI Research API key", req.body.aiResearchApiKey);
     }
+    if (req.body.finmindApiKey) updates.FINMIND_API_KEY = validateEnvValue("FinMind API key", req.body.finmindApiKey);
     if (Object.keys(updates).length === 0) {
       return res.status(400).json({ success: false, error: "沒有可儲存的設定" });
     }

@@ -23,12 +23,25 @@ export interface CloudInstitutionalRow {
 export interface CloudShareholdingRow {
   stock_id: string;
   date: string;
+  source?: string | null;
   total_shares: number;
   whale_ratio: number;
-  retail_ratio: number;
+  // retail_ratio uses TDCC levels 1-6 (holding <= 30,000 shares). Sources that
+  // cannot supply that exact bracket (e.g. goodinfo_tdcc_bootstrap) store NULL.
+  retail_ratio: number | null;
   total_people: number | null;
   whale_shares: number | null;
   whale_people: number | null;
+  updated_at?: string | null;
+}
+
+export interface CloudMetaRow {
+  stock_id: string;
+  stock_name: string;
+  market: string;
+  industry_category: string | null;
+  status: string;
+  type: string;
 }
 
 function client() {
@@ -64,7 +77,7 @@ export async function fetchCloudInstitutional(
 export async function fetchCloudShareholding(stockId: string, limit = 512) {
   const { data, error } = await client()
     .from("tdcc_shareholding")
-    .select("stock_id,date,total_shares,whale_ratio,retail_ratio,total_people,whale_shares,whale_people")
+    .select("stock_id,date,source,total_shares,whale_ratio,retail_ratio,total_people,whale_shares,whale_people,updated_at")
     .eq("stock_id", stockId)
     .order("date", { ascending: false })
     .limit(Math.min(limit, 512));
@@ -72,15 +85,27 @@ export async function fetchCloudShareholding(stockId: string, limit = 512) {
   return (data || []) as CloudShareholdingRow[];
 }
 
-export async function fetchCloudMeta(stockId: string) {
+export async function fetchCloudMeta(stockId: string): Promise<CloudMetaRow | null> {
   const { data, error } = await client()
     .from("stock_meta")
-    .select("stock_id,stock_name,market,industry_category")
+    .select("stock_id,stock_name,market,industry_category,status,type")
     .eq("stock_id", stockId)
     .limit(1)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  return data;
+  return data as CloudMetaRow | null;
+}
+
+export async function fetchCloudTradingCalendar(asOfDate: string, limit = 512): Promise<string[]> {
+  const { data, error } = await client()
+    .from("trading_calendar")
+    .select("date")
+    .eq("is_open", true)
+    .lte("date", asOfDate)
+    .order("date", { ascending: false })
+    .limit(Math.min(limit, 512));
+  if (error) throw new Error(error.message);
+  return (data || []).map((row) => row.date).reverse();
 }
 
 export async function latestCloudDate(table: "stock_price" | "stock_institutional"): Promise<string | null> {

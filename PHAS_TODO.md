@@ -5,7 +5,7 @@
 ### 第一階段：安全與資料正確性
 
 - 停用會產生虛構財務資料的舊 AI API。
-- 設定 API 不回傳金鑰，寫入限 localhost，LongCat endpoint 使用 allowlist。
+- 設定 API 不回傳金鑰，寫入限 localhost，AI Research Router 使用固定 HTTPS origin。
 - 移除假預測、假型態信心與未標示 mock；修正 ATR、RSI、均線、法人連續天數及五日均量。
 - 預設只綁定 `127.0.0.1`，加入 strict TypeScript、測試與 CI。
 
@@ -21,7 +21,7 @@
 
 - Active AI job 依股票與框架組合去重。
 - SQLite worker lease 防止多程序重複恢復與重複扣額。
-- FinMind/LongCat 對 transient failure 最多重試一次。
+- FinMind 對 transient failure 最多重試一次；AI 研究每份報告僅允許一次 Router request。
 - SIGINT/SIGTERM 優雅停止 job、TDCC scheduler、同步 child process 與 SQLite。
 - 背景同步直接使用目前 Node 執行檔，不再透過 `npx tsx` 臨時下載工具。
 - SQLite schema migration v3 與可靠性測試。

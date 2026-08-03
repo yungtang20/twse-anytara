@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Taiwan stock market unified analysis platform with local-first SQLite architecture, AI-powered analysis (LongCat + Gemini fallback), and real-time market data from TWSE/OTC, FinMind, and Yahoo Finance.
+Taiwan stock market unified analysis platform with local-first SQLite architecture, AI-powered analysis (AI Research Router with GLM-5.2), and real-time market data from TWSE/OTC, FinMind, and Yahoo Finance.
 
 ## Architecture Principles
 

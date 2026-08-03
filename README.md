@@ -91,7 +91,7 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 - 個股報價／K 線／成交量、法人、TDCC、股利：Supabase
 - AI 價格快照：Supabase
 - AI 財務與估值資料：FinMind（僅抓分析需要的資料集，短期快取於私有 Supabase 表）
-- SQLite 是獨立的選用部署模式；只有 `MARKET_DATA_MODE=local` 才會讀寫本機資料庫
+- 正式部署只支援 `MARKET_DATA_MODE=cloud`；`MARKET_DATA_MODE=test` 僅供測試使用暫存 SQLite
 
 ---
 
@@ -110,7 +110,7 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 
 ---
 
-### 2.4 AI 分析（AI Analysis）
+### 2.4 AI 綜合研究（AI Research）
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -119,7 +119,7 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 │  數據收集策略        │  股票代號 / 股名                          │
 │  Supabase: TDCC      │  [2330        ]                          │
 │  FinMind: 7個        │                                          │
-│  LongCat: 128K       │  Prompt 8 自訂問題                        │
+│  Router glm-5.2      │  可追溯研究報告                           │
 │  2015-01-01 至今      │  [輸入您的問題...]                        │
 ├──────────────────────┼──────────────────────────────────────────┤
 │  分析模板            │  分析結果                                 │
@@ -153,7 +153,7 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 │  最後更新: 2026-06-18 11:00:00  [手動更新]                        │
 ├─────────────────────────────────────────────────────────────────┤
 │  API 狀態                                                         │
-│  FinMind: 已連線  |  Supabase: 已連線  |  LongCat: 已連線         │
+│  FinMind: 已連線  |  Supabase: 已連線  |  Router: 已連線          │
 ├─────────────────────────────────────────────────────────────────┤
 │  數據源狀態                                                        │
 │  Supabase: 2,041 檔股票                                          │
@@ -165,16 +165,16 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 
 ## 3. 數據來源
 
-### 3.1 雲端與本機模式
+### 3.1 雲端與測試模式
 
 ```
 預設 MARKET_DATA_MODE=cloud
 瀏覽器 → Express API → Supabase
 「更新資料」→ 官方 TWSE／TPEX／TDCC 檔案或 API → Supabase
 
-選用 MARKET_DATA_MODE=local
-瀏覽器 → Express API → SQLite
-本機同步與雲端同步互不覆寫
+測試專用 MARKET_DATA_MODE=test
+測試程式 → Express API → 作業系統暫存 SQLite
+不得指向或依賴任何正式 SQLite
 ```
 
 ### 3.2 FinMind API 數據集（12 個免費）
@@ -208,7 +208,7 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 **數據來源優先級**：
 1. Supabase（價格、公司資料、法人、TDCC 與股利）
 2. FinMind（分析框架要求的財務、估值與營收資料）
-3. LongCat／Gemini（根據上述結構化資料生成分析）
+3. AI Research Router 固定 `glm-5.2`（根據上述結構化資料生成候選報告）
 
 **FinMind API 數據集**：依分析模板按需讀取，不再固定下載全部資料
 
@@ -230,50 +230,47 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
    ├─ 如果無數據 → 返回「無數據」
    └─ 如果有數據 → 繼續
     ↓
-4. LongCat 生成報告
-   ├─ 建立提示詞（模板 + 股票代號 + 數據）
-   ├─ 發送 POST 請求到 LongCat API
-   │   ├─ model: LongCat-2.0
-   │   ├─ max_tokens: 128,000
-   │   └─ temperature: 0.7
-   └─ 提取報告內容
+4. AI Research Router 生成候選報告
+   ├─ 建立固定契約提示詞與不受信任證據封包
+   ├─ 發送單次非串流請求到 https://api.hcnsec.cn/v1
+   │   ├─ model: glm-5.2（固定，不接受前端或環境覆寫）
+   │   ├─ max_tokens: 16,384
+   │   └─ response_format: json_object
+   └─ 伺服器重新驗證引用、數字、風險、建議與估值
     ↓
 5. 顯示結果
 ```
 
-### 4.3 LongCat API 請求格式
+### 4.3 AI Research Router 請求格式
 
 ```json
 {
-  "model": "LongCat-2.0",
+  "model": "glm-5.2",
   "messages": [
     {
       "role": "system",
-      "content": "你是一位專業的台股分析師..."
+      "content": "固定版本的 AI Research 候選報告契約"
     },
     {
       "role": "user",
-      "content": "分析需求：...\n\n股票代號：...\n\n可用數據：..."
+      "content": "結構化且標示為不受信任的研究證據"
     }
   ],
-  "temperature": 0.7,
-  "max_tokens": 128000
+  "max_tokens": 16384,
+  "stream": false,
+  "response_format": { "type": "json_object" }
 }
 ```
 
-### 4.4 Prompt 模板對應表
+### 4.4 研究領域
 
-| 模板 | 需要的數據集 |
-|------|-------------|
-| 高盛基本面 | TaiwanStockPrice, TaiwanStockFinancialStatements, TaiwanStockMonthRevenue, TaiwanStockPER |
-| 摩根士丹利技術 | TaiwanStockPrice, TaiwanStockDayTrading, TaiwanStockMarginPurchaseShortSale |
-| 橋水風險 | TaiwanStockPrice, TaiwanStockShareholding, TaiwanStockInstitutionalInvestorsBuySell |
-| 摩根大通財報 | TaiwanStockPrice, TaiwanStockFinancialStatements, TaiwanStockMonthRevenue, TaiwanStockDividend |
-| 貝萊德股息 | TaiwanStockPrice, TaiwanStockDividend, TaiwanStockFinancialStatements |
-| 文藝復興量化 | TaiwanStockPrice, TaiwanStockPER, TaiwanStockFinancialStatements, TaiwanStockDayTrading |
-| D.E. Shaw 期權 | TaiwanStockPrice, TaiwanStockMarginPurchaseShortSale |
-| 頂尖產業 | TaiwanStockPrice, TaiwanStockFinancialStatements, TaiwanStockMonthRevenue |
-| 華爾街 | TaiwanStockPrice, TaiwanStockFinancialStatements, TaiwanStockInstitutionalInvestorsBuySell, TaiwanStockShareholding, TaiwanStockPER |
+| 領域 | 主要資料 |
+|------|----------|
+| 市場 | 價格、日期與估值基準 |
+| 財務 | 季度財報、營收與可驗證期間 |
+| 法人與股權 | 三大法人、TDCC 千張持股與日期比較 |
+| 四大策略 | 撐壓、均線、籌碼與型態的正式策略結果 |
+| 交易風險 | 注意、處置、停止交易與交易限制 |
 
 ---
 
@@ -287,13 +284,15 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 | 日期範圍 | 2015-01-01 至今日 |
 | 每個數據集 | 只調閱 1 次 |
 
-### 5.2 LongCat API
+### 5.2 AI Research Router
 
 | 限制 | 說明 |
 |------|------|
-| max_tokens | 128,000 |
-| temperature | 0.7 |
-| 模型 | LongCat-2.0 |
+| 端點 | `https://api.hcnsec.cn/v1` |
+| 模型 | `glm-5.2`（固定） |
+| max_tokens | 16,384 |
+| 供應商逾時 | 300 秒；整體報告逾時 315 秒 |
+| 金鑰 | 僅伺服器端 `AI_RESEARCH_API_KEY` |
 
 ### 5.3 Supabase
 
@@ -330,11 +329,11 @@ Supabase 存取分工：
 ### 6.2 後端
 - **運行時**：Node.js + tsx
 - **框架**：Express
-- **資料庫**：Supabase（預設雲端）或 SQLite（獨立本機模式）
+- **資料庫**：正式環境使用 Supabase；測試模式可使用作業系統暫存 SQLite
 
 ### 6.3 外部 API
 - **FinMind**：台股數據
-- **LongCat**：AI 分析
+- **AI Research Router / glm-5.2**：AI 綜合研究候選報告
 - **Supabase**：雲端資料庫
 
 ---

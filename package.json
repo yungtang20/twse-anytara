@@ -10,10 +10,14 @@
   "scripts": {
     "dev": "tsx server.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx tests/self-check.ts",
+    "test": "tsx tests/self-check.ts && tsx --test tests/cloud-lifecycle-boundary.test.ts tests/cloud-api-boundary.test.ts tests/cloud-admin-sqlite-boundary.test.ts tests/maintenance-sqlite-boundary.test.ts tests/cloud-ai-ui-boundary.test.ts tests/cloud-health-stats-boundary.test.ts tests/ai-research-boundary.test.ts tests/research-context.test.ts tests/research-context-cloud-adapter.test.ts tests/stock-strategy-research.test.ts tests/ai-research-packet.test.ts tests/ai-research-richness.test.ts tests/ai-research-evidence.test.ts tests/ai-research-auditor.test.ts tests/ai-research-prompt-isolation.test.ts tests/ai-research-selection-contract.test.ts tests/ai-research-structured-findings.test.ts tests/ai-research-policy.test.ts tests/ai-research-latest-blockers.test.ts tests/ai-research-non-finite.test.ts tests/ai-research-numeric-policy.test.ts tests/ai-research-model-gateway.test.ts tests/ai-research-router-adapter.test.ts tests/ai-research-model-runner.test.ts tests/ai-research-publication-gate.test.ts tests/ai-research-orchestrator.test.ts tests/ai-research-report-route.test.ts tests/ai-research-report-ui.test.ts tests/ai-research-investment-conclusion.test.ts tests/ai-research-valuation.test.ts tests/ai-research-recommendation-ui.test.ts tests/tdcc-cloud-sync.test.ts tests/test-suite-registration.test.ts",
+    "test:tdcc-cloud-sync": "tsx --test tests/tdcc-cloud-sync.test.ts",
     "test:eval": "tsx tests/ai-evaluation.ts",
+    "diagnose:ai-research": "tsx scripts/diagnoseAIResearch.ts",
     "sync": "tsx scripts/syncData.ts",
-    "backfill:tdcc": "tsx scripts/backfillTdccUniverse.ts",
+    "sync:trade-risks": "tsx scripts/syncTradeRisks.ts",
+    "rebuild:tpex-institutional": "tsx scripts/rebuildTpexInstitutional.ts",
+    "backfill:tdcc": "tsx scripts/backfillTdccLocal.ts",
     "verify:cloud": "tsx scripts/verifyCloudData.ts",
     "build": "tsc --noEmit && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
@@ -21,7 +25,6 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@google/genai": "^2.4.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@supabase/supabase-js": "^2.108.1",
     "better-sqlite3": "^12.10.0",

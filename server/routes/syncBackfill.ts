@@ -5,8 +5,18 @@ import { isLoopbackRequest } from "../lib/security";
 import { scrapePriceFromYahoo } from "../lib/yahooPrice";
 import { addLog, debugState, pushSyncLog, supabase } from "../services";
 import { isOrdinaryStockId } from "../lib/stockUniverse";
+import { resolveRuntimeMode } from "../lib/runtimeMode";
 
 const router = Router();
+
+function rejectCloudIngestion(res: Response): boolean {
+  if (resolveRuntimeMode() !== "cloud") return false;
+  res.status(410).json({
+    success: false,
+    error: "Cloud mode does not run ingestion, backfill, or synchronization; use the Python twstock authority",
+  });
+  return true;
+}
 
 async function getLatestSupabasePriceDate(): Promise<string | null> {
   if (!supabase) return null;
@@ -22,6 +32,7 @@ async function getLatestSupabasePriceDate(): Promise<string | null> {
 
 // Daily sync and backfill routes remain here until the dedicated sync-router phase.
 router.post("/api/sync-daily", (req: Request, res: Response) => {
+  if (rejectCloudIngestion(res)) return;
   if (!isLoopbackRequest(req)) return res.status(403).json({ success: false, error: "同步只能從本機觸發" });
   const node = JSON.stringify(process.execPath);
   exec(`${node} node_modules/tsx/dist/cli.mjs scripts/syncData.ts`, (error, stdout) => {
@@ -36,6 +47,7 @@ router.post("/api/sync-daily", (req: Request, res: Response) => {
 
 // Client-safe Webhook proxy and local database sync
 router.post("/api/trigger-update", async (req: Request, res: Response) => {
+  if (rejectCloudIngestion(res)) return;
   if (!isLoopbackRequest(req)) return res.status(403).json({ success: false, error: "同步只能從本機觸發" });
   if (debugState.activeSyncProcess.running) {
     return res.json({
@@ -153,6 +165,7 @@ router.get("/api/sync-status", async (req: Request, res: Response) => {
 
 
 router.post("/api/local/backfill-finmind", json(), async (req: Request, res: Response) => {
+  if (rejectCloudIngestion(res)) return;
   if (!isLoopbackRequest(req)) return res.status(403).json({ success: false, error: "資料回補只能從本機觸發" });
   const db = getDb();
   if (!db) return res.status(500).json({ success: false, error: "Database not connected" });

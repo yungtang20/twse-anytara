@@ -22,6 +22,7 @@ import {
   type InstitutionalRow,
   type MAAnalysis,
   type PriceData,
+  type ShareholdingRow,
   type SRAnalysis,
   type StockMeta,
 } from '../../lib/api';
@@ -92,7 +93,7 @@ export function StrategiesView() {
   const [pageError, setPageError] = useState<string | null>(null);
   const [priceData, setPriceData] = useState<PriceData[]>([]);
   const [institutional, setInstitutional] = useState<InstitutionalRow[]>([]);
-  const [shareholding, setShareholding] = useState<Array<{ date: string; ratio: number; totalPeople: number | null }>>([]);
+  const [shareholding, setShareholding] = useState<ShareholdingRow[]>([]);
   const [loadingStock, setLoadingStock] = useState(false);
   const [hasDataIssue, setHasDataIssue] = useState(false);
   const [srData, setSrData] = useState<SRAnalysis | null>(null);
@@ -268,7 +269,7 @@ function StockSearch({ query, searching, results, onQueryChange, onSubmit, onCho
 
 interface StockStrategyDetailProps {
   strategyId: StrategyId; stock: StockMeta; priceData: PriceData[]; institutional: InstitutionalRow[];
-  shareholding: Array<{ date: string; ratio: number; totalPeople: number | null }>; loading: boolean; analysisLoading: boolean;
+  shareholding: ShareholdingRow[]; loading: boolean; analysisLoading: boolean;
   hasDataIssue: boolean; srData: SRAnalysis | null; maData: MAAnalysis | null; overlay?: KlineOverlay;
   onReturnToScan?: () => void;
 }

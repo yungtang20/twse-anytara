@@ -1,4 +1,9 @@
 import { calcMA, calcMACD, calcRSI } from "../../src/lib/indicators";
+import {
+  normalizeFinancialSnapshot,
+  type NormalizedFinancialSnapshot,
+  type NormalizedFinancialValue,
+} from "./financialNormalization";
 
 export type SnapshotRow = Record<string, unknown>;
 export type SnapshotSource = "finmind" | "sqlite" | "tdcc_sqlite" | "supabase" | "tdcc_supabase";
@@ -42,6 +47,7 @@ export interface StockSnapshot {
   industry: string | null;
   asOf: string | null;
   retrievedAt: string;
+  financials: NormalizedFinancialSnapshot;
   series: Record<string, SnapshotSeries>;
   metrics: Record<string, DeterministicMetric>;
   evidence: Record<string, EvidenceRef>;
@@ -118,17 +124,12 @@ function pctChange(current: number | null, previous: number | null): number | nu
   return (current / previous - 1) * 100;
 }
 
-function longRowsByType(rows: SnapshotRow[], type: string): SnapshotRow[] {
-  return rows
-    .filter((row) => row.type === type && numberValue(row.value) != null && rowDate(row))
-    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
-}
-
 export function buildStockSnapshot(
   stockId: string,
   inputs: SnapshotDatasetInput[],
   identity: { companyName?: string | null; market?: string | null; industry?: string | null } = {},
   retrievedAt = new Date().toISOString(),
+  normalizedFinancials?: NormalizedFinancialSnapshot,
 ): StockSnapshot {
   const series: Record<string, SnapshotSeries> = {};
   for (const input of inputs) {
@@ -156,10 +157,6 @@ export function buildStockSnapshot(
     evidence[id] = { id, dataset, date, field, value, unit };
     return id;
   };
-  const addLongEvidence = (dataset: string, row: SnapshotRow, unit: string): string | null => {
-    const type = typeof row.type === "string" ? row.type : "value";
-    return addEvidence(dataset, row, type, unit, numberValue(row.value) ?? undefined);
-  };
   const addMetric = (id: string, label: string, value: number | null, unit: string, asOf: string | null, formula: string, evidenceIds: Array<string | null>) => {
     if (value == null || !Number.isFinite(value)) return;
     metrics[id] = {
@@ -172,6 +169,18 @@ export function buildStockSnapshot(
       formula,
       evidenceIds: evidenceIds.filter((evidenceId): evidenceId is string => Boolean(evidenceId)),
     };
+  };
+  const financials = normalizedFinancials || normalizeFinancialSnapshot(stockId, inputs, identity, retrievedAt);
+  const addNormalizedMetric = (id: string, label: string, metric: NormalizedFinancialValue, unit: string, asOf: string | null) => {
+    const refs = metric.sources.map((source) => {
+      const evidenceKey = evidenceId(source.dataset, source.reportDate, source.type);
+      evidence[evidenceKey] = {
+        id: evidenceKey, dataset: source.dataset, date: source.reportDate,
+        field: `${source.type}:${source.originName}`, value: source.rawValue, unit,
+      };
+      return evidenceKey;
+    });
+    addMetric(id, label, metric.value, unit, asOf, metric.formula, refs);
   };
 
   const priceRows = series.TaiwanStockPrice?.rows || [];
@@ -325,81 +334,32 @@ export function buildStockSnapshot(
     }
   }
 
-  const incomeRows = series.TaiwanStockFinancialStatements?.rows || [];
-  const revenueQuarters = longRowsByType(incomeRows, "Revenue");
-  const incomeQuarters = longRowsByType(incomeRows, "IncomeAfterTaxes");
-  const epsQuarters = longRowsByType(incomeRows, "EPS");
-  const grossProfitQuarters = longRowsByType(incomeRows, "GrossProfit");
-  const lastRevenue = revenueQuarters.at(-1);
-  const lastIncome = incomeQuarters.at(-1);
-  const lastEps = epsQuarters.at(-1);
-  if (lastRevenue) addMetric("quarterly_revenue", "最新季營收", numberValue(lastRevenue.value), "TWD", rowDate(lastRevenue), "Revenue", [addLongEvidence("TaiwanStockFinancialStatements", lastRevenue, "TWD")]);
-  if (lastIncome) addMetric("quarterly_net_income", "最新季淨利", numberValue(lastIncome.value), "TWD", rowDate(lastIncome), "IncomeAfterTaxes", [addLongEvidence("TaiwanStockFinancialStatements", lastIncome, "TWD")]);
-  if (lastEps) addMetric("quarterly_eps", "最新季 EPS", numberValue(lastEps.value), "TWD/share", rowDate(lastEps), "EPS", [addLongEvidence("TaiwanStockFinancialStatements", lastEps, "TWD/share")]);
-  if (lastRevenue && grossProfitQuarters.at(-1)?.date === lastRevenue.date) {
-    const gross = grossProfitQuarters.at(-1)!;
-    const revenue = numberValue(lastRevenue.value)!;
-    addMetric("gross_margin", "最新季毛利率", revenue !== 0 ? numberValue(gross.value)! / revenue * 100 : null, "%", rowDate(lastRevenue), "GrossProfit / Revenue * 100", [addLongEvidence("TaiwanStockFinancialStatements", gross, "TWD"), addLongEvidence("TaiwanStockFinancialStatements", lastRevenue, "TWD")]);
+  const latestQuarter = financials.quarters.at(-1);
+  const previousQuarter = financials.quarters.at(-2);
+  const yearAgoQuarter = financials.quarters.at(-5);
+  const reportDate = latestQuarter?.date || null;
+  if (latestQuarter) {
+    addNormalizedMetric("quarterly_revenue", "最新季營收", latestQuarter.metrics.revenue, "TWD", reportDate);
+    addNormalizedMetric("quarterly_net_income", "最新季淨利", latestQuarter.metrics.netIncome, "TWD", reportDate);
+    addNormalizedMetric("quarterly_eps", "最新季 EPS", latestQuarter.metrics.eps, "TWD/share", reportDate);
+    addNormalizedMetric("gross_margin", "最新季毛利率", latestQuarter.metrics.grossMargin, "%", reportDate);
+    addNormalizedMetric("operating_margin", "單季營業利益率", latestQuarter.metrics.operatingMargin, "%", reportDate);
+    addNormalizedMetric("net_margin", "單季淨利率", latestQuarter.metrics.netMargin, "%", reportDate);
+    addNormalizedMetric("liabilities_to_equity", "負債權益比", latestQuarter.metrics.debtToEquity, "%", reportDate);
   }
-  const operatingIncomeQuarters = longRowsByType(incomeRows, "OperatingIncome");
-  const sameQuarterLastYear = <T extends SnapshotRow>(rows: T[]): T | undefined => (rows.length >= 5 ? rows[rows.length - 5] : undefined);
-  if (lastRevenue) {
-    const prevRevenue = revenueQuarters.at(-2);
-    const yoyRevenue = sameQuarterLastYear(revenueQuarters);
-    addMetric("revenue_qoq_pct", "單季營收季增率", pctChange(numberValue(lastRevenue.value), numberValue(prevRevenue?.value)), "%", rowDate(lastRevenue), "(latest_quarter_Revenue / previous_quarter_Revenue - 1) * 100", [addLongEvidence("TaiwanStockFinancialStatements", lastRevenue, "TWD"), prevRevenue ? addLongEvidence("TaiwanStockFinancialStatements", prevRevenue, "TWD") : null]);
-    addMetric("revenue_yoy_pct", "單季營收年增率", pctChange(numberValue(lastRevenue.value), numberValue(yoyRevenue?.value)), "%", rowDate(lastRevenue), "(latest_quarter_Revenue / same_quarter_last_year_Revenue - 1) * 100", [addLongEvidence("TaiwanStockFinancialStatements", lastRevenue, "TWD"), yoyRevenue ? addLongEvidence("TaiwanStockFinancialStatements", yoyRevenue, "TWD") : null]);
-  }
-  if (lastEps) {
-    const prevEps = epsQuarters.at(-2);
-    const yoyEps = sameQuarterLastYear(epsQuarters);
-    addMetric("eps_qoq_pct", "單季 EPS 季增率", pctChange(numberValue(lastEps.value), numberValue(prevEps?.value)), "%", rowDate(lastEps), "(latest_quarter_EPS / previous_quarter_EPS - 1) * 100", [addLongEvidence("TaiwanStockFinancialStatements", lastEps, "TWD/share"), prevEps ? addLongEvidence("TaiwanStockFinancialStatements", prevEps, "TWD/share") : null]);
-    addMetric("eps_yoy_pct", "單季 EPS 年增率", pctChange(numberValue(lastEps.value), numberValue(yoyEps?.value)), "%", rowDate(lastEps), "(latest_quarter_EPS / same_quarter_last_year_EPS - 1) * 100", [addLongEvidence("TaiwanStockFinancialStatements", lastEps, "TWD/share"), yoyEps ? addLongEvidence("TaiwanStockFinancialStatements", yoyEps, "TWD/share") : null]);
-  }
-  if (lastIncome && lastRevenue && lastIncome.date === lastRevenue.date) {
-    const revenue = numberValue(lastRevenue.value)!;
-    addMetric("net_margin", "單季淨利率", revenue !== 0 ? (numberValue(lastIncome.value)! / revenue) * 100 : null, "%", rowDate(lastRevenue), "IncomeAfterTaxes / Revenue * 100", [addLongEvidence("TaiwanStockFinancialStatements", lastIncome, "TWD"), addLongEvidence("TaiwanStockFinancialStatements", lastRevenue, "TWD")]);
-  }
-  const lastOperatingIncome = operatingIncomeQuarters.at(-1);
-  if (lastOperatingIncome && lastRevenue && lastOperatingIncome.date === lastRevenue.date) {
-    const revenue = numberValue(lastRevenue.value)!;
-    addMetric("operating_margin", "單季營業利益率", revenue !== 0 ? (numberValue(lastOperatingIncome.value)! / revenue) * 100 : null, "%", rowDate(lastRevenue), "OperatingIncome / Revenue * 100", [addLongEvidence("TaiwanStockFinancialStatements", lastOperatingIncome, "TWD"), addLongEvidence("TaiwanStockFinancialStatements", lastRevenue, "TWD")]);
-  }
-
-  const lastFourIncome = incomeQuarters.slice(-4);
-  const lastFourEps = epsQuarters.slice(-4);
-  if (lastFourIncome.length === 4) addMetric("net_income_ttm", "近四季淨利", lastFourIncome.reduce((sum, row) => sum + numberValue(row.value)!, 0), "TWD", rowDate(lastFourIncome.at(-1)!), "sum(last_4_quarter_IncomeAfterTaxes)", lastFourIncome.map((row) => addLongEvidence("TaiwanStockFinancialStatements", row, "TWD")));
-  if (lastFourEps.length === 4) addMetric("eps_ttm", "近四季 EPS", lastFourEps.reduce((sum, row) => sum + numberValue(row.value)!, 0), "TWD/share", rowDate(lastFourEps.at(-1)!), "sum(last_4_quarter_EPS)", lastFourEps.map((row) => addLongEvidence("TaiwanStockFinancialStatements", row, "TWD/share")));
-
-  const balanceRows = series.TaiwanStockBalanceSheet?.rows || [];
-  const equityRows = longRowsByType(balanceRows, "Equity");
-  const liabilitiesRows = longRowsByType(balanceRows, "Liabilities");
-  const latestEquity = equityRows.at(-1);
-  const latestLiabilities = liabilitiesRows.at(-1);
-  if (latestEquity && latestLiabilities && latestEquity.date === latestLiabilities.date) {
-    const equity = numberValue(latestEquity.value)!;
-    addMetric("liabilities_to_equity", "負債權益比", equity !== 0 ? numberValue(latestLiabilities.value)! / equity * 100 : null, "%", rowDate(latestEquity), "Liabilities / Equity * 100", [addLongEvidence("TaiwanStockBalanceSheet", latestLiabilities, "TWD"), addLongEvidence("TaiwanStockBalanceSheet", latestEquity, "TWD")]);
-  }
-  if (lastFourIncome.length === 4 && latestEquity && equityRows.length >= 5) {
-    const priorEquity = equityRows[equityRows.length - 5];
-    const averageEquity = (numberValue(latestEquity.value)! + numberValue(priorEquity.value)!) / 2;
-    const netIncomeTtm = lastFourIncome.reduce((sum, row) => sum + numberValue(row.value)!, 0);
-    addMetric("roe_ttm", "近四季 ROE", averageEquity !== 0 ? netIncomeTtm / averageEquity * 100 : null, "%", rowDate(latestEquity), "sum(last_4_quarter_IncomeAfterTaxes) / average(beginning_equity, ending_equity) * 100", [...lastFourIncome.map((row) => addLongEvidence("TaiwanStockFinancialStatements", row, "TWD")), addLongEvidence("TaiwanStockBalanceSheet", priorEquity, "TWD"), addLongEvidence("TaiwanStockBalanceSheet", latestEquity, "TWD")]);
-  }
-
-  const cashRows = series.TaiwanStockCashFlowsStatement?.rows || [];
-  const cfoRows = longRowsByType(cashRows, "CashFlowsFromOperatingActivities");
-  const capexRows = longRowsByType(cashRows, "PropertyAndPlantAndEquipment");
-  const fcfValues: Array<{ date: string; value: number; refs: Array<string | null> }> = [];
-  for (const cfo of cfoRows.slice(-4)) {
-    const capex = capexRows.find((row) => row.date === cfo.date);
-    if (!capex) continue;
-    fcfValues.push({
-      date: String(cfo.date),
-      value: numberValue(cfo.value)! + numberValue(capex.value)!,
-      refs: [addLongEvidence("TaiwanStockCashFlowsStatement", cfo, "TWD"), addLongEvidence("TaiwanStockCashFlowsStatement", capex, "TWD")],
-    });
-  }
-  if (fcfValues.length === 4) addMetric("free_cash_flow_ttm", "近四季自由現金流", fcfValues.reduce((sum, row) => sum + row.value, 0), "TWD", fcfValues.at(-1)!.date, "sum(last_4_quarter_CashFlowsFromOperatingActivities + PropertyAndPlantAndEquipment_cash_outflow)", fcfValues.flatMap((row) => row.refs));
+  const addChangeMetric = (id: string, label: string, current: NormalizedFinancialValue | undefined, previous: NormalizedFinancialValue | undefined, formula: string) => {
+    const value = pctChange(current?.value ?? null, previous?.value ?? null);
+    const sources = [...(current?.sources || []), ...(previous?.sources || [])];
+    addNormalizedMetric(id, label, { value, formula, periodBasis: "single-quarter", stale: Boolean(current?.stale || previous?.stale), missingReason: value == null ? "missing_comparison_quarter" : null, sources }, "%", reportDate);
+  };
+  addChangeMetric("revenue_qoq_pct", "單季營收季增率", latestQuarter?.metrics.revenue, previousQuarter?.metrics.revenue, "(latest quarter revenue / previous quarter revenue - 1) × 100");
+  addChangeMetric("revenue_yoy_pct", "單季營收年增率", latestQuarter?.metrics.revenue, yearAgoQuarter?.metrics.revenue, "(latest quarter revenue / same quarter last year revenue - 1) × 100");
+  addChangeMetric("eps_qoq_pct", "單季 EPS 季增率", latestQuarter?.metrics.eps, previousQuarter?.metrics.eps, "(latest quarter EPS / previous quarter EPS - 1) × 100");
+  addChangeMetric("eps_yoy_pct", "單季 EPS 年增率", latestQuarter?.metrics.eps, yearAgoQuarter?.metrics.eps, "(latest quarter EPS / same quarter last year EPS - 1) × 100");
+  addNormalizedMetric("net_income_ttm", "近四季淨利", financials.ttm.netIncome, "TWD", reportDate);
+  addNormalizedMetric("eps_ttm", "近四季 EPS", financials.ttm.eps, "TWD/share", reportDate);
+  addNormalizedMetric("roe_ttm", "近四季 ROE", financials.ttm.roe, "%", reportDate);
+  addNormalizedMetric("free_cash_flow_ttm", "近四季自由現金流", financials.ttm.freeCashFlow, "TWD", reportDate);
 
   const latestCashDividend = metrics.latest_cash_dividend?.value ?? null;
   const latestCashDividendTotal = metrics.latest_cash_dividend_total?.value ?? null;
@@ -431,6 +391,7 @@ export function buildStockSnapshot(
     industry: identity.industry || null,
     asOf,
     retrievedAt,
+    financials,
     series,
     metrics,
     evidence,

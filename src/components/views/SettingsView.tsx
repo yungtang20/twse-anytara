@@ -1,19 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Key, Eye, EyeOff, Save, CheckCircle2, Shield, Sparkles } from 'lucide-react';
+import { Key, Eye, EyeOff, Save, CheckCircle2, RefreshCw } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 export function SettingsView() {
   const [finmindApiKey, setFinmindApiKey] = useState('');
-  const [nvidiaApiKey, setNvidiaApiKey] = useState('');
-  const [nvidiaModel, setNvidiaModel] = useState('z-ai/glm-5.2');
+  const [aiResearchApiKey, setAiResearchApiKey] = useState('');
   const [hasFinmindKey, setHasFinmindKey] = useState(false);
-  const [hasNvidiaKey, setHasNvidiaKey] = useState(false);
+  const [hasAiResearchKey, setHasAiResearchKey] = useState(false);
 
   const [showFinmind, setShowFinmind] = useState(false);
-  const [showNvidia, setShowNvidia] = useState(false);
+  const [showAiResearch, setShowAiResearch] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
-  const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
     fetchCurrentSettings();
@@ -25,8 +23,7 @@ export function SettingsView() {
       if (res.ok) {
         const data = await res.json();
         setHasFinmindKey(Boolean(data.hasFinmindKey));
-        setHasNvidiaKey(Boolean(data.hasNvidiaKey));
-        setNvidiaModel(data.nvidiaModel || 'z-ai/glm-5.2');
+        setHasAiResearchKey(Boolean(data.hasAiResearchKey));
       }
     } catch (error) {
       console.error('Fetch settings error:', error);
@@ -39,9 +36,9 @@ export function SettingsView() {
     setSaveStatus('idle');
 
     try {
-      const body: Record<string, string> = { nvidiaModel: nvidiaModel || 'z-ai/glm-5.2' };
+      const body: Record<string, string> = {};
       if (finmindApiKey.trim()) body.finmindApiKey = finmindApiKey.trim();
-      if (nvidiaApiKey.trim()) body.nvidiaApiKey = nvidiaApiKey.trim();
+      if (aiResearchApiKey.trim()) body.aiResearchApiKey = aiResearchApiKey.trim();
 
       const res = await fetch('/api/settings', {
         method: 'POST',
@@ -55,7 +52,7 @@ export function SettingsView() {
       
       setSaveStatus('success');
       setFinmindApiKey('');
-      setNvidiaApiKey('');
+      setAiResearchApiKey('');
       await fetchCurrentSettings();
     } catch (error) {
       console.error('Save settings failed:', error);
@@ -115,75 +112,35 @@ export function SettingsView() {
             </p>
           </div>
 
-          {/* NVIDIA API Key */}
+          {/* AI Research Router API Key */}
           <div className="space-y-1.5">
             <div className="flex justify-between items-center">
               <label className="text-sm font-medium text-slate-200 flex items-center gap-2">
                 <Key size={16} className="text-indigo-400" />
-                NVIDIA API Key {hasNvidiaKey && <span className="text-emerald-400 text-xs">（已設定）</span>}
+                AI Research API Key {hasAiResearchKey && <span className="text-emerald-400 text-xs">（已設定）</span>}
               </label>
-              <a 
-                href="https://build.nvidia.com/"
-                target="_blank" 
-                referrerPolicy="no-referrer"
-                className="text-xs text-indigo-400 hover:underline"
-              >
-                獲取 API Key
-              </a>
+              <span className="text-xs text-indigo-400">Router / glm-5.2</span>
             </div>
             <div className="relative">
               <input 
-                id="nvidia-key-input"
-                type={showNvidia ? "text" : "password"}
-                value={nvidiaApiKey}
-                onChange={(e) => setNvidiaApiKey(e.target.value)}
-                placeholder={hasNvidiaKey ? "留空以保留現有金鑰" : "請輸入 NVIDIA API 金鑰"}
+                id="ai-research-key-input"
+                type={showAiResearch ? "text" : "password"}
+                value={aiResearchApiKey}
+                onChange={(e) => setAiResearchApiKey(e.target.value)}
+                placeholder={hasAiResearchKey ? "留空以保留現有金鑰" : "請輸入 AI Research API Key"}
                 className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-3 pr-10 py-2 text-sm text-slate-300 font-mono focus:outline-none focus:border-indigo-500 transition-colors"
               />
               <button
                 type="button"
-                onClick={() => setShowNvidia(!showNvidia)}
+                onClick={() => setShowAiResearch(!showAiResearch)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
               >
-                {showNvidia ? <EyeOff size={16} /> : <Eye size={16} />}
+                {showAiResearch ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
             <p className="text-xs text-slate-500">
-              使用 NVIDIA API Catalog 的 GLM-5.2 驅動所有深度分析框架。
+              AI 綜合研究固定使用 Router 供應商與 glm-5.2 模型；端點與模型不可由瀏覽器修改。
             </p>
-          </div>
-
-          {/* 高級折疊設定 */}
-          <div className="pt-2 border-t border-slate-800/40">
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="text-xs text-slate-400 hover:text-white transition-colors flex items-center gap-1.5 cursor-pointer"
-            >
-              <span>{showAdvanced ? '[-] 隱藏進階 AI 路由設定' : '[+] 顯示進階 AI 路由設定'}</span>
-            </button>
-
-            {showAdvanced && (
-              <motion.div 
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                className="space-y-3 mt-3 pt-1"
-              >
-                <div className="space-y-1.5">
-                  <label className="text-xs font-medium text-slate-400 flex items-center gap-1.5">
-                    <Sparkles size={12} />
-                    NVIDIA Model
-                  </label>
-                  <input
-                    type="text"
-                    value={nvidiaModel}
-                    onChange={(e) => setNvidiaModel(e.target.value)}
-                    placeholder="z-ai/glm-5.2"
-                    className="w-full bg-slate-950/40 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 font-mono focus:outline-none focus:border-indigo-500 transition-colors"
-                  />
-                </div>
-              </motion.div>
-            )}
           </div>
         </div>
 
@@ -224,6 +181,3 @@ export function SettingsView() {
     </div>
   );
 }
-
-// 為了維持與可能有的舊代碼兼容，重新導入 RefreshCw 避免 TypeScript 未使用錯誤
-import { RefreshCw } from 'lucide-react';

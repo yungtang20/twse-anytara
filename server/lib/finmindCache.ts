@@ -1,98 +1,93 @@
-import { supabaseAdmin } from "./runtimeState";
 import type { SnapshotRow } from "./stockSnapshot";
-import { isOrdinaryStockId } from "./stockUniverse";
 
-const CACHE_WRITE_CEILING = 400 * 1024 * 1024;
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const BATCH_SIZE = 300;
+export const FINMIND_CACHE_TTL_MS = 30 * 60 * 1000;
+export const FINMIND_CACHE_CAPACITY = 128;
 
-const DATASET_NAMES: Record<string, string> = {
-  TaiwanStockPER: "valuation",
-  TaiwanStockMonthRevenue: "monthly_revenue",
-  TaiwanStockFinancialStatements: "financial_statements",
-  TaiwanStockBalanceSheet: "balance_sheet",
-  TaiwanStockCashFlowsStatement: "cash_flow",
-  TaiwanStockInstitutionalInvestorsBuySell: "institutional",
-  TaiwanStockMarginPurchaseShortSale: "margin",
-  TaiwanStockDividend: "dividend",
-  TaiwanStockShareholding: "foreign_shareholding",
-};
-
-export async function readFinMindCache(
-  stockId: string,
-  finmindDataset: string,
-  startDate: string,
-  endDate: string,
-): Promise<SnapshotRow[] | null> {
-  const dataset = DATASET_NAMES[finmindDataset];
-  if (!supabaseAdmin || !dataset || !isOrdinaryStockId(stockId)) return null;
-  const { data, error } = await supabaseAdmin
-    .from("stock_dataset_cache")
-    .select("payload,cached_at")
-    .eq("stock_id", stockId)
-    .eq("dataset", dataset)
-    .gte("period_date", startDate)
-    .lte("period_date", endDate)
-    .order("period_date", { ascending: true })
-    .limit(2000);
-  if (error || !data || data.length === 0) return null;
-  const newestCacheTime = Math.max(...data.map((row) => new Date(row.cached_at).getTime()));
-  if (!Number.isFinite(newestCacheTime) || Date.now() - newestCacheTime > CACHE_TTL_MS) return null;
-  return data.flatMap((row) => (
-    Array.isArray(row.payload)
-      ? row.payload as SnapshotRow[]
-      : [row.payload as SnapshotRow]
-  ));
+export interface FinMindCacheRequest {
+  stockId: string;
+  dataset: string;
+  startDate: string;
+  endDate: string;
 }
 
-async function cacheWritesAllowed(): Promise<boolean> {
-  if (!supabaseAdmin) return false;
-  const { data, error } = await supabaseAdmin.rpc("cloud_storage_status");
-  if (error) return false;
-  const status = Array.isArray(data) ? data[0] : data;
-  return Number(status?.database_bytes || 0) < CACHE_WRITE_CEILING;
+export type FinMindCacheStatus = "hit" | "miss" | "shared";
+
+export interface FinMindCacheResult {
+  rows: SnapshotRow[];
+  status: FinMindCacheStatus;
 }
 
-export async function writeFinMindCache(
-  stockId: string,
-  finmindDataset: string,
-  rows: SnapshotRow[],
-): Promise<void> {
-  const dataset = DATASET_NAMES[finmindDataset];
-  if (
-    !supabaseAdmin
-    || !dataset
-    || !isOrdinaryStockId(stockId)
-    || rows.length === 0
-    || !(await cacheWritesAllowed())
-  ) return;
-  const now = new Date().toISOString();
-  const grouped = new Map<string, SnapshotRow[]>();
-  for (const payload of rows) {
-    const periodDate = String(payload.date || "").slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(periodDate)) continue;
-    const values = grouped.get(periodDate) || [];
-    values.push(payload);
-    grouped.set(periodDate, values);
-  }
-  const records = [...grouped.entries()].map(([periodDate, payload]) => ({
-      stock_id: stockId,
-      dataset,
-      period_date: periodDate,
-      payload,
-      source: "finmind",
-      cached_at: now,
-      last_accessed_at: now,
-  }));
-  for (let offset = 0; offset < records.length; offset += BATCH_SIZE) {
-    const { error } = await supabaseAdmin
-      .from("stock_dataset_cache")
-      .upsert(records.slice(offset, offset + BATCH_SIZE), {
-        onConflict: "stock_id,dataset,period_date",
-      });
-    if (error) {
-      console.warn(`[FinMind cache] ${finmindDataset} write skipped: ${error.message}`);
-      return;
+interface CacheEntry<T> {
+  expiresAt: number;
+  value: T;
+}
+
+interface CacheOptions {
+  capacity?: number;
+  ttlMs?: number;
+  now?: () => number;
+}
+
+export interface FinMindMemoryCache {
+  load(request: FinMindCacheRequest, loader: () => Promise<SnapshotRow[]>): Promise<FinMindCacheResult>;
+}
+
+export interface BoundedMemoryCache<T> {
+  load(key: string, loader: () => Promise<T>): Promise<{ value: T; status: FinMindCacheStatus }>;
+}
+
+function cacheKey(request: FinMindCacheRequest): string {
+  return [request.stockId, request.dataset, request.startDate, request.endDate].join(":");
+}
+
+export function createBoundedMemoryCache<T>(options: CacheOptions = {}): BoundedMemoryCache<T> {
+  const capacity = Math.max(1, options.capacity ?? FINMIND_CACHE_CAPACITY);
+  const ttlMs = Math.max(1, options.ttlMs ?? FINMIND_CACHE_TTL_MS);
+  const now = options.now ?? Date.now;
+  const entries = new Map<string, CacheEntry<T>>();
+  const inFlight = new Map<string, Promise<T>>();
+
+  const store = (key: string, value: T) => {
+    while (entries.size >= capacity) {
+      const oldestKey = entries.keys().next().value as string | undefined;
+      if (!oldestKey) break;
+      entries.delete(oldestKey);
     }
-  }
+    entries.set(key, { value, expiresAt: now() + ttlMs });
+    return value;
+  };
+
+  return {
+    async load(key, loader) {
+      const cached = entries.get(key);
+      if (cached && cached.expiresAt > now()) {
+        entries.delete(key);
+        entries.set(key, cached);
+        return { value: cached.value, status: "hit" };
+      }
+      if (cached) entries.delete(key);
+      const pending = inFlight.get(key);
+      if (pending) return { value: await pending, status: "shared" };
+
+      const requestPromise = loader().then((rows) => store(key, rows));
+      inFlight.set(key, requestPromise);
+      try {
+        return { value: await requestPromise, status: "miss" };
+      } finally {
+        if (inFlight.get(key) === requestPromise) inFlight.delete(key);
+      }
+    },
+  };
 }
+
+export function createFinMindMemoryCache(options: CacheOptions = {}): FinMindMemoryCache {
+  const cache = createBoundedMemoryCache<SnapshotRow[]>(options);
+  return {
+    async load(request, loader) {
+      const result = await cache.load(cacheKey(request), loader);
+      return { rows: result.value, status: result.status };
+    },
+  };
+}
+
+export const finMindMemoryCache = createFinMindMemoryCache();

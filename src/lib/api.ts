@@ -1,15 +1,50 @@
 import { PriceData } from './indicators';
 import { normalizeVolumes } from './utils';
+import type { ResearchContext } from '../../shared/researchContext';
+import type { AIResearchReportResponse, AIResearchReportSuccessResponse } from '../../shared/aiResearchReport';
 export type { PriceData };
+export type { ResearchContext } from '../../shared/researchContext';
+export type { AIResearchReportSuccessResponse } from '../../shared/aiResearchReport';
 
 // API utils for fetching data via backend proxy
 // Base URL defaults to same origin; override via VITE_API_URL for production
-const BASE = import.meta.env.VITE_API_URL || '';
+const BASE = import.meta.env?.VITE_API_URL || '';
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`);
   if (!res.ok) throw new Error(`HTTP error: ${res.status}`);
   return res.json() as Promise<T>;
+}
+
+export async function fetchResearchContext(id: string, signal?: AbortSignal): Promise<ResearchContext> {
+  const response = await fetch(
+    `${BASE}/api/ai-research/stocks/${encodeURIComponent(id)}/context`,
+    { signal },
+  );
+  const payload = await response.json() as {
+    success: boolean;
+    data?: ResearchContext;
+    error?: string;
+  };
+  if (!response.ok || !payload.success || !payload.data) {
+    throw new Error(payload.error || `HTTP error: ${response.status}`);
+  }
+  return payload.data;
+}
+
+export async function runAIResearch(
+  stockId: string,
+  signal?: AbortSignal,
+): Promise<AIResearchReportSuccessResponse> {
+  const response = await fetch(
+    `${BASE}/api/ai-research/stocks/${encodeURIComponent(stockId)}/report`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, signal },
+  );
+  const payload = await response.json() as AIResearchReportResponse;
+  if (!response.ok || !payload.success) {
+    throw new Error(payload.success ? `HTTP error: ${response.status}` : payload.error);
+  }
+  return payload;
 }
 
 export interface DataQuality {
@@ -23,6 +58,98 @@ export interface DataQuality {
 export interface DataSeries<T> {
   data: T[];
   quality: DataQuality;
+}
+
+export type FinancialTabId = 'operations' | 'profitability' | 'health';
+export type FinancialMetricQuality = 'good' | 'stale' | 'partial' | 'no_data' | 'not_applicable';
+
+export interface FinancialKpi {
+  id: string;
+  label: string;
+  value: number | null;
+  display: string;
+  unit: string;
+  period: string;
+  source: string;
+  quality: FinancialMetricQuality;
+  formula: string;
+  dataset: string;
+  type: string;
+  originName: string;
+  reportDate: string;
+  periodBasis: 'single-quarter' | 'ytd-cumulative' | 'point-in-time' | 'ttm';
+  stale: boolean;
+  missingReason: string | null;
+  lineage: Array<{
+    dataset: string;
+    type: string;
+    originName: string;
+    reportDate: string;
+    rawValue: number;
+    periodBasis: 'single-quarter' | 'ytd-cumulative' | 'point-in-time' | 'ttm';
+  }>;
+}
+
+export interface FinancialTrendPoint {
+  period: string;
+  date: string;
+  revenue: number | null;
+  netIncome: number | null;
+  operatingCashFlow: number | null;
+  freeCashFlow: number | null;
+  grossMargin: number | null;
+  operatingMargin: number | null;
+  netMargin: number | null;
+  eps: number | null;
+  equity: number | null;
+  currentRatio: number | null;
+  debtRatio: number | null;
+  debtToEquity: number | null;
+  cashRatio: number | null;
+}
+
+export interface FinancialTabAnalysis {
+  id: FinancialTabId;
+  kpis: FinancialKpi[];
+  trend: FinancialTrendPoint[];
+  summaries: string[];
+  period: string;
+  sources: string[];
+  quality: FinancialMetricQuality;
+}
+
+export interface CompanyFinancialAnalysisData {
+  stockId: string;
+  companyName: string | null;
+  asOf: string | null;
+  retrievedAt: string;
+  fetchedAt: string;
+  source: 'FinMind';
+  stale: boolean;
+  missingDatasets: string[];
+  isFinancialIndustry: boolean;
+  periodPolicies: {
+    incomeStatement: 'single-quarter' | 'ytd-cumulative' | 'point-in-time' | 'ttm';
+    cashFlowStatement: 'single-quarter' | 'ytd-cumulative' | 'point-in-time' | 'ttm';
+    balanceSheet: 'point-in-time';
+  };
+  tabs: Record<FinancialTabId, FinancialTabAnalysis>;
+  quality: {
+    status: FinancialMetricQuality;
+    isMock: false;
+    missingDatasets: string[];
+    staleDatasets: string[];
+    warnings: string[];
+  };
+}
+
+export async function fetchCompanyFinancialAnalysis(id: string, signal?: AbortSignal): Promise<CompanyFinancialAnalysisData> {
+  const response = await fetch(`${BASE}/api/stock/${encodeURIComponent(id)}/financials`, { signal });
+  const payload = await response.json() as { success: boolean; data?: CompanyFinancialAnalysisData; error?: string };
+  if (!response.ok || !payload.success || !payload.data) {
+    throw new Error(payload.error || `HTTP error: ${response.status}`);
+  }
+  return payload.data;
 }
 
 type DataEnvelope<T> = {
@@ -247,6 +374,12 @@ export interface InstitutionalHoldingSnapshot {
   trustRatio: number;
   dealerRatio: number;
   totalRatio: number;
+  foreignRatioChange: number | null;
+  trustRatioChange: number | null;
+  dealerRatioChange: number | null;
+  totalRatioChange: number | null;
+  ageDays: number;
+  stale: boolean;
   sourceUrl: string;
   estimated: true;
 }
@@ -305,7 +438,19 @@ export async function fetchPredictionAnalysis(id: string): Promise<PredictionAna
 
 // ── Strategy Scan Types ──────────────────────────────────
 
-export interface SRScanItem {
+export type TradeRiskType = 'attention' | 'disposition' | 'trading_halt'
+  | 'margin_restricted' | 'short_sale_restricted' | 'daytrade_restricted';
+
+export interface TradeRiskFlag {
+  type: TradeRiskType;
+  level: 'medium' | 'high' | 'critical';
+  action: 'exclude' | 'warn';
+  reason: string;
+}
+
+interface RiskFlagged { riskFlags?: TradeRiskFlag[] }
+
+export interface SRScanItem extends RiskFlagged {
   stock_id: string;
   stock_name: string;
   close: number;
@@ -317,7 +462,7 @@ export interface SRScanItem {
   support: number;
 }
 
-export interface MAScanItem {
+export interface MAScanItem extends RiskFlagged {
   stock_id: string;
   stock_name: string;
   close: number;
@@ -334,7 +479,7 @@ export interface MAScanItem {
   maTrend: 'up' | 'down' | 'flat';
 }
 
-export interface ChipsScanItem {
+export interface ChipsScanItem extends RiskFlagged {
   stock_id: string;
   stock_name: string;
   close: number;
@@ -351,7 +496,7 @@ export interface ChipsScanItem {
   previousDate?: string;
 }
 
-export interface PatternScanItem {
+export interface PatternScanItem extends RiskFlagged {
   stock_id: string;
   stock_name: string;
   close: number;
@@ -391,10 +536,50 @@ export async function fetchPatternScan(minVolume = 500, sort = '1'): Promise<Pat
   );
   return res.success ? res.data : [];
 }
+
+export interface TradeRisk {
+  id: number;
+  market: 'TWSE' | 'TPEx';
+  type: TradeRiskType;
+  level: 'medium' | 'high' | 'critical';
+  reason: string;
+  restrictions: string;
+  announcedDate: string | null;
+  startDate: string;
+  endDate: string | null;
+  isActive: boolean;
+  daysUntilStart: number;
+  daysUntilEnd: number | null;
+  dataDate: string | null;
+  source: string;
+  sourceUrl: string;
+  fetchedAt: string;
+}
+
+export interface StockTradeRiskResponse {
+  stockId: string;
+  asOf: string;
+  hasActiveRisk: boolean;
+  highestLevel: 'none' | 'medium' | 'high' | 'critical';
+  risks: TradeRisk[];
+  source: 'supabase' | 'sqlite';
+  capabilities: {
+    margin_restricted: { supported: boolean; reason: string };
+  };
+}
+
+export async function fetchStockTradeRisks(id: string): Promise<StockTradeRiskResponse> {
+  const res = await get<{ success: boolean; data: StockTradeRiskResponse; error?: string }>(
+    `/api/stock/${encodeURIComponent(id)}/trade-risks`,
+  );
+  if (!res.success || !res.data) throw new Error(res.error || '無法取得交易風險資料');
+  return res.data;
+}
 export interface ShareholdingRow {
   date: string;
   ratio: number;
   totalPeople: number | null;
+  shares: number | null;
 }
 
 export async function fetchStockShareholding(id: string): Promise<DataSeries<ShareholdingRow>> {

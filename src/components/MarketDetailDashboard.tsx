@@ -11,6 +11,7 @@ import {
   type ShareholdingRow,
 } from '../lib/api';
 import { ShieldAlert, CheckCircle2, RefreshCw } from 'lucide-react';
+import { TradeRiskBanner } from './TradeRiskBanner';
 
 interface MarketDetailDashboardProps {
   stockId: string;
@@ -78,6 +79,7 @@ export function MarketDetailDashboard({ stockId }: MarketDetailDashboardProps) {
 
   return (
     <div className="bg-slate-950/40 border border-slate-900 rounded-xl p-3 flex flex-col gap-3 shadow-xl">
+      <TradeRiskBanner stockId={stockId} />
       {/* 數據狀態條 */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 bg-slate-900/60 border border-slate-800 rounded-lg px-3 py-2 text-xs">
         <div className="flex items-center gap-2">

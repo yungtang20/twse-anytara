@@ -2,6 +2,7 @@ interface SqliteSchemaDb {
   exec(sql: string): unknown;
   prepare(sql: string): {
     get(...args: unknown[]): unknown;
+    all(...args: unknown[]): unknown[];
   };
 }
 
@@ -189,6 +190,9 @@ function ensureSupportingTables(db: SqliteSchemaDb): void {
       retail_ratio REAL,
       foreign_shares INTEGER,
       foreign_ratio REAL,
+      total_people INTEGER,
+      whale_shares INTEGER,
+      whale_people INTEGER,
       updated_at TEXT,
       PRIMARY KEY (stock_id, date)
     );
@@ -200,41 +204,131 @@ function ensureSupportingTables(db: SqliteSchemaDb): void {
       detail TEXT,
       timestamp TEXT DEFAULT (datetime('now', 'localtime'))
     );
+    CREATE TABLE IF NOT EXISTS stock_trade_risk (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      stock_id TEXT NOT NULL,
+      market TEXT NOT NULL,
+      risk_type TEXT NOT NULL,
+      risk_level TEXT NOT NULL,
+      reason TEXT NOT NULL DEFAULT '',
+      restrictions TEXT NOT NULL DEFAULT '',
+      announced_date TEXT,
+      start_date TEXT NOT NULL,
+      end_date TEXT,
+      source TEXT NOT NULL,
+      source_url TEXT NOT NULL,
+      source_updated_at TEXT,
+      fetched_at TEXT NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      raw_data TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_trade_risk_identity
+      ON stock_trade_risk(stock_id, market, risk_type, source, start_date, COALESCE(end_date, ''));
+    CREATE INDEX IF NOT EXISTS idx_trade_risk_stock ON stock_trade_risk(stock_id);
+    CREATE INDEX IF NOT EXISTS idx_trade_risk_active ON stock_trade_risk(is_active);
+    CREATE INDEX IF NOT EXISTS idx_trade_risk_type ON stock_trade_risk(risk_type);
+    CREATE INDEX IF NOT EXISTS idx_trade_risk_start ON stock_trade_risk(start_date);
+    CREATE INDEX IF NOT EXISTS idx_trade_risk_end ON stock_trade_risk(end_date);
   `);
   ensureTdccStorage(db);
 }
 
 function ensureTdccStorage(db: SqliteSchemaDb): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(shareholding_unified)").all() as Array<{ name: string }>)
+      .map((column) => column.name),
+  );
+  for (const [name, type] of [
+    ["total_people", "INTEGER"],
+    ["whale_shares", "INTEGER"],
+    ["whale_people", "INTEGER"],
+  ] as const) {
+    if (!columns.has(name)) db.exec(`ALTER TABLE shareholding_unified ADD COLUMN ${name} ${type}`);
+  }
   const tdcc = schemaObject(db, "tdcc_shareholding");
-  if (tdcc?.type === "table") return;
-  if (!tdcc) {
-    db.exec(`
-      CREATE VIEW tdcc_shareholding AS
-        SELECT stock_id, date, total_shares, whale_ratio, retail_ratio, source, updated_at
-        FROM shareholding_unified
-        WHERE source = 'tdcc';
-    `);
+  if (tdcc?.type === "table") {
+    const legacyColumns = new Set(
+      (db.prepare("PRAGMA table_info(tdcc_shareholding)").all() as Array<{ name: string }>)
+        .map((column) => column.name),
+    );
+    const legacyValue = (column: string, fallback: string) => legacyColumns.has(column) ? column : fallback;
+    try {
+      db.exec(`
+        BEGIN IMMEDIATE;
+        INSERT INTO shareholding_unified
+          (stock_id, date, total_shares, whale_ratio, retail_ratio,
+           total_people, whale_shares, whale_people, source, updated_at)
+        SELECT stock_id, date,
+          ${legacyValue("total_shares", "NULL")},
+          ${legacyValue("whale_ratio", "NULL")},
+          ${legacyValue("retail_ratio", "NULL")},
+          ${legacyValue("total_people", "NULL")},
+          ${legacyValue("whale_shares", "NULL")},
+          ${legacyValue("whale_people", "NULL")},
+          'tdcc', ${legacyValue("updated_at", "datetime('now', 'localtime')")}
+        FROM tdcc_shareholding
+        WHERE 1
+        ON CONFLICT(stock_id, date) DO UPDATE SET
+          total_shares = COALESCE(excluded.total_shares, shareholding_unified.total_shares),
+          whale_ratio = COALESCE(excluded.whale_ratio, shareholding_unified.whale_ratio),
+          retail_ratio = COALESCE(excluded.retail_ratio, shareholding_unified.retail_ratio),
+          total_people = COALESCE(excluded.total_people, shareholding_unified.total_people),
+          whale_shares = COALESCE(excluded.whale_shares, shareholding_unified.whale_shares),
+          whale_people = COALESCE(excluded.whale_people, shareholding_unified.whale_people),
+          source = 'tdcc',
+          updated_at = COALESCE(excluded.updated_at, shareholding_unified.updated_at,
+            datetime('now', 'localtime'));
+        DROP TABLE tdcc_shareholding;
+        COMMIT;
+      `);
+    } catch (error) {
+      try { db.exec("ROLLBACK"); } catch { /* transaction already closed */ }
+      throw error;
+    }
   }
   db.exec(`
-    CREATE TRIGGER IF NOT EXISTS tdcc_shareholding_insert
+    DROP TRIGGER IF EXISTS tdcc_shareholding_insert;
+    DROP TRIGGER IF EXISTS tdcc_shareholding_update;
+    DROP TRIGGER IF EXISTS tdcc_shareholding_delete;
+    DROP VIEW IF EXISTS tdcc_shareholding;
+    CREATE VIEW tdcc_shareholding AS
+      SELECT stock_id, date, total_shares, whale_ratio, retail_ratio,
+             total_people, whale_shares, whale_people, source, updated_at
+      FROM shareholding_unified
+      WHERE source = 'tdcc';
+    CREATE TRIGGER tdcc_shareholding_insert
       INSTEAD OF INSERT ON tdcc_shareholding
       BEGIN
-        INSERT OR REPLACE INTO shareholding_unified
-          (stock_id, date, total_shares, whale_ratio, retail_ratio, source, updated_at)
+        INSERT INTO shareholding_unified
+          (stock_id, date, total_shares, whale_ratio, retail_ratio,
+           total_people, whale_shares, whale_people, source, updated_at)
         VALUES
           (NEW.stock_id, NEW.date, NEW.total_shares, NEW.whale_ratio, NEW.retail_ratio,
-           'tdcc', COALESCE(NEW.updated_at, datetime('now', 'localtime')));
+           NEW.total_people, NEW.whale_shares, NEW.whale_people,
+           'tdcc', COALESCE(NEW.updated_at, datetime('now', 'localtime')))
+        ON CONFLICT(stock_id, date) DO UPDATE SET
+          total_shares = COALESCE(excluded.total_shares, shareholding_unified.total_shares),
+          whale_ratio = COALESCE(excluded.whale_ratio, shareholding_unified.whale_ratio),
+          retail_ratio = COALESCE(excluded.retail_ratio, shareholding_unified.retail_ratio),
+          total_people = COALESCE(excluded.total_people, shareholding_unified.total_people),
+          whale_shares = COALESCE(excluded.whale_shares, shareholding_unified.whale_shares),
+          whale_people = COALESCE(excluded.whale_people, shareholding_unified.whale_people),
+          source = 'tdcc',
+          updated_at = COALESCE(excluded.updated_at, shareholding_unified.updated_at,
+            datetime('now', 'localtime'));
       END;
-    CREATE TRIGGER IF NOT EXISTS tdcc_shareholding_update
+    CREATE TRIGGER tdcc_shareholding_update
       INSTEAD OF UPDATE ON tdcc_shareholding
       BEGIN
         UPDATE shareholding_unified SET
           total_shares = NEW.total_shares, whale_ratio = NEW.whale_ratio,
-          retail_ratio = NEW.retail_ratio, source = 'tdcc',
+          retail_ratio = NEW.retail_ratio, total_people = NEW.total_people,
+          whale_shares = NEW.whale_shares, whale_people = NEW.whale_people,
+          source = 'tdcc',
           updated_at = COALESCE(NEW.updated_at, datetime('now', 'localtime'))
         WHERE stock_id = OLD.stock_id AND date = OLD.date;
       END;
-    CREATE TRIGGER IF NOT EXISTS tdcc_shareholding_delete
+    CREATE TRIGGER tdcc_shareholding_delete
       INSTEAD OF DELETE ON tdcc_shareholding
       BEGIN
         DELETE FROM shareholding_unified

@@ -14,10 +14,26 @@ import { isLoopbackRequest } from "../lib/security";
 import { ingestTdccCSV, syncTdcc } from "../lib/tdccDownload";
 import { getBridgeStatus, pushTdccToSupabase } from "../lib/syncBridge";
 import { addLog } from "../services";
+import { resolveRuntimeMode } from "../lib/runtimeMode";
 
 const router = Router();
 
-router.use((req: Request, res: Response, next: NextFunction) => {
+router.use([
+  "/api/ai-analysis",
+  "/api/analysis-mvp",
+  "/api/job",
+  "/api/jobs",
+  "/api/upload-tdcc",
+  "/api/auto-download-tdcc",
+  "/api/tdcc",
+  "/api/bridge",
+], (req: Request, res: Response, next: NextFunction) => {
+  if (resolveRuntimeMode() === "cloud") {
+    return res.status(410).json({
+      success: false,
+      error: "Cloud mode does not run local AI jobs, SQLite, TDCC, or bridge operations",
+    });
+  }
   if (!isLoopbackRequest(req)) return res.status(403).json({ success: false, error: "AI 與同步功能只能從本機使用" });
   next();
 });
@@ -54,6 +70,7 @@ router.post("/api/upload-tdcc", json({ limit: "50mb" }), async (req: Request, re
       tdccDate: result.date,
       supabaseSynced: result.cloud.synced,
       warning: result.cloud.error || null,
+      filterReport: result.report,
     });
   } catch (error: any) {
     addLog("TDCC_UPLOAD", "ERROR", error.message?.slice(0, 200) || "unknown");
@@ -77,6 +94,7 @@ router.post("/api/auto-download-tdcc", async (_req: Request, res: Response) => {
       tdccDate: result.date,
       supabaseSynced: result.cloud.synced,
       warning: result.cloud.error || null,
+      filterReport: result.report,
     });
   } catch (error: any) {
     addLog("TDCC_AUTO_FETCH", "ERROR", error.message?.slice(0, 200) || "unknown");

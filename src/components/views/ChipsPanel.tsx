@@ -14,7 +14,7 @@ interface ChipsDetailPanelProps {
   shareholding: ShareholdingRow[];
 }
 
-type InstitutionalKey = 'foreign_net' | 'trust_net';
+type InstitutionalKey = 'foreign_net' | 'trust_net' | 'dealer_net';
 
 export function ChipsDetailPanel({ stockId, institutional, shareholding }: ChipsDetailPanelProps) {
   const recentInstitutional = useMemo(
@@ -29,7 +29,11 @@ export function ChipsDetailPanel({ stockId, institutional, shareholding }: Chips
   return <section className="rounded-xl border border-slate-800 bg-slate-950/50 p-3">
     <h3 className="mb-3 border-b border-slate-800 pb-2 text-sm font-bold text-white">3 ⚡ 籌碼動能</h3>
     <div className="space-y-2 font-mono text-xs">
-      <InstitutionalHoldingsCard stockId={stockId} />
+      <InstitutionalHoldingsCard
+        stockId={stockId}
+        institutional={recentInstitutional}
+        shareholding={recentShareholding}
+      />
       {!recentInstitutional.length && !recentShareholding.length
         ? <div className="py-4 text-center text-xs text-slate-500">買賣超與 TDCC 無資料</div>
         : <>
@@ -40,7 +44,7 @@ export function ChipsDetailPanel({ stockId, institutional, shareholding }: Chips
   </section>;
 }
 
-function InstitutionalHoldingsCard({ stockId }: { stockId: string }) {
+function InstitutionalHoldingsCard({ stockId, institutional, shareholding }: ChipsDetailPanelProps) {
   const [data, setData] = useState<InstitutionalHoldingSnapshot | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   useEffect(() => {
@@ -53,23 +57,58 @@ function InstitutionalHoldingsCard({ stockId }: { stockId: string }) {
   }, [stockId]);
   if (unavailable) return <div className="rounded-lg border border-slate-800 p-2 text-slate-500">法人持股狀態暫無資料</div>;
   if (!data) return <div className="rounded-lg border border-slate-800 p-2 text-slate-500">法人持股狀態載入中…</div>;
+  const flow = institutional.find((row) => row.date === data.date);
+  const totalShares = shareholding.find((row) => row.date <= data.date && (row.shares ?? 0) > 0)?.shares;
+  const totalNet = flow?.institutional_net ?? (flow
+    ? flow.foreign_net + flow.trust_net + (flow.dealer_net ?? 0)
+    : undefined);
   const items = [
-    ['外資', data.foreignRatio, false], ['投信', data.trustRatio, true],
-    ['自營商', data.dealerRatio, true], ['三大法人', data.totalRatio, true],
-  ] as const;
+    { label: '外資', ratio: data.foreignRatio, ratioChange: data.foreignRatioChange, net: flow?.foreign_net, estimated: false },
+    { label: '投信', ratio: data.trustRatio, ratioChange: data.trustRatioChange, net: flow?.trust_net, estimated: true },
+    { label: '自營商', ratio: data.dealerRatio, ratioChange: data.dealerRatioChange, net: flow?.dealer_net, estimated: true },
+    { label: '三大法人', ratio: data.totalRatio, ratioChange: data.totalRatioChange, net: totalNet, estimated: true },
+  ];
   return <div className="rounded-lg border border-slate-800 bg-slate-950 p-2">
-    <div className="mb-1.5 flex items-center justify-between gap-2"><b className="text-slate-300">目前法人持股狀態</b><span className="text-[10px] text-slate-500">{data.date}</span></div>
-    <div className="grid grid-cols-2 gap-1 sm:grid-cols-4">{items.map(([label, ratio, estimated]) => <div key={label} className="rounded border border-slate-800/80 px-2 py-1">
-      <div className="text-[10px] text-slate-500">{label}{estimated ? '（估）' : ''}</div><b className="text-cyan-300">{ratio.toFixed(2)}%</b>
-    </div>)}</div>
-    <div className="mt-1.5 text-[10px] text-slate-500">外資採官方持股比率；投信、自營商與合計為歷史買賣超累計估算，並非官方實際持股率。</div>
+    <div className="mb-1.5 flex items-center justify-between gap-2"><b className="text-slate-300">{data.stale ? '法人持股狀態（歷史）' : '目前法人持股狀態'}</b><span className={data.stale ? 'text-[10px] text-amber-400' : 'text-[10px] text-slate-500'}>{data.date}{data.stale ? `（已 ${data.ageDays} 天）` : ''}</span></div>
+    <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 xl:grid-cols-4">{items.map((item) =>
+      <HoldingMetric key={item.label} {...item} totalShares={totalShares} />
+    )}</div>
+    <div className="mt-1.5 flex flex-wrap items-center justify-between gap-1 text-[10px] text-slate-500"><span>持股張數以 TDCC 發行股數估算；外資比率為官方資料，投信、自營商與合計為歷史買賣超累計估算。</span><a href={data.sourceUrl} target="_blank" rel="noreferrer" className="text-cyan-500 hover:text-cyan-300">查看來源</a></div>
   </div>;
 }
 
+interface HoldingMetricProps {
+  label: string;
+  ratio: number;
+  ratioChange: number | null;
+  net: number | undefined;
+  estimated: boolean;
+  totalShares: number | null | undefined;
+}
+
+function HoldingMetric({ label, ratio, ratioChange, net, estimated, totalShares }: HoldingMetricProps) {
+  const lots = totalShares ? Math.round(totalShares * ratio / 100 / 1000) : null;
+  return <div className="rounded border border-slate-800/80 px-2 py-1.5">
+    <div className="text-[10px] text-slate-500">{label}{estimated ? '（估）' : ''}</div>
+    <b className="text-cyan-300">{lots == null ? '— 張' : `${lots.toLocaleString()} 張`}（{ratio.toFixed(2)}%）</b>
+    <div className="mt-0.5 text-[10px] text-slate-500">較前一交易日 <SignedDailyChange shares={net} ratio={ratioChange} /></div>
+  </div>;
+}
+
+function SignedDailyChange({ shares, ratio }: { shares: number | undefined; ratio: number | null }) {
+  if (shares == null || ratio == null) return <span className="text-slate-600">—</span>;
+  const lots = Math.trunc(shares / 1000);
+  const positive = lots >= 0;
+  return <b className={positive ? 'text-red-400' : 'text-emerald-400'}>
+    {positive ? '+' : ''}{lots.toLocaleString()} 張（{ratio >= 0 ? '+' : ''}{ratio.toFixed(2)}%）
+  </b>;
+}
+
 function ChipsSummary({ institutional }: Pick<ChipsDetailPanelProps, 'institutional'>) {
-  return <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+  return <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
     <TrendSummary label="外資動向" days={countConsecutive(institutional, 'foreign_net')} />
     <TrendSummary label="投信動向" days={countConsecutive(institutional, 'trust_net')} />
+    <TrendSummary label="自營商動向" days={countConsecutive(institutional, 'dealer_net')} />
   </div>;
 }
 
@@ -84,10 +123,12 @@ function TrendSummary({ label, days }: { label: string; days: number }) {
 function ChipsTables({ institutional, shareholding }: Pick<ChipsDetailPanelProps, 'institutional' | 'shareholding'>) {
   return <div className="overflow-x-auto">
     <div className="grid w-max grid-cols-[max-content_max-content] items-start gap-1.5">
-      <DetailTable title="近 10 日法人買賣超" headers={['日期', '外資(張)', '投信(張)']}>
+      <DetailTable title="近 10 日法人買賣超" headers={['日期', '外資(張)', '投信(張)', '自營商(張)']}>
         {institutional.map((row) => <tr key={row.date} className="border-b border-slate-800/60">
           <td className="px-2 py-0.5 text-slate-400">{row.date}</td>
-          <SignedLotsCell value={row.foreign_net} /><SignedLotsCell value={row.trust_net} />
+          <SignedLotsCell value={row.foreign_net} />
+          <SignedLotsCell value={row.trust_net} />
+          <SignedLotsCell value={row.dealer_net} />
         </tr>)}
       </DetailTable>
       <ShareholdingTable rows={shareholding} />
@@ -137,7 +178,7 @@ function countConsecutive(rows: InstitutionalRow[], key: InstitutionalKey) {
   const direction = Math.sign(firstValue);
   let count = 0;
   for (const row of rows) {
-    if (Math.sign(row[key]) !== direction) break;
+    if (Math.sign(row[key] ?? 0) !== direction) break;
     count += 1;
   }
   return count * direction;
@@ -151,7 +192,8 @@ function WeeklyChange({ current, previous, suffix, decimals }: { current: number
   return <span className={`ml-1 ${difference > 0 ? 'text-red-400' : 'text-emerald-400'}`}>{difference > 0 ? '↑' : '↓'} {display}{suffix}</span>;
 }
 
-function SignedLotsCell({ value }: { value: number }) {
+function SignedLotsCell({ value }: { value: number | undefined }) {
+  if (value == null) return <td className="px-2 py-0.5 text-left font-semibold text-slate-600">—</td>;
   const lots = Math.trunc(value / 1000);
   return <td className={`px-2 py-0.5 text-left font-semibold ${lots >= 0 ? 'text-red-400' : 'text-emerald-400'}`}>{lots >= 0 ? '+' : ''}{lots.toLocaleString()}</td>;
 }

@@ -1,5 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import analysisTdccRouter from "./routes/analysisTdcc";
+import aiResearchRouter from "./routes/aiResearch";
 import dashboardRouter from "./routes/dashboard";
 import fundamentalsRouter from "./routes/fundamentals";
 import settingsRouter from "./routes/settings";
@@ -7,6 +8,7 @@ import statusRouter from "./routes/status";
 import stocksRouter from "./routes/stocks";
 import strategiesRouter from "./routes/strategies";
 import syncBackfillRouter from "./routes/syncBackfill";
+import tradeRisksRouter from "./routes/tradeRisks";
 import { isOrdinaryStockId } from "./lib/stockUniverse";
 
 const router = Router();
@@ -27,5 +29,7 @@ router.use(settingsRouter);
 router.use(statusRouter);
 router.use(syncBackfillRouter);
 router.use(analysisTdccRouter);
+router.use(tradeRisksRouter);
+router.use(aiResearchRouter);
 
 export default router;
