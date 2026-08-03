@@ -54,6 +54,20 @@ test("selection v2 makes model choose IDs and cannot write finding mechanics or 
   assert.equal(Object.hasOwn(schema.properties.valuation.properties ?? {}, "horizonMonths"), false);
   assert.doesNotMatch(JSON.stringify(schema), /"stance"|"fragments"|"citations"/);
   assert.ok(request.untrustedEvidence.findingCatalog.length > 0);
+  assert.match(instructions, /PE 倍數必須大於 0 且不超過 100/);
+  assert.match(instructions, /HOLD.*positive.*negative/);
+});
+
+test("selection request excludes packet history not referenced by the finding catalog or valuation", async () => {
+  const packet = await investmentPacket();
+  for (let index = 0; index < 400; index += 1) packet.evidence.push({
+    id: `ev:noise-${index}`, dataset: "stock_price", field: `market.history.${index}.close`,
+    value: index, unit: "TWD", date: "2025-01-01", sourceId: "supabase:stock_price",
+    estimated: false, available: true,
+  });
+  const request = buildAIResearchModelRequest(packet);
+  assert.equal(request.untrustedEvidence.evidence.some((item) => item.id.startsWith("ev:noise-")), false);
+  assert.ok(JSON.stringify(request.untrustedEvidence).length < 25_000);
 });
 
 test("hydration derives findings, citations, identity, and valuation horizon from trusted server state", async () => {
@@ -133,4 +147,30 @@ test("server verdict policy downgrades one-domain directional evidence to publis
   const result = gateResearchPublication(candidate, packet, { clock: () => new Date("2026-08-03T01:00:00Z") });
   assert.equal(result.publicationReady, true, result.errors.join("\n"));
   assert.equal(result.publishedReport?.recommendation.verdict, "HOLD");
+});
+
+test("server verdict policy downgrades two-domain one-sided evidence to publishable HOLD", async () => {
+  const packet = await investmentPacket();
+  const institutional = packet.evidence.find((item) => item.field.endsWith(".institutionalNet"));
+  const strategy = packet.evidence.find((item) => item.field === "strategies.sr.signal");
+  assert.ok(institutional && strategy);
+  institutional.value = -100;
+  strategy.value = "SELL";
+  const catalog = buildAIResearchFindingCatalog(packet);
+  assert.ok(catalog.some((item) => item.kind === "institutional_flow" && item.stance === "negative"));
+  assert.ok(catalog.some((item) => item.kind === "strategy_result" && item.stance === "negative"));
+  assert.equal(catalog.some((item) => item.stance === "positive"), false);
+  const price = packet.evidence.find((item) => item.field === "market.price");
+  const eps = packet.evidence.find((item) => item.field === "fundamentals.metrics.eps");
+  assert.ok(price && eps);
+  const candidate = hydrateAIResearchSelection({ schemaVersion: 2,
+    selectedFindingIds: catalog.map((item) => item.id), horizonMonths: 12,
+    confidence: 0.6, aiConfidence: 0.6, investmentCertainty: 0.5,
+    valuation: { method: "PE", currentPriceEvidenceId: price.id, metricEvidenceId: eps.id,
+      scenarios: { conservative: { multiple: 7 }, base: { multiple: 8 },
+        optimistic: { multiple: 9 } } } }, packet);
+  assert.equal(candidate.recommendation?.verdict, "HOLD");
+  const result = gateResearchPublication(candidate, packet,
+    { clock: () => new Date("2026-08-03T01:00:00Z") });
+  assert.equal(result.publicationReady, true, result.errors.join("\n"));
 });

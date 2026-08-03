@@ -1,5 +1,6 @@
 import { getDb } from "./db";
 import { addLog, debugState, pushSyncLog, supabase } from "./lib/runtimeState";
+import { enrichRealtimeMarketStats } from "./lib/marketStatsEnrichment";
 export { addLog, debugState, pushSyncLog, supabase, supabaseAdmin } from "./lib/runtimeState";
 import {
   calcTwseLimit,
@@ -189,28 +190,13 @@ export const getTwseStats = async (): Promise<CacheEntry | { success: false; err
     const misData = await fetchRealtimeIndexFromMis('tse_t00.tw');
     if (misData) {
       const dateStr = misData.date.replace(/-/g, '');
-      let amount = 0;
-      let upDown = { limitUp: 0, up: 0, flat: 0, down: 0, limitDown: 0 };
-      const dbStats = getTwseStatsFromDb(dateStr);
-      if (dbStats) {
-        upDown = {
-          limitUp: dbStats.limit_up,
-          up: dbStats.up,
-          flat: dbStats.flat,
-          down: dbStats.down,
-          limitDown: dbStats.limit_down
-        };
-        amount = dbStats.total_amount;
-      }
-      const result = {
+      const result = await enrichRealtimeMarketStats("TWSE", {
         success: true,
         date: misData.date,
         index: misData.index,
         change: misData.change,
         changePercent: misData.changePercent,
-        amount: amount,
-        ...upDown
-      };
+      }, { loadFallback: () => loadDbMarketSupplement("TWSE", dateStr) });
       Object.assign(lastTwseCache, result, { _source: 'live_cache' }); twseCacheTime = Date.now();
       return result;
     }
@@ -451,6 +437,19 @@ export const getOtcStatsFromDb = (date: string) => {
   }
 };
 
+function loadDbMarketSupplement(market: "TWSE" | "TPEX", date: string) {
+  const stats = market === "TWSE" ? getTwseStatsFromDb(date) : getOtcStatsFromDb(date);
+  if (!stats) return null;
+  return {
+    amount: stats.total_amount,
+    limitUp: stats.limit_up,
+    up: stats.up,
+    flat: stats.flat,
+    down: stats.down,
+    limitDown: stats.limit_down,
+  };
+}
+
 /** Fetch TPEX data from official API */
 let otcCacheTime = 0;
 export const getOtcStats = async (): Promise<CacheEntry | { success: false; error: string; _source: string }> => {
@@ -475,28 +474,13 @@ export const getOtcStats = async (): Promise<CacheEntry | { success: false; erro
     const misData = await fetchRealtimeIndexFromMis('otc_o00.tw');
     if (misData) {
       const dateStr = misData.date.replace(/-/g, '');
-      let amount = 0;
-      let upDown = { limitUp: 0, up: 0, flat: 0, down: 0, limitDown: 0 };
-      const dbStats = getOtcStatsFromDb(dateStr);
-      if (dbStats) {
-        upDown = {
-          limitUp: dbStats.limit_up,
-          up: dbStats.up,
-          flat: dbStats.flat,
-          down: dbStats.down,
-          limitDown: dbStats.limit_down
-        };
-        amount = dbStats.total_amount;
-      }
-      const result = {
+      const result = await enrichRealtimeMarketStats("TPEX", {
         success: true,
         date: misData.date,
         index: misData.index,
         change: misData.change,
         changePercent: misData.changePercent,
-        amount: amount,
-        ...upDown
-      };
+      }, { loadFallback: () => loadDbMarketSupplement("TPEX", dateStr) });
       Object.assign(lastOtcCache, result, { _source: 'live_cache' }); otcCacheTime = Date.now();
       return result;
     }

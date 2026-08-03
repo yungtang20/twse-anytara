@@ -67,17 +67,19 @@ test("internal diagnostic seam preserves only sanitized reasons and provider met
   const aggregator = new ResearchContextAggregator(createResearchContextAdapter(), {
     clock: () => new Date("2026-08-02T03:04:05.000Z"), asOfDate: "2026-07-31",
   });
-  const primary = new InMemoryAIResearchModelGateway([{
+  const invalidResult = {
     candidate: { secretCandidateShape: "must-not-leak" }, provider: "router", model: "glm-5.2",
     durationMs: 8, usage: { inputTokens: 3, outputTokens: 2 },
-  }]);
+  } as const;
+  const primary = new InMemoryAIResearchModelGateway([invalidResult, invalidResult]);
   const result = await new AIResearchOrchestrator(aggregator,
     new AIResearchModelRunner(primary, auditResearchReport)).research("2330");
   assert.equal(result.success, false);
   if (result.success) throw new Error("fixture_failure");
   assert.ok(result.auditDiagnostics?.reasonCodes.includes("invalid_report_field"));
-  assert.deepEqual(result.providerMetadata, [{ provider: "router", model: "glm-5.2", durationMs: 8,
-    usage: { inputTokens: 3, outputTokens: 2 } }]);
+  assert.deepEqual(result.providerMetadata, [invalidResult, invalidResult].map(() => ({
+    provider: "router", model: "glm-5.2", durationMs: 8,
+    usage: { inputTokens: 3, outputTokens: 2 } })));
   assert.doesNotMatch(JSON.stringify(result), /must-not-leak|secretCandidateShape/);
 });
 
