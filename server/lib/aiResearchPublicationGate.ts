@@ -166,9 +166,11 @@ function validateCanonicalTradeRisk(candidate: AIResearchReportCandidate, packet
 function buildServerConclusion(findings: StructuredResearchFinding[],
   claims: PublishedResearchReport["claims"], derived: Map<string, ResearchFindingStance>,
   verdict: "BUY" | "HOLD" | "SELL") {
+  const supportingStance = verdict === "SELL" ? "negative" : "positive";
+  const opposingStance = verdict === "SELL" ? "positive" : "negative";
   const ids = {
-    supporting: findings.filter((item) => derived.get(item.id) === "positive").map((item) => item.id).sort(),
-    opposing: findings.filter((item) => derived.get(item.id) === "negative").map((item) => item.id).sort(),
+    supporting: findings.filter((item) => derived.get(item.id) === supportingStance).map((item) => item.id).sort(),
+    opposing: findings.filter((item) => derived.get(item.id) === opposingStance).map((item) => item.id).sort(),
     limitations: findings.filter((item) => item.kind === "limitation").map((item) => item.id).sort(),
   };
   const labels = { BUY: "正向", HOLD: "中性", SELL: "負向" } as const;

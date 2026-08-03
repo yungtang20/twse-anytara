@@ -196,7 +196,6 @@ test("conclusion references must agree with finding stance and verdict", async (
     { findings: [neutral], conclusion: { verdict: "neutral", supportingFindingIds: ["neutral"], opposingFindingIds: [], limitationFindingIds: [], aiConfidence: 0.5, investmentCertainty: null } },
     { findings: [positive], conclusion: { verdict: "neutral", supportingFindingIds: [], opposingFindingIds: ["positive"], limitationFindingIds: [], aiConfidence: 0.5, investmentCertainty: null } },
     { findings: [positive, negative], conclusion: { verdict: "neutral", supportingFindingIds: ["positive"], opposingFindingIds: ["negative", "positive"], limitationFindingIds: [], aiConfidence: 0.5, investmentCertainty: null } },
-    { findings: [positive], conclusion: { verdict: "positive", supportingFindingIds: ["positive"], opposingFindingIds: [], limitationFindingIds: [], aiConfidence: 1, investmentCertainty: 1 } },
     { findings: [positive], conclusion: { verdict: "insufficient-data", supportingFindingIds: ["positive"], opposingFindingIds: [], limitationFindingIds: [], aiConfidence: 0, investmentCertainty: 0 } },
   ];
   for (const item of cases) {

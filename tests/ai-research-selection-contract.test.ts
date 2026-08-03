@@ -149,7 +149,7 @@ test("server verdict policy downgrades one-domain directional evidence to publis
   assert.equal(result.publishedReport?.recommendation.verdict, "HOLD");
 });
 
-test("server verdict policy downgrades two-domain one-sided evidence to publishable HOLD", async () => {
+test("server verdict policy keeps a two-domain one-sided SELL aligned with deep valuation downside", async () => {
   const packet = await investmentPacket();
   const institutional = packet.evidence.find((item) => item.field.endsWith(".institutionalNet"));
   const strategy = packet.evidence.find((item) => item.field === "strategies.sr.signal");
@@ -169,8 +169,11 @@ test("server verdict policy downgrades two-domain one-sided evidence to publisha
     valuation: { method: "PE", currentPriceEvidenceId: price.id, metricEvidenceId: eps.id,
       scenarios: { conservative: { multiple: 7 }, base: { multiple: 8 },
         optimistic: { multiple: 9 } } } }, packet);
-  assert.equal(candidate.recommendation?.verdict, "HOLD");
+  assert.equal(candidate.recommendation?.verdict, "SELL");
   const result = gateResearchPublication(candidate, packet,
     { clock: () => new Date("2026-08-03T01:00:00Z") });
   assert.equal(result.publicationReady, true, result.errors.join("\n"));
+  assert.equal(result.publishedReport?.recommendation.verdict, "SELL");
+  assert.ok((result.publishedReport?.valuation.scenarios.find((item) => item.name === "base")
+    ?.expectedReturnRatio ?? 0) < -0.05);
 });

@@ -28,13 +28,8 @@ export function deriveServerInvestmentVerdict(baseReturn: number,
   const directional = baseReturn > 0.05 ? "BUY" : baseReturn < -0.05 ? "SELL" : "HOLD";
   if (directional === "HOLD") return "HOLD";
   const requiredStance = directional === "BUY" ? "positive" : "negative";
-  const opposingStance = directional === "BUY" ? "negative" : "positive";
   const domains = new Set(findings.filter((finding) => finding.kind !== "trade_risk"
     && finding.kind !== "limitation" && stances.get(finding.id) === requiredStance)
     .map((finding) => domain(finding, registry)));
-  const hasOpposition = findings.some((finding) => finding.kind !== "limitation"
-    && stances.get(finding.id) === opposingStance);
-  const hasRisk = findings.some((finding) => finding.kind === "trade_risk"
-    && stances.get(finding.id) === "negative");
-  return domains.size >= 2 && (hasOpposition || hasRisk) ? directional : "HOLD";
+  return domains.size >= 2 ? directional : "HOLD";
 }
