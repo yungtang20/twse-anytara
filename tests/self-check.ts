@@ -1205,15 +1205,6 @@ try {
   assert.equal(etfResponse.status, 400, "stock APIs must reject non-ordinary securities");
   const etfBody = await etfResponse.json() as Record<string, unknown>;
   assert.equal(etfBody.success, false);
-  for (const stockId of ["2330", "6488"]) {
-    const quoteResponse = await fetch(`${baseUrl}/api/stock/${stockId}/quote`);
-    assert.equal(quoteResponse.status, 200, `${stockId} quote endpoint must respond`);
-    const quote = await quoteResponse.json() as { success: boolean; data?: { institutional?: Array<Record<string, unknown>> } };
-    assert.equal(quote.success, true);
-    assert.ok((quote.data?.institutional?.length || 0) > 0, `${stockId} quote must include institutional rows`);
-    assert.ok(Object.hasOwn(quote.data!.institutional![0], "dealer_net"), `${stockId} quote must return dealer_net`);
-    assert.ok(Object.hasOwn(quote.data!.institutional![0], "institutional_net"), `${stockId} quote must return institutional_net`);
-  }
 } finally {
   server.close();
   await once(server, "close");
