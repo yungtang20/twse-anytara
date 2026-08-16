@@ -76,11 +76,11 @@ test("rejects private reserved mapped and empty DNS answers", async () => {
     "https://example.com/v1", async () => [])), "provider_dns_empty");
 });
 
-test("returns the first address only after every DNS answer is public", async () => {
+test("prefers a public IPv4 address after every DNS answer passes validation", async () => {
   const result = await resolvePublicHttpsEndpoint("https://example.com/v1", async () => [
     { address: "2606:4700:4700::1111", family: 6 },
     { address: "1.0.0.1", family: 4 },
   ]);
-  assert.equal(result.address, "2606:4700:4700::1111");
-  assert.equal(result.family, 6);
+  assert.equal(result.address, "1.0.0.1");
+  assert.equal(result.family, 4);
 });

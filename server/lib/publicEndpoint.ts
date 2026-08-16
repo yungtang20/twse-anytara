@@ -100,14 +100,15 @@ export async function resolvePublicHttpsEndpoint(
   if (answers.some((answer) => isForbiddenAddress(answer.address, answer.family))) {
     throw new PublicEndpointError("provider_dns_forbidden");
   }
+  const selected = answers.find((answer) => answer.family === 4) ?? answers[0];
 
   const baseUrl = `${url.origin}/v1`;
   return {
     baseUrl,
     chatCompletionsUrl: `${baseUrl}/chat/completions`,
     modelsUrl: `${baseUrl}/models`,
-    address: answers[0].address,
-    family: answers[0].family,
+    address: selected.address,
+    family: selected.family,
     servername: hostname,
   };
 }
