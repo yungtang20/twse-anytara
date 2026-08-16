@@ -134,9 +134,14 @@ async function requestJson(
           "Content-Length": String(Buffer.byteLength(encodedBody)),
         } : {}),
       },
-      lookup: ((_hostname: string, _lookupOptions: unknown,
-        callback: (error: NodeJS.ErrnoException | null, address: string, family: 4 | 6) => void) => {
-        callback(null, endpoint.address, endpoint.family);
+      lookup: ((_hostname: string, lookupOptions: { all?: boolean } | undefined,
+        callback: (error: NodeJS.ErrnoException | null,
+          address: string | Array<{ address: string; family: 4 | 6 }>, family?: 4 | 6) => void) => {
+        if (lookupOptions?.all) {
+          callback(null, [{ address: endpoint.address, family: endpoint.family }]);
+        } else {
+          callback(null, endpoint.address, endpoint.family);
+        }
       }) as RequestOptions["lookup"],
     };
 
