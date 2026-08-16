@@ -278,7 +278,7 @@ export function KlineChart({
 
   const supportResistanceLines = useMemo(
     () => buildSupportResistanceLines(aggregatedData, endIdx),
-    [aggregatedData, endIdx, TREND_LINE_ALGORITHM_VERSION],
+    [aggregatedData, endIdx],
   );
 
   // 4. Construct the chart dataset

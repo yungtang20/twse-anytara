@@ -49,6 +49,81 @@ function client() {
   return supabase;
 }
 
+function boundedStockIds(stockIds: string[]): string[] {
+  const unique = [...new Set(stockIds.filter((stockId) => /^\d{4,6}$/.test(stockId)))];
+  if (unique.length > 250) throw new RangeError("A bulk cloud history request supports at most 250 stock IDs");
+  return unique;
+}
+
+export function normalizeCloudHistoryLimit(value: number, maximum: number): number {
+  if (!Number.isInteger(value) || value < 1 || value > maximum) {
+    throw new RangeError(`history limit must be an integer between 1 and ${maximum}`);
+  }
+  return value;
+}
+
+function decodeHistoryMap<T>(
+  payload: unknown,
+  field: "prices" | "rows",
+): Map<string, T[]> {
+  const result = new Map<string, T[]>();
+  if (!Array.isArray(payload)) throw new Error("Supabase bulk history response is not an array");
+  for (const entry of payload) {
+    if (!entry || typeof entry !== "object") throw new Error("Supabase bulk history entry is invalid");
+    const record = entry as Record<string, unknown>;
+    if (typeof record.stock_id !== "string" || !Array.isArray(record[field])) {
+      throw new Error("Supabase bulk history entry has an invalid contract");
+    }
+    result.set(record.stock_id, record[field] as T[]);
+  }
+  return result;
+}
+
+export async function fetchCloudPriceHistories(
+  stockIds: string[],
+  limit = 512,
+): Promise<Map<string, CloudPriceRow[]>> {
+  const ids = boundedStockIds(stockIds);
+  if (ids.length === 0) return new Map();
+  const historyLimit = normalizeCloudHistoryLimit(limit, 512);
+  const { data, error } = await client().rpc("stock_price_histories", {
+    stock_ids: ids,
+    history_limit: historyLimit,
+  });
+  if (error) throw new Error(error.message);
+  return decodeHistoryMap<CloudPriceRow>(data, "prices");
+}
+
+export async function fetchCloudInstitutionalHistories(
+  stockIds: string[],
+  limit = 30,
+): Promise<Map<string, CloudInstitutionalRow[]>> {
+  const ids = boundedStockIds(stockIds);
+  if (ids.length === 0) return new Map();
+  const historyLimit = normalizeCloudHistoryLimit(limit, 120);
+  const { data, error } = await client().rpc("stock_institutional_histories", {
+    stock_ids: ids,
+    history_limit: historyLimit,
+  });
+  if (error) throw new Error(error.message);
+  return decodeHistoryMap<CloudInstitutionalRow>(data, "rows");
+}
+
+export async function fetchCloudShareholdingHistories(
+  stockIds: string[],
+  limit = 12,
+): Promise<Map<string, CloudShareholdingRow[]>> {
+  const ids = boundedStockIds(stockIds);
+  if (ids.length === 0) return new Map();
+  const historyLimit = normalizeCloudHistoryLimit(limit, 52);
+  const { data, error } = await client().rpc("tdcc_shareholding_histories", {
+    stock_ids: ids,
+    history_limit: historyLimit,
+  });
+  if (error) throw new Error(error.message);
+  return decodeHistoryMap<CloudShareholdingRow>(data, "rows");
+}
+
 export async function fetchCloudPrices(stockId: string, limit = 512): Promise<CloudPriceRow[]> {
   const { data, error } = await client()
     .from("stock_price")

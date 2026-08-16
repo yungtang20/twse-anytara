@@ -12,7 +12,12 @@ export function SRPanel({ stockId, data: providedData }: SRPanelProps) {
 
   useEffect(() => {
     if (!stockId || providedData !== undefined) return;
-    fetchSRAnalysis(stockId).then(setLoadedData).catch(() => setLoadedData(null));
+    const controller = new AbortController();
+    setLoadedData(null);
+    fetchSRAnalysis(stockId, controller.signal)
+      .then((result) => { if (!controller.signal.aborted) setLoadedData(result); })
+      .catch(() => { if (!controller.signal.aborted) setLoadedData(null); });
+    return () => controller.abort();
   }, [stockId, providedData]);
 
   return (

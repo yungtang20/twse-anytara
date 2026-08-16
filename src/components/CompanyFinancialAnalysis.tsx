@@ -150,8 +150,9 @@ export function CompanyFinancialAnalysis({ stockId }: CompanyFinancialAnalysisPr
     const controller = new AbortController();
     setLoading(true);
     setError(null);
+    setData(null);
     fetchCompanyFinancialAnalysis(stockId, controller.signal)
-      .then(setData)
+      .then((result) => { if (!controller.signal.aborted) setData(result); })
       .catch((reason: unknown) => {
         if (controller.signal.aborted) return;
         setError(reason instanceof Error ? reason.message : "財務資料讀取失敗");

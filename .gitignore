@@ -23,6 +23,14 @@ paddleorc.py
 twstock/
 audit/
 docs/
+!docs/
+docs/*
+!docs/superpowers/
+docs/superpowers/*
+!docs/superpowers/specs/
+!docs/superpowers/plans/
+!docs/superpowers/specs/*.md
+!docs/superpowers/plans/*.md
 twse-anytara-temp/
 twsetwse-anytara-temp/
 twse-app/

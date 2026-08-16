@@ -1,183 +1,122 @@
-import React, { useState, useEffect } from 'react';
-import { Key, Eye, EyeOff, Save, CheckCircle2, RefreshCw } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { useState, type FormEvent } from "react";
+import { CheckCircle2, Eye, EyeOff, Key, Link2, RefreshCw, Save, Trash2 } from "lucide-react";
+import { testAIProviderConnection } from "../../lib/api";
+import {
+  clearAIProviderOverride,
+  loadAIProviderOverride,
+  readHcnsecPrivacyAccepted,
+  saveAIProviderOverride,
+  setHcnsecPrivacyAccepted,
+} from "../../lib/aiProviderSettings";
+
+type Status = { kind: "success" | "error"; message: string } | null;
+
+const inputClass = "mt-1 w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3 py-2.5 font-mono text-sm text-slate-200 outline-none focus:border-blue-500";
 
 export function SettingsView() {
-  const [finmindApiKey, setFinmindApiKey] = useState('');
-  const [aiResearchApiKey, setAiResearchApiKey] = useState('');
-  const [hasFinmindKey, setHasFinmindKey] = useState(false);
-  const [hasAiResearchKey, setHasAiResearchKey] = useState(false);
+  const initial = loadAIProviderOverride();
+  const [baseUrl, setBaseUrl] = useState(initial.baseUrl ?? "");
+  const [apiKey, setApiKey] = useState(initial.apiKey ?? "");
+  const [model, setModel] = useState(initial.model ?? "");
+  const [privacyAccepted, setPrivacyAccepted] = useState(readHcnsecPrivacyAccepted);
+  const [showKey, setShowKey] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [status, setStatus] = useState<Status>(null);
 
-  const [showFinmind, setShowFinmind] = useState(false);
-  const [showAiResearch, setShowAiResearch] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
-
-  useEffect(() => {
-    fetchCurrentSettings();
-  }, []);
-
-  const fetchCurrentSettings = async () => {
-    try {
-      const res = await fetch('/api/settings');
-      if (res.ok) {
-        const data = await res.json();
-        setHasFinmindKey(Boolean(data.hasFinmindKey));
-        setHasAiResearchKey(Boolean(data.hasAiResearchKey));
-      }
-    } catch (error) {
-      console.error('Fetch settings error:', error);
-    }
+  const persist = () => {
+    saveAIProviderOverride({ baseUrl, apiKey, model });
+    setHcnsecPrivacyAccepted(privacyAccepted);
   };
 
-  const handleSaveSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSaving(true);
-    setSaveStatus('idle');
+  const save = (event: FormEvent) => {
+    event.preventDefault();
+    persist();
+    setStatus({ kind: "success", message: "個人 AI 設定已儲存於本次工作階段" });
+  };
 
+  const clear = () => {
+    clearAIProviderOverride();
+    setHcnsecPrivacyAccepted(false);
+    setBaseUrl(""); setApiKey(""); setModel(""); setPrivacyAccepted(false);
+    setStatus({ kind: "success", message: "已清除個人設定，將使用免費 HCNSEC" });
+  };
+
+  const test = async () => {
+    persist();
+    setTesting(true); setStatus(null);
     try {
-      const body: Record<string, string> = {};
-      if (finmindApiKey.trim()) body.finmindApiKey = finmindApiKey.trim();
-      if (aiResearchApiKey.trim()) body.aiResearchApiKey = aiResearchApiKey.trim();
-
-      const res = await fetch('/api/settings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) throw new Error('儲存設定失敗');
-      
-      setSaveStatus('success');
-      setFinmindApiKey('');
-      setAiResearchApiKey('');
-      await fetchCurrentSettings();
+      const result = await testAIProviderConnection();
+      setStatus({ kind: "success", message: `連線成功，可用模型 ${result.modelCount} 個` });
     } catch (error) {
-      console.error('Save settings failed:', error);
-      setSaveStatus('error');
+      const message = error instanceof Error ? error.message : "ai_provider_test_failed";
+      setStatus({ kind: "error", message: `連線失敗：${message}` });
     } finally {
-      setIsSaving(false);
-      setTimeout(() => setSaveStatus('idle'), 3000);
+      setTesting(false);
     }
   };
 
-  return (
-    <div className="w-full max-w-3xl mx-auto py-2 px-1" id="settings-view-container">
-      <div className="mb-3 text-center">
-        <h2 className="text-2xl font-bold text-white tracking-tight mb-2">系統 API 金鑰設定</h2>
-        <p className="text-slate-400 text-sm">
-          金鑰只會寫入本機 .env，伺服器不會再把明文金鑰回傳到瀏覽器或存進 Supabase。
-        </p>
+  return <div className="mx-auto w-full max-w-3xl space-y-4 py-2" id="settings-view-container">
+    <header className="text-center">
+      <h2 className="text-2xl font-bold text-white">AI 連線設定</h2>
+      <p className="mt-2 text-sm text-slate-400">
+        欄位留空即使用免費 HCNSEC；個人設定只保存在目前分頁的 sessionStorage，關閉分頁後即清除。
+      </p>
+    </header>
+
+    <form onSubmit={save} className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/70 p-4 shadow-xl">
+      <div className="rounded-xl border border-blue-500/25 bg-blue-500/5 p-3 text-sm text-blue-100">
+        <p className="font-semibold">預設模式：免費 HCNSEC</p>
+        <p className="mt-1 text-xs text-slate-400">Base URL、API Key、Model 都留空即可。伺服器端預設金鑰不會傳到瀏覽器。</p>
       </div>
 
-      <form onSubmit={handleSaveSettings} className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-3 md:p-4 space-y-3 backdrop-blur-md shadow-xl" id="settings-form">
-        <div className="space-y-3">
-          {/* Finmind API Key */}
-          <div className="space-y-1.5">
-            <div className="flex justify-between items-center">
-              <label className="text-sm font-medium text-slate-200 flex items-center gap-2">
-                <Key size={16} className="text-blue-400" />
-                FinMind API Token {hasFinmindKey && <span className="text-emerald-400 text-xs">（已設定）</span>}
-              </label>
-              <a 
-                href="https://finmindtrade.com/" 
-                target="_blank" 
-                referrerPolicy="no-referrer"
-                className="text-xs text-blue-400 hover:underline"
-              >
-                獲取 Token
-              </a>
-            </div>
-            <div className="relative">
-              <input 
-                id="finmind-key-input"
-                type={showFinmind ? "text" : "password"} 
-                value={finmindApiKey}
-                onChange={(e) => setFinmindApiKey(e.target.value)}
-                placeholder={hasFinmindKey ? "留空以保留現有金鑰" : "請輸入 FinMind API 金鑰"}
-                className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-3 pr-10 py-2 text-sm text-slate-300 font-mono focus:outline-none focus:border-blue-500 transition-colors"
-              />
-              <button
-                type="button"
-                onClick={() => setShowFinmind(!showFinmind)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
-              >
-                {showFinmind ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
-            <p className="text-xs text-slate-500">
-              用於抓取台灣股市日K線、三大法人籌碼、融資融券等公開歷史數據。
-            </p>
-          </div>
+      <label className="block text-sm text-slate-200" htmlFor="ai-provider-base-url">
+        <span className="flex items-center gap-2"><Link2 size={16} />Base URL（選填）</span>
+        <input id="ai-provider-base-url" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)}
+          placeholder="例如 https://provider.example/v1" autoComplete="url" className={inputClass} />
+      </label>
 
-          {/* AI Research Router API Key */}
-          <div className="space-y-1.5">
-            <div className="flex justify-between items-center">
-              <label className="text-sm font-medium text-slate-200 flex items-center gap-2">
-                <Key size={16} className="text-indigo-400" />
-                AI Research API Key {hasAiResearchKey && <span className="text-emerald-400 text-xs">（已設定）</span>}
-              </label>
-              <span className="text-xs text-indigo-400">Router / glm-5.2</span>
-            </div>
-            <div className="relative">
-              <input 
-                id="ai-research-key-input"
-                type={showAiResearch ? "text" : "password"}
-                value={aiResearchApiKey}
-                onChange={(e) => setAiResearchApiKey(e.target.value)}
-                placeholder={hasAiResearchKey ? "留空以保留現有金鑰" : "請輸入 AI Research API Key"}
-                className="w-full bg-slate-950/80 border border-slate-800 rounded-xl pl-3 pr-10 py-2 text-sm text-slate-300 font-mono focus:outline-none focus:border-indigo-500 transition-colors"
-              />
-              <button
-                type="button"
-                onClick={() => setShowAiResearch(!showAiResearch)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
-              >
-                {showAiResearch ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
-            <p className="text-xs text-slate-500">
-              AI 綜合研究固定使用 Router 供應商與 glm-5.2 模型；端點與模型不可由瀏覽器修改。
-            </p>
-          </div>
-        </div>
-
-        <div className="pt-2">
-          <button 
-            type="submit"
-            disabled={isSaving}
-            className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-500 text-white font-medium py-2 rounded-xl flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-600/15 cursor-pointer hover:-translate-y-0.5 active:translate-y-0"
-          >
-            {isSaving ? (
-              <>
-                <RefreshCw className="animate-spin" size={18} />
-                <span>儲存中...</span>
-              </>
-            ) : (
-              <>
-                <Save size={18} />
-                <span>儲存金鑰設定</span>
-              </>
-            )}
+      <label className="block text-sm text-slate-200" htmlFor="ai-provider-key">
+        <span className="flex items-center gap-2"><Key size={16} />API Key（選填）</span>
+        <span className="relative block">
+          <input id="ai-provider-key" type={showKey ? "text" : "password"} value={apiKey}
+            onChange={(event) => setApiKey(event.target.value)} placeholder="使用個人供應商時填入"
+            autoComplete="off" className={`${inputClass} pr-11`} />
+          <button type="button" aria-label={showKey ? "隱藏 API Key" : "顯示 API Key"}
+            onClick={() => setShowKey((value) => !value)}
+            className="absolute right-3 top-1/2 mt-0.5 -translate-y-1/2 text-slate-500 hover:text-slate-200">
+            {showKey ? <EyeOff size={17} /> : <Eye size={17} />}
           </button>
+        </span>
+      </label>
 
-          <AnimatePresence>
-            {saveStatus === 'success' && (
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                className="mt-4 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl flex items-center gap-2 text-emerald-400 text-sm justify-center"
-              >
-                <CheckCircle2 size={16} />
-                金鑰已成功儲存！報告引擎已就緒。
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </form>
-    </div>
-  );
+      <label className="block text-sm text-slate-200" htmlFor="ai-provider-model">
+        Model（選填）
+        <input id="ai-provider-model" value={model} onChange={(event) => setModel(event.target.value)}
+          placeholder="留空使用供應商預設模型" autoComplete="off" className={inputClass} />
+      </label>
+
+      <label className="flex items-start gap-2 rounded-xl border border-amber-500/25 bg-amber-500/5 p-3 text-xs text-amber-100">
+        <input type="checkbox" checked={privacyAccepted}
+          onChange={(event) => setPrivacyAccepted(event.target.checked)} className="mt-0.5" />
+        <span>我了解：HCNSEC 表示可能至少保留 180 天的請求時間、IP、裝置資料、提示內容與回應內容。我不會傳送個人資料、機密資訊、身分驗證資訊或未公開商業資訊，並同意將研究資料傳送給第三方 HCNSEC。</span>
+      </label>
+
+      <div className="grid gap-2 sm:grid-cols-3">
+        <button type="submit" className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-blue-500">
+          <Save size={17} />儲存至本次工作階段
+        </button>
+        <button type="button" onClick={() => void test()} disabled={testing}
+          className="flex items-center justify-center gap-2 rounded-xl border border-emerald-500/40 px-3 py-2.5 text-sm text-emerald-200 disabled:opacity-50">
+          {testing ? <RefreshCw className="animate-spin" size={17} /> : <CheckCircle2 size={17} />}測試連線
+        </button>
+        <button type="button" onClick={clear}
+          className="flex items-center justify-center gap-2 rounded-xl border border-slate-700 px-3 py-2.5 text-sm text-slate-300 hover:bg-slate-800">
+          <Trash2 size={17} />清除個人設定
+        </button>
+      </div>
+
+      {status && <p role="status" className={`rounded-xl p-3 text-sm ${status.kind === "success"
+        ? "bg-emerald-500/10 text-emerald-300" : "bg-rose-500/10 text-rose-200"}`}>{status.message}</p>}
+    </form>
+  </div>;
 }

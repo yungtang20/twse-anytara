@@ -13,4 +13,5 @@ jobs:
       - name: Explain TDCC synchronization boundaries
         run: |
           echo "The daily workflow owns current official TDCC open-data synchronization."
-          echo "Historical 52-week backfill remains local-first and requires explicit approval."
+          echo "Historical 52-week backfill is not automated by this workflow and requires explicit approval."
+          echo "Local SQLite must not be used as a production cloud-backfill source."

@@ -90,6 +90,18 @@ test("production adapter maps controlled cloud readers without real network or D
     clock: () => new Date("2026-08-02T00:00:00.000Z"),
   });
   assert.equal((await noDateAdapter.runStrategy("2330", "sr")).date, null);
+
+  readers.readTradeRisks = async () => [
+    { risk_level: "critical", is_active: true, start_date: "2026-01-01", end_date: "2026-08-01", source_updated_at: "2026-08-01T00:00:00Z", announced_date: null },
+    { risk_level: "high", is_active: true, start_date: "2026-08-03", end_date: null, source_updated_at: "2026-08-01T00:00:00Z", announced_date: null },
+    { risk_level: "medium", is_active: true, start_date: "2026-08-02", end_date: null, source_updated_at: "2026-08-02T00:00:00Z", announced_date: null },
+    { risk_level: "critical", is_active: false, start_date: "2026-08-01", end_date: null, source_updated_at: "2026-08-02T00:00:00Z", announced_date: null },
+  ];
+  const riskAdapter = module.createCloudResearchContextAdapter({
+    readers,
+    clock: () => new Date("2026-08-02T00:00:00.000Z"),
+  });
+  assert.equal((await riskAdapter.readTradeRisks("2330")).data.highestLevel, "medium");
 });
 
 test("FinMind child datasets retain independent provenance through the context", async () => {

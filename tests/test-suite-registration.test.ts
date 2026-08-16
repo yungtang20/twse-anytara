@@ -43,15 +43,31 @@ test("npm test registers every cloud SQLite boundary suite", async () => {
     "ai-research-valuation.test.ts",
     "ai-research-recommendation-ui.test.ts",
     "tdcc-cloud-sync.test.ts",
+    "legacy-framework-analysis-boundary.test.ts",
+    "ai-provider-connection.test.ts",
+    "public-endpoint.test.ts",
+    "openai-compatible-transport.test.ts",
+    "ai-abuse-guard.test.ts",
+    "maintenance-execution-guard.test.ts",
+    "supabase-blank-replay.test.ts",
+    "production-runtime.test.ts",
   ]) {
     assert.match(command, new RegExp(`tests/${suite.replaceAll(".", "\\.")}`));
   }
 });
 
 test("CI explicitly runs typecheck and the registered npm test suite", async () => {
+  const pkg = JSON.parse(await read("package.json")) as { scripts?: Record<string, string> };
+  assert.equal(pkg.scripts?.lint, "eslint . --max-warnings=0");
+  assert.equal(pkg.scripts?.["test:ui"], "vitest run");
   const workflow = await read(".github/workflows/ci.yml");
   assert.match(workflow, /run:\s*npm run typecheck/);
+  assert.match(workflow, /run:\s*npm run lint/);
   assert.match(workflow, /run:\s*npm test/);
+  assert.match(workflow, /run:\s*npm run test:ui/);
+  assert.match(workflow, /supabase-blank-replay:/);
+  assert.match(workflow, /supabase@2\.114\.0 db reset/);
+  assert.match(workflow, /verify:supabase-security -- --local/);
 });
 
 test("README documents only cloud and test data modes", async () => {

@@ -10,11 +10,11 @@ interface SidebarProps {
 export function Sidebar({ currentView, onViewChange }: SidebarProps) {
   return (
     <aside className="flex min-h-screen w-full min-w-0 flex-col overflow-hidden bg-slate-900 border-r border-slate-800">
-      <div className="h-12 flex items-center px-3 border-b border-slate-800 cursor-pointer" onClick={() => onViewChange("markets")}>
+      <button type="button" aria-label="前往市場分析" className="h-12 flex w-full items-center px-3 border-b border-slate-800 text-left" onClick={() => onViewChange("markets")}>
         <h1 className="text-lg font-bold bg-gradient-to-r from-blue-400 to-indigo-500 bg-clip-text text-transparent tracking-tight">
           TRINITY
         </h1>
-      </div>
+      </button>
       <nav className="flex-1 px-2 py-3 space-y-1">
         <NavItem id="dashboard" icon={<LayoutDashboard size={18} />} label="儀表板" active={currentView === "dashboard"} onClick={() => onViewChange("dashboard")} />
         <NavItem id="markets" icon={<TrendingUp size={18} />} label="市場分析" active={currentView === "markets"} onClick={() => onViewChange("markets")} />
@@ -35,8 +35,10 @@ export function Sidebar({ currentView, onViewChange }: SidebarProps) {
 function NavItem({ id, icon, label, active = false, onClick }: { id: AppView; icon: React.ReactNode; label: string; active?: boolean; onClick: () => void }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       title={label}
+      aria-current={active ? "page" : undefined}
       className={`w-full min-w-0 flex items-center gap-2 px-2 py-2 rounded-lg text-xs font-medium transition-colors ${
         active
           ? "bg-blue-500/10 text-blue-400"

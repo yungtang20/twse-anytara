@@ -8,8 +8,9 @@ This document specifies mandatory coding patterns, styling parameters, system co
 - Native Icons: All icon widgets must be imported exclusively from lucide-react. No custom SVG elements.
 
 ## 2. Database Restrictions & Code Safety
-- Single-Database Authority: All local persistent structures must reside in the unified SQLite DB file at twstock/taiwan_stock_unified.db. No parallel databases.
-- Better-SQLite3 WAL Mode: Always utilize write-ahead-logging (WAL) to ensure reliable connections and avoid locked databases during heavy crawls.
+- Production Cloud Authority: The deployed web runtime reads and writes approved cloud data through Supabase and server-side external providers. It must not open or depend on a local persistent SQLite database.
+- Test-Only SQLite: `MARKET_DATA_MODE=test` may use SQLite only under the operating-system temporary directory. It must never point to a production or sibling-project database.
+- Cloud Backfill Boundary: Local SQLite is not a production authority and must not be used as a cloud-backfill source.
 - Input Boundaries Verification: Check parameters at trust borders (API route parameters, query variables) and handle errors cleanly to prevent runtime crashes.
 
 ## 3. State Management & Side-Effects in React

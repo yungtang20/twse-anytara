@@ -58,7 +58,16 @@ function Row({ item, onSelectStock, children }: {
   return (
     <tr
       onClick={() => onSelectStock(item)}
-      className="cursor-pointer border-b border-slate-800/50 transition-colors hover:bg-blue-500/5"
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onSelectStock(item);
+        }
+      }}
+      role="link"
+      tabIndex={0}
+      aria-label={`查看 ${item.stock_id} ${item.stock_name}`}
+      className="cursor-pointer border-b border-slate-800/50 transition-colors hover:bg-blue-500/5 focus:bg-blue-500/10 focus:outline-none focus:ring-1 focus:ring-inset focus:ring-blue-400"
     >{children}</tr>
   );
 }
@@ -72,8 +81,22 @@ interface SortableColumn<T> {
 }
 
 function compareSortValues(left: SortValue, right: SortValue): number {
-  if (typeof left === 'string') return left.localeCompare(String(right ?? ''), 'zh-Hant', { numeric: true });
-  return Number(left ?? 0) - Number(right ?? 0);
+  if (typeof left === 'string') return left.localeCompare(String(right), 'zh-Hant', { numeric: true });
+  return Number(left) - Number(right);
+}
+
+function formatOptionalPercent(value: number | null | undefined) {
+  return value == null ? '--' : `${value.toFixed(2)}%`;
+}
+
+function formatSigned(value: number | null | undefined, suffix: string, digits: number) {
+  if (value == null) return '--';
+  return `${value > 0 ? '+' : ''}${digits === 0 ? value.toLocaleString() : value.toFixed(digits)}${suffix}`;
+}
+
+function signedColor(value: number | null | undefined) {
+  if (value == null || value === 0) return 'text-slate-500';
+  return value > 0 ? 'text-red-400' : 'text-emerald-400';
 }
 
 function SortableTable<T extends { stock_id: string; stock_name: string }>({
@@ -89,7 +112,11 @@ function SortableTable<T extends { stock_id: string; stock_name: string }>({
   const [ascending, setAscending] = useState(defaultAscending);
   const selectedColumn = columns.find((column) => column.key === sortKey) || columns[0];
   const sortedItems = [...items].sort((left, right) => {
-    const comparison = compareSortValues(selectedColumn.value(left), selectedColumn.value(right));
+    const leftValue = selectedColumn.value(left);
+    const rightValue = selectedColumn.value(right);
+    if (leftValue == null) return rightValue == null ? 0 : 1;
+    if (rightValue == null) return -1;
+    const comparison = compareSortValues(leftValue, rightValue);
     return ascending ? comparison : -comparison;
   });
   const changeSort = (key: string) => {
@@ -100,7 +127,7 @@ function SortableTable<T extends { stock_id: string; stock_name: string }>({
   return <div className="max-w-full overflow-x-auto rounded-lg border border-slate-800">
     <table className="w-auto min-w-[660px] text-xs font-mono">
       <thead><tr className="border-b border-slate-800 bg-slate-950/70">
-        {columns.map((column) => <th key={column.key} className={thClass}>
+        {columns.map((column) => <th key={column.key} className={thClass} aria-sort={sortKey === column.key ? (ascending ? 'ascending' : 'descending') : 'none'}>
           <button type="button" onClick={() => changeSort(column.key)} className="flex items-center gap-1 hover:text-cyan-300">
             {column.label}<span className="w-2 text-cyan-400">{sortKey === column.key ? ascending ? '↑' : '↓' : ''}</span>
           </button>
@@ -149,10 +176,10 @@ function ChipsTable({ items, onSelectStock }: { items: ChipsScanItem[]; onSelect
       { key: 'close', label: '收盤', value: (item) => item.close, render: (item) => <div className={`${cellClass} text-left text-yellow-400`}>{item.close.toFixed(2)}</div> },
       { key: 'volume', label: '量(張)', value: (item) => item.volume, render: (item) => <div className={`${cellClass} text-left text-green-400`}>{item.volume.toLocaleString()}</div> },
       { key: 'amount', label: '額(億)', value: (item) => item.amount, render: (item) => <div className={`${cellClass} text-left text-yellow-300`}>{item.amount.toFixed(2)}</div> },
-      { key: 'whaleRatio', label: '大戶比率', value: (item) => item.whaleRatio, render: (item) => <div className={`${cellClass} text-left text-purple-400`}>{item.whaleRatio?.toFixed(2)}%</div> },
-      { key: 'whaleChange', label: '比率增減', value: (item) => item.whaleChange, render: (item) => <div className={`${cellClass} text-left text-red-400`}>+{item.whaleChange?.toFixed(2)}%</div> },
-      { key: 'totalPeople', label: '股東人數', value: (item) => item.totalPeople, render: (item) => <div className={`${cellClass} text-left text-white`}>{item.totalPeople?.toLocaleString()}</div> },
-      { key: 'peopleChange', label: '人數增減', value: (item) => item.peopleChange, render: (item) => <div className={`${cellClass} text-left text-emerald-400`}>{item.peopleChange?.toLocaleString()}</div> },
+      { key: 'whaleRatio', label: '大戶比率', value: (item) => item.whaleRatio, render: (item) => <div className={`${cellClass} text-left text-purple-400`}>{formatOptionalPercent(item.whaleRatio)}</div> },
+      { key: 'whaleChange', label: '比率增減', value: (item) => item.whaleChange, render: (item) => <div className={`${cellClass} text-left ${signedColor(item.whaleChange)}`}>{formatSigned(item.whaleChange, '%', 2)}</div> },
+      { key: 'totalPeople', label: '股東人數', value: (item) => item.totalPeople, render: (item) => <div className={`${cellClass} text-left text-white`}>{item.totalPeople == null ? '--' : item.totalPeople.toLocaleString()}</div> },
+      { key: 'peopleChange', label: '人數增減', value: (item) => item.peopleChange, render: (item) => <div className={`${cellClass} text-left ${signedColor(item.peopleChange)}`}>{formatSigned(item.peopleChange, '', 0)}</div> },
     ];
     return <SortableTable items={items} columns={columns} defaultSortKey="whaleChange" defaultAscending={false} onSelectStock={onSelectStock} />;
   }

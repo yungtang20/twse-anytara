@@ -11,11 +11,14 @@ export function PatternPanel({ stockId }: PatternPanelProps) {
 
   useEffect(() => {
     if (!stockId) return;
+    const controller = new AbortController();
     setLoading(true);
-    fetchPatternAnalysis(stockId)
-      .then(setData)
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
+    setData(null);
+    fetchPatternAnalysis(stockId, controller.signal)
+      .then((result) => { if (!controller.signal.aborted) setData(result); })
+      .catch(() => { if (!controller.signal.aborted) setData(null); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
   }, [stockId]);
 
   return (

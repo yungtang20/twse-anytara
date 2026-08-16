@@ -48,12 +48,12 @@ function InstitutionalHoldingsCard({ stockId, institutional, shareholding }: Chi
   const [data, setData] = useState<InstitutionalHoldingSnapshot | null>(null);
   const [unavailable, setUnavailable] = useState(false);
   useEffect(() => {
-    let active = true;
+    const controller = new AbortController();
     setData(null); setUnavailable(false);
-    fetchInstitutionalHoldings(stockId)
-      .then((value) => { if (active) setData(value); })
-      .catch(() => { if (active) setUnavailable(true); });
-    return () => { active = false; };
+    fetchInstitutionalHoldings(stockId, controller.signal)
+      .then((value) => { if (!controller.signal.aborted) setData(value); })
+      .catch(() => { if (!controller.signal.aborted) setUnavailable(true); });
+    return () => controller.abort();
   }, [stockId]);
   if (unavailable) return <div className="rounded-lg border border-slate-800 p-2 text-slate-500">法人持股狀態暫無資料</div>;
   if (!data) return <div className="rounded-lg border border-slate-800 p-2 text-slate-500">法人持股狀態載入中…</div>;
@@ -155,16 +155,21 @@ export function ChipsPanel({ stockId }: { stockId: string }) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    let active = true;
+    const controller = new AbortController();
     setLoading(true);
-    Promise.all([fetchStockInstitutional(stockId), fetchStockShareholding(stockId)])
+    setInstitutional([]);
+    setShareholding([]);
+    Promise.all([
+      fetchStockInstitutional(stockId, controller.signal),
+      fetchStockShareholding(stockId, controller.signal),
+    ])
       .then(([institutions, holders]) => {
-        if (!active) return;
+        if (controller.signal.aborted) return;
         setInstitutional(institutions.data); setShareholding(holders.data);
       })
-      .catch(() => { if (active) { setInstitutional([]); setShareholding([]); } })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+      .catch(() => { if (!controller.signal.aborted) { setInstitutional([]); setShareholding([]); } })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
   }, [stockId]);
 
   return loading

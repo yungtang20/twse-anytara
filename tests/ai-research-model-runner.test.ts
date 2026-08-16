@@ -8,6 +8,31 @@ import { gateResearchPublication } from "../server/lib/aiResearchPublicationGate
 import { hydrateAIResearchSelection } from "../server/lib/aiResearchSelectionContract.js";
 import { buildAIResearchFindingCatalog } from "../server/lib/aiResearchFindingCatalog.js";
 import { investmentPacket } from "./helpers/ai-research-investment-fixtures.js";
+import type { ResolvedAIProviderConnection } from "../shared/aiProvider.js";
+
+const providerConnection: ResolvedAIProviderConnection = {
+  source: "default",
+  apiKey: "test-provider-key",
+  baseUrl: "https://api.hcnsec.cn/v1",
+  model: "auto",
+  maxOutputTokens: 65_536,
+  privacyAccepted: true,
+};
+
+test("model runner forwards the resolved provider connection to its gateway", async () => {
+  const packet = await investmentPacket();
+  let observed: ResolvedAIProviderConnection | undefined;
+  const gateway = { async generateCandidate(_request: unknown, options: {
+    signal?: AbortSignal; connection?: ResolvedAIProviderConnection;
+  }) {
+    observed = options.connection;
+    throw new AIResearchModelGatewayError("network");
+  } };
+  const result = await new AIResearchModelRunner(gateway, auditResearchReport)
+    .generateAudited(buildAIResearchModelRequest(packet), packet, { connection: providerConnection });
+  assert.equal(observed, providerConnection);
+  assert.equal(result.error, "ai_research_provider_unavailable");
+});
 
 test("single model runner makes one provider call and passes a schema candidate through Auditor", async () => {
   const packet = await investmentPacket();

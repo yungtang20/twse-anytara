@@ -3,7 +3,7 @@ import dotenv from "dotenv";
 import express from "express";
 import { once } from "events";
 import apiRouter from "../server/routes";
-import { fetchAnalysisSnapshot } from "../server/mvpMcpRoutes";
+import { fetchAnalysisSnapshot } from "../server/lib/legacyFrameworkAnalysis";
 import { createSupabaseAdminClient } from "./lib/supabaseAdmin";
 
 dotenv.config();
@@ -58,15 +58,35 @@ async function run() {
     throw new Error(`Anonymous market-data read failed: ${publicReadError?.message || "no data"}`);
   }
 
-  const { error: publicWriteError } = await publicClient
+  const { data: writeTarget, error: writeTargetError } = await admin
     .from("stock_meta")
-    .insert({
-      stock_id: "RLS_TEST",
-      stock_name: "must_not_write",
-      market: "TSE",
-      source: "verification",
-    });
-  if (!publicWriteError) throw new Error("Anonymous write unexpectedly succeeded");
+    .select("stock_id,stock_name")
+    .eq("stock_id", publicPrice.stock_id)
+    .maybeSingle();
+  if (writeTargetError || !writeTarget) {
+    throw new Error(`Cannot prepare anonymous-write probe: ${writeTargetError?.message || "stock metadata missing"}`);
+  }
+  const marker = `rls_probe_${Date.now()}`;
+  let anonymousWriteSucceeded = false;
+  try {
+    const { data: publicWriteData, error: publicWriteError } = await publicClient
+      .from("stock_meta")
+      .update({ stock_name: marker })
+      .eq("stock_id", writeTarget.stock_id)
+      .select("stock_id,stock_name");
+    anonymousWriteSucceeded = !publicWriteError
+      && Array.isArray(publicWriteData)
+      && publicWriteData.some((row) => row.stock_id === writeTarget.stock_id && row.stock_name === marker);
+    if (anonymousWriteSucceeded) throw new Error("Anonymous write unexpectedly succeeded");
+  } finally {
+    if (anonymousWriteSucceeded) {
+      const { error: restoreError } = await admin
+        .from("stock_meta")
+        .update({ stock_name: writeTarget.stock_name })
+        .eq("stock_id", writeTarget.stock_id);
+      if (restoreError) throw new Error(`Anonymous-write probe cleanup failed: ${restoreError.message}`);
+    }
+  }
 
   const dashboardCards: Record<string, number> = {};
   for (const card of ["movers", "recent_dividend", "trust_buy_2day", "break_ma200", "limit_up_yesterday"]) {

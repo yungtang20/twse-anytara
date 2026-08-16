@@ -20,7 +20,7 @@ import { runMigrations } from "../server/lib/migrations";
 import { fetchWithOneRetry } from "../server/lib/fetchRetry";
 import { withAbortSignal } from "../server/lib/mcpClient";
 import { createJobDedupeKey, mapWithConcurrency } from "../server/lib/jobQueue";
-import { selectFinMindDatasetNames } from "../server/mvpMcpRoutes";
+import { selectFinMindDatasetNames } from "../server/lib/legacyFrameworkAnalysis";
 import {
   filterTdccRecordsByEligibleStocks,
   classifyTdccCleanupCandidates,
@@ -43,7 +43,7 @@ import {
   TRADE_RISK_POLICY_ERROR, type StoredTradeRisk,
 } from "../server/lib/tradeRisks";
 import { listPendingCalendarDates } from "../scripts/lib/syncDates";
-import { sortTrustBuyByDays } from "../server/routes/dashboard";
+import { applyConsecutiveTrustDays, sortTrustBuyByDays } from "../server/routes/dashboard";
 import { buildSimulatedPriceProjection } from "../server/lib/priceProjection";
 import { analyzeChartPattern } from "../server/lib/patternStrategy";
 import { DEFAULT_NVIDIA_MODEL, NVIDIA_BASE_URL, nvidiaModel } from "../server/lib/nvidiaAi";
@@ -200,7 +200,11 @@ const recovered = await failureCache.load(cacheRequest, async () => { failedCach
 assert.equal(recovered.status, "miss");
 assert.equal(failedCacheLoads, 2, "failed FinMind responses must not be cached as data");
 
-for (const runtimeFile of ["server/lib/finmindCache.ts", "server/mvpMcpRoutes.ts", "server/routes/fundamentals.ts"]) {
+for (const runtimeFile of [
+  "server/lib/finmindCache.ts",
+  "server/lib/legacyFrameworkAnalysis.ts",
+  "server/routes/fundamentals.ts",
+]) {
   const source = readFileSync(path.join(process.cwd(), runtimeFile), "utf8");
   assert.equal(source.includes("stock_dataset_cache"), false, `${runtimeFile} must not access Supabase stock_dataset_cache`);
 }
@@ -323,7 +327,9 @@ assert.match(marketWorkflowSource, /scripts\/dispatchDailySync\.ts/);
 assert.match(marketWorkflowSource, /scripts\/syncOfficialTdccCloud\.ts --execute/);
 assert.match(marketWorkflowSource, /SYNC_SCOPE: market/);
 assert.doesNotMatch(tdccWorkflowSource, /cron:/, "cloud-only TDCC schedule must remain disabled");
-assert.match(tdccWorkflowSource, /Historical 52-week backfill remains local-first/);
+assert.match(tdccWorkflowSource, /Historical 52-week backfill is not automated[\s\S]*requires explicit approval/);
+assert.match(tdccWorkflowSource, /Local SQLite must not be used as a production cloud-backfill source/);
+assert.doesNotMatch(tdccWorkflowSource, /remains local-first/);
 assert.doesNotMatch(marketsViewSource, /\/api\/sync-status|\/api\/trigger-update/);
 assert.match(marketsViewSource, /Supabase 資料庫日期/);
 assert.equal(isOrdinaryStockId("2330"), true);
@@ -381,6 +387,20 @@ assert.deepEqual(
     { stock_id: "2027", trust_days: 6 },
     { stock_id: "2886", trust_days: 10 },
   ],
+);
+assert.deepEqual(
+  applyConsecutiveTrustDays(
+    [{ stock_id: "2330", trust_days: 9 }, { stock_id: "2317", trust_days: 9 }],
+    [
+      { stock_id: "2330", date: "2026-08-14", trust_net: 10 },
+      { stock_id: "2330", date: "2026-08-13", trust_net: 20 },
+      { stock_id: "2330", date: "2026-08-12", trust_net: -1 },
+      { stock_id: "2330", date: "2026-08-11", trust_net: 30 },
+      { stock_id: "2317", date: "2026-08-14", trust_net: 0 },
+    ],
+  ),
+  [{ stock_id: "2330", trust_days: 2 }, { stock_id: "2317", trust_days: 0 }],
+  "trust_days must count only the uninterrupted latest positive-buy streak",
 );
 assert.deepEqual(
   buildIntegratedMarketData(
@@ -647,12 +667,12 @@ assert.doesNotMatch(klineChartSource, /const CustomTooltip/);
 assert.match(klineChartSource, /<IndicatorValue label="MA25"/);
 assert.match(klineChartSource, /<IndicatorValue label="MA60"/);
 assert.match(klineChartSource, /<IndicatorValue label="MA200"/);
-const mvpRouteSource = readFileSync(
-  path.join(process.cwd(), "server", "mvpMcpRoutes.ts"),
+const legacyFrameworkAnalysisSource = readFileSync(
+  path.join(process.cwd(), "server", "lib", "legacyFrameworkAnalysis.ts"),
   "utf8",
 );
-assert.match(mvpRouteSource, /return token && failed \? request\(""\) : first/);
-assert.doesNotMatch(mvpRouteSource, /error: "missing_api_key"/);
+assert.match(legacyFrameworkAnalysisSource, /return token && failed \? request\(""\) : first/);
+assert.doesNotMatch(legacyFrameworkAnalysisSource, /error: "missing_api_key"/);
 assert.match(retentionMigrationSource, /offset \(price_rows - 1\)/);
 assert.match(volumeUnitMigrationSource, /set volume = volume \* 1000/);
 assert.match(volumeUnitMigrationSource, /volume < 1000000/);
@@ -1194,12 +1214,18 @@ try {
   const address = server.address();
   assert(address && typeof address === "object");
   const baseUrl = `http://127.0.0.1:${address.port}`;
-  const settings = await fetch(`${baseUrl}/api/settings`).then((response) => response.json()) as Record<string, unknown>;
+  process.env.TRINITY_ADMIN_TOKEN = "self-check-admin-token-0123456789";
+  const settings = await fetch(`${baseUrl}/api/settings`, {
+    headers: { "X-Trinity-Admin-Token": process.env.TRINITY_ADMIN_TOKEN },
+  }).then((response) => response.json()) as Record<string, unknown>;
   assert.equal(settings.success, true);
   for (const secret of ["nvidiaApiKey", "finmindApiKey", "webhookUrl"]) {
     assert.equal(Object.hasOwn(settings, secret), false, `/api/settings must not expose ${secret}`);
   }
-  const legacy = await fetch(`${baseUrl}/api/ai-analysis`, { method: "POST" });
+  const legacy = await fetch(`${baseUrl}/api/ai-analysis`, {
+    method: "POST",
+    headers: { "X-Trinity-Admin-Token": process.env.TRINITY_ADMIN_TOKEN },
+  });
   assert.equal(legacy.status, 410, "unsafe legacy AI route must stay retired");
   const etfResponse = await fetch(`${baseUrl}/api/stock/0050/history`);
   assert.equal(etfResponse.status, 400, "stock APIs must reject non-ordinary securities");
@@ -1233,12 +1259,12 @@ const policyRows: StoredTradeRisk[] = [
   { ...riskFixtureBase, id: 3, stock_id: "2317", risk_type: "trading_halt", risk_level: "critical", start_date: "2026-07-01", is_active: 1 },
 ];
 const filtered = applyTradeRiskPolicyRows(
-  [{ stock_id: "2330" }, { stock_id: "2454" }, { stock_id: "2317" }], policyRows,
+  [{ stock_id: "2330" }, { stock_id: "2454" }, { stock_id: "2317" }], policyRows, false, "2026-08-01",
 );
 assert.deepEqual(filtered.map((row) => row.stock_id), ["2330"]);
 assert.equal(filtered[0].riskFlags[0].action, "warn", "attention must warn without exclusion");
 assert.deepEqual(
-  applyTradeRiskPolicyRows([{ stock_id: "2454" }], policyRows, true).map((row) => row.stock_id),
+  applyTradeRiskPolicyRows([{ stock_id: "2454" }], policyRows, true, "2026-08-01").map((row) => row.stock_id),
   ["2454"], "disposition opt-in must preserve the candidate",
 );
 const ineffectiveRisks: StoredTradeRisk[] = [
@@ -1248,7 +1274,9 @@ const ineffectiveRisks: StoredTradeRisk[] = [
   { ...riskFixtureBase, id: 3, stock_id: "2317", risk_type: "attention", risk_level: "medium", start_date: "2026-07-01", end_date: "2026-07-31", is_active: 1 },
 ];
 assert.deepEqual(
-  applyTradeRiskPolicyRows([{ stock_id: "2330" }, { stock_id: "2454" }, { stock_id: "2317" }], ineffectiveRisks),
+  applyTradeRiskPolicyRows(
+    [{ stock_id: "2330" }, { stock_id: "2454" }, { stock_id: "2317" }], ineffectiveRisks, false, "2026-08-01",
+  ),
   [
     { stock_id: "2330", riskFlags: [] },
     { stock_id: "2454", riskFlags: [] },

@@ -20,8 +20,10 @@ export function BottomNav({ currentView, onViewChange }: BottomNavProps) {
     <nav className="md:hidden fixed bottom-0 left-0 right-0 h-[calc(4rem+env(safe-area-inset-bottom))] pb-[env(safe-area-inset-bottom)] bg-slate-900 border-t border-slate-800 flex items-center justify-around z-50">
       {navItems.map((item) => (
         <button
+          type="button"
           key={item.id}
           onClick={() => onViewChange(item.id as AppView)}
+          aria-current={currentView === item.id ? "page" : undefined}
           className={`flex flex-col items-center justify-center w-full h-16 space-y-1 transition-colors ${
             currentView === item.id 
               ? 'text-blue-400' 
