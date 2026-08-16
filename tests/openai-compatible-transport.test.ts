@@ -97,6 +97,16 @@ test("chat transport pins validated DNS and keeps TLS verification enabled", asy
       });
   });
   assert.deepEqual(pinned, { address: "1.1.1.1", family: 4 });
+
+  const pinnedAll = await new Promise<Array<{ address: string; family: number }>>((resolve, reject) => {
+    (lookup as unknown as (hostname: string, options: { all: true },
+      callback: (error: Error | null, addresses: Array<{ address: string; family: number }>) => void) => void)(
+      "ignored.example", { all: true }, (error, addresses) => {
+        if (error) reject(error);
+        else resolve(addresses);
+      });
+  });
+  assert.deepEqual(pinnedAll, [{ address: "1.1.1.1", family: 4 }]);
 });
 
 test("transport rejects redirects and oversized responses without leaking secrets", async () => {
