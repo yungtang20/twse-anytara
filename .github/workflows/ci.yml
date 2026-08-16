@@ -40,7 +40,10 @@ jobs:
           --env HCNSEC_API_KEY=ci-placeholder
           trinity-production-smoke:${{ github.sha }}
       - name: Verify production HTTP startup
-        run: curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://127.0.0.1:4317/
+        run: curl --fail --retry 20 --retry-delay 1 --retry-connrefused --retry-all-errors http://127.0.0.1:4317/
+      - name: Show production image logs on failure
+        if: failure()
+        run: docker logs trinity-production-smoke
       - name: Stop production image
         if: always()
         run: docker rm --force trinity-production-smoke || true
