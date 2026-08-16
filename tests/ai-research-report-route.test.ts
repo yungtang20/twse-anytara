@@ -255,6 +255,27 @@ test("provider probe fails closed before transport when HCNSEC privacy is not ac
   assert.equal(calls, 0);
 });
 
+test("provider probe logs only correlation and safe network codes", async () => {
+  const events: unknown[] = [];
+  const handler = createAIProviderTestHandler({
+    correlationId: () => "safe-correlation",
+    log: (event) => events.push(event),
+    probe: async () => {
+      throw new OpenAICompatibleTransportError("provider_network", "ECONNRESET");
+    },
+  });
+  const request = new FakeRequest("unused", "203.0.113.8");
+  const response = fakeResponse();
+  await handler(request as never, response.response);
+  assert.deepEqual(events, [{
+    event: "ai_provider_transport_error",
+    correlationId: "safe-correlation",
+    error: "provider_network",
+    networkCode: "ECONNRESET",
+  }]);
+  assert.doesNotMatch(JSON.stringify(events), /apiKey|secret|baseUrl|hcnsec/i);
+});
+
 test("report route maps every orchestrator failure to fixed HTTP errors", async () => {
   for (const [error, status] of [
     ["ai_research_stock_not_eligible", 422],

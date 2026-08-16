@@ -141,6 +141,28 @@ test("transport classifies provider status and invalid JSON with stable codes", 
   })), "provider_invalid_json");
 });
 
+test("network failures retain only a safe machine-readable cause code", async () => {
+  const request: TransportRequest = () => {
+    const req = new EventEmitter() as ClientRequest;
+    req.write = (() => true) as ClientRequest["write"];
+    req.end = (() => {
+      queueMicrotask(() => req.emit("error", Object.assign(new Error("socket detail"), {
+        code: "ECONNRESET",
+      })));
+      return req;
+    }) as ClientRequest["end"];
+    req.destroy = (() => req) as ClientRequest["destroy"];
+    return req;
+  };
+  await assert.rejects(() => probeProviderConnection(connection, {
+    request,
+    resolveEndpoint: async () => endpoint,
+  }), (error: unknown) => error instanceof OpenAICompatibleTransportError
+    && error.code === "provider_network"
+    && error.networkCode === "ECONNRESET"
+    && !JSON.stringify(error).includes("socket detail"));
+});
+
 test("abort and total timeout cover DNS resolution before any credential-bearing request", async () => {
   let resolveDns: ((value: ResolvedPublicEndpoint) => void) | undefined;
   let requestCalls = 0;

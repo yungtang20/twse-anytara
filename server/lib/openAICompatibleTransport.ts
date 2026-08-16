@@ -11,10 +11,16 @@ type TransportErrorCode = "provider_aborted" | "provider_timeout" | "provider_ne
   | "provider_server_error" | "provider_invalid_json" | "provider_response_too_large";
 
 export class OpenAICompatibleTransportError extends Error {
-  constructor(readonly code: TransportErrorCode) {
+  constructor(readonly code: TransportErrorCode, readonly networkCode?: string) {
     super(code);
     this.name = "OpenAICompatibleTransportError";
   }
+}
+
+function safeNetworkCode(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null || !("code" in error)) return undefined;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" && /^[A-Z][A-Z0-9_]{1,63}$/.test(code) ? code : undefined;
 }
 
 export type TransportRequest = (
@@ -164,7 +170,7 @@ async function requestJson(
     req.once("error", (error) => {
       if (settled) return;
       finish(error instanceof OpenAICompatibleTransportError
-        ? error : new OpenAICompatibleTransportError("provider_network"));
+        ? error : new OpenAICompatibleTransportError("provider_network", safeNetworkCode(error)));
     });
     options.signal?.addEventListener("abort", onAbort, { once: true });
     timer = setTimeout(() => {
