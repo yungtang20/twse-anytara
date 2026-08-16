@@ -503,18 +503,27 @@ Expected: no implementation file remains unstaged; unrelated pre-existing files 
 - [ ] **Step 2: Push the current branch and create or update the pull request**
 
 ```powershell
-git push -u origin codex/supabase-sync-hardening
-gh pr view codex/supabase-sync-hardening --repo yungtang20/twse-anytara --json number,url
+$approvedBranch = 'codex/dashboard-ai-report-presentation'
+$currentBranch = (git branch --show-current).Trim()
+if ($LASTEXITCODE -ne 0 -or $currentBranch -ne $approvedBranch) {
+  throw "Refusing publication from unapproved branch '$currentBranch'; expected '$approvedBranch'."
+}
+git push -u origin $currentBranch
+if ($LASTEXITCODE -ne 0) { throw "Push failed for '$currentBranch'." }
+gh pr view $currentBranch --repo yungtang20/twse-anytara --json number,url
 ```
 
-If no pull request exists, create one with an accurate title/body covering the dashboard, title, and AI report presentation. Expected: GitHub returns the branch and pull-request URL.
+Run Steps 2 and 3 in the same PowerShell session so the fail-closed `$currentBranch` captured above is reused. If no pull request exists, create one against `$currentBranch` with an accurate title/body covering the dashboard, title, and AI report presentation. Expected: GitHub returns the approved branch and pull-request URL.
 
 - [ ] **Step 3: Require green checks and merge**
 
 ```powershell
-$trinityPr = gh pr view codex/supabase-sync-hardening --repo yungtang20/twse-anytara --json number --jq '.number'
-gh pr checks $trinityPr --repo yungtang20/twse-anytara --watch
-gh pr merge $trinityPr --repo yungtang20/twse-anytara --merge --delete-branch=false
+gh pr view $currentBranch --repo yungtang20/twse-anytara --json number,url
+if ($LASTEXITCODE -ne 0) { throw "Pull request lookup failed for '$currentBranch'." }
+gh pr checks $currentBranch --repo yungtang20/twse-anytara --watch
+if ($LASTEXITCODE -ne 0) { throw "Required checks did not pass for '$currentBranch'." }
+gh pr merge $currentBranch --repo yungtang20/twse-anytara --merge --delete-branch=false
+if ($LASTEXITCODE -ne 0) { throw "Merge failed for '$currentBranch'." }
 ```
 
 Expected: required checks complete successfully before merge. Do not merge while checks are pending, failing, or unavailable.

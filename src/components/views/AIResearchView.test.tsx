@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -104,12 +104,26 @@ describe("AIResearchView provider consent", () => {
     expect(screen.queryByRole("checkbox", { name: /我了解並同意/ })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "產生 AI 綜合研究" })).toBeEnabled();
   });
+
+  it.each(["constructor", "wire-error"])("shows a neutral error for the unsafe wire code %s", async (wireCode) => {
+    saveAIProviderOverride({ baseUrl: "https://provider.example/v1", apiKey: "visitor-key" });
+    runResearch.mockRejectedValueOnce(new Error(wireCode));
+    const user = userEvent.setup();
+    render(<AIResearchView />);
+
+    await user.click(screen.getByRole("button", { name: "產生 AI 綜合研究" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("研究流程目前無法完成，請稍後再試");
+    expect(alert).not.toHaveTextContent(wireCode);
+  });
 });
 
 describe("ReportView", () => {
   afterEach(cleanup);
 
-  it("renders a localized formal report without mislabelling empty risk findings", () => {
+  it("renders a localized formal report without mislabelling empty risk findings", async () => {
+    const user = userEvent.setup();
     render(<ReportView report={publishedReportFixture} />);
     expect(screen.getByText("資料完整度")).toBeInTheDocument();
     expect(screen.getByText("AI 服務資訊")).toBeInTheDocument();
@@ -120,13 +134,55 @@ describe("ReportView", () => {
     expect(screen.getByText("本次未列入需關注的主要風險或資料限制")).toBeInTheDocument();
     expect(screen.queryByText(/^Data quality$/)).not.toBeInTheDocument();
     expect(screen.getAllByText(/事實已由伺服器資料驗證/).length).toBeGreaterThan(0);
-    const disclosure = screen.getByText("查看技術詳細資料");
-    expect(disclosure.closest("summary")).toBeInTheDocument();
+    const summary = screen.getByText("查看技術詳細資料").closest("summary");
+    expect(summary).toBeInTheDocument();
+    const details = summary?.closest("details");
+    expect(details).toBeInTheDocument();
+    if (!summary || !details) throw new Error("expected native provenance disclosure");
+
+    await user.tab();
+    expect(summary).toHaveFocus();
+    await user.keyboard("{Enter}");
+    if (!details.hasAttribute("open")) await user.click(summary);
+    expect(details).toHaveAttribute("open");
+
+    const technicalDetails = within(details);
+    for (const rawValue of [
+      "finding:sell", "ev:signal", "supabase:stock_price", "stock_price", "supabase", "2026-08-15",
+      "hcnsec", "a-very-long-model-name-that-must-wrap", "supabase:eps",
+    ]) expect(technicalDetails.getAllByText(new RegExp(rawValue.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))).length).toBeGreaterThan(0);
   });
 
   it("shows conclusion limitations instead of the empty risk state", () => {
     render(<ReportView report={limitationReportFixture} />);
-    expect(screen.getAllByText("月營收資料涵蓋不足").length).toBeGreaterThan(0);
+    const riskAndLimitationRow = screen.getByText("風險與資料限制：").closest("p");
+    expect(riskAndLimitationRow).toBeInTheDocument();
+    if (!riskAndLimitationRow) throw new Error("expected combined risk and limitation row");
+    expect(within(riskAndLimitationRow).getByText("月營收資料涵蓋不足")).toBeInTheDocument();
     expect(screen.queryByText("本次未列入需關注的主要風險或資料限制")).not.toBeInTheDocument();
+  });
+
+  it("uses neutral labels for reserved and unknown strategy, signal, and scenario wire values", () => {
+    const unsafeReport = structuredClone(publishedReportFixture) as unknown as Record<string, unknown>;
+    const auditSummary = unsafeReport.auditSummary as Record<string, unknown>;
+    auditSummary.strategies = JSON.parse(`{
+      "constructor":{"status":"ok","date":"2026-08-15","signal":"__proto__"},
+      "wire-strategy":{"status":"ok","date":"2026-08-15","signal":"wire-signal"}
+    }`);
+    const publishedReport = unsafeReport.publishedReport as Record<string, unknown>;
+    const valuation = publishedReport.valuation as Record<string, unknown>;
+    valuation.scenarios = [
+      { name: "constructor", multiple: 10, targetPrice: 50, expectedReturnRatio: -0.5, expectedReturnPercent: -50 },
+      { name: "wire-scenario", multiple: 12, targetPrice: 60, expectedReturnRatio: -0.4, expectedReturnPercent: -40 },
+    ];
+
+    render(<ReportView report={unsafeReport as unknown as AIResearchReportSuccessResponse} />);
+
+    expect(screen.getAllByText("策略名稱未知")).toHaveLength(2);
+    expect(screen.getAllByText("訊號未判定")).toHaveLength(2);
+    expect(screen.getAllByText("估值情境未知")).toHaveLength(2);
+    for (const rawValue of ["constructor", "wire-strategy", "__proto__", "wire-signal", "wire-scenario"]) {
+      expect(screen.queryByText(rawValue)).not.toBeInTheDocument();
+    }
   });
 });

@@ -11,6 +11,10 @@ import {
   informationRichnessLabel,
   providerLabel,
   qualityStatusLabel,
+  researchErrorLabel,
+  scenarioLabel,
+  signalLabel,
+  strategyLabel,
 } from "../../lib/aiResearchPresentation";
 import {
   loadAIProviderOverride,
@@ -20,38 +24,6 @@ import {
 
 type Report = AIResearchReportSuccessResponse;
 type StrategyId = keyof Report["auditSummary"]["strategies"];
-
-const STRATEGY_LABELS: Record<StrategyId, string> = {
-  sr: "撐壓分析",
-  ma: "均線趨勢",
-  chips: "籌碼動能",
-  pattern: "型態偵測",
-};
-
-const SIGNAL_LABELS: Record<string, string> = {
-  BUY: "正向訊號", SELL: "負向訊號", HOLD: "中性訊號", UNKNOWN: "未判定",
-};
-
-const ERROR_LABELS: Record<string, string> = {
-  invalid_stock_id: "股票代號格式錯誤",
-  ai_research_stock_not_eligible: "此標的目前不符合研究資格",
-  ai_research_context_unavailable: "研究來源目前無法取得",
-  ai_research_insufficient_data: "目前資料不足，無法產生研究預覽",
-  ai_research_provider_unavailable: "AI 研究來源目前無法使用",
-  ai_research_provider_timeout: "AI 研究供應商回應逾時，請稍後再試",
-  ai_research_provider_response_invalid: "AI 研究供應商回傳格式無效",
-  ai_research_provider_rate_limited: "AI 研究供應商請求過於頻繁，請稍後再試",
-  ai_research_provider_rejected: "AI 研究供應商拒絕請求，請檢查金鑰或權限",
-  ai_research_provider_server_error: "AI 研究供應商服務異常，請稍後再試",
-  ai_research_model_output_invalid: "AI 模型回傳內容未通過研究契約驗證",
-  ai_research_timeout: "研究執行逾時，請稍後再試",
-  ai_research_contract_error: "研究流程發生契約錯誤",
-  hcnsec_privacy_ack_required: "使用 HCNSEC 前請先同意第三方資料傳送告知",
-  custom_key_required: "自訂 Base URL 必須搭配個人 API Key",
-  ai_rate_limited: "請求過於頻繁，請稍後再試",
-  ai_shared_daily_limit: "免費 AI 今日共享額度已用完，可改用個人 API Key",
-  ai_concurrency_limit: "目前 AI 同時使用人數已達上限，請稍後再試",
-};
 
 function effectiveProviderUsesHcnsec(): boolean {
   const baseUrl = loadAIProviderOverride().baseUrl;
@@ -156,8 +128,8 @@ function StrategyPanel({ report }: { report: Report }) {
     <Section title="四大策略狀態">
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         {entries.map(([id, strategy]) => <div key={id} className="rounded-xl bg-slate-950/60 p-3">
-          <p className="text-xs text-slate-400">{STRATEGY_LABELS[id]}</p>
-          <p className="mt-1 text-sm text-white">{strategy.status === "ok" ? SIGNAL_LABELS[strategy.signal] : strategy.status}</p>
+          <p className="text-xs text-slate-400">{strategyLabel(id)}</p>
+          <p className="mt-1 text-sm text-white">{strategy.status === "ok" ? signalLabel(strategy.signal) : strategy.status}</p>
           <p className="mt-1 text-[11px] text-slate-500">{strategy.date ?? "無資料"}</p>
         </div>)}
       </div>
@@ -228,7 +200,6 @@ function RecommendationPanel({ report }: { report: Report }) {
   </Section>;
 }
 
-const SCENARIO_LABELS = { conservative: "保守", base: "基準", optimistic: "樂觀" } as const;
 const numberText = (value: number) => new Intl.NumberFormat("zh-TW", { maximumFractionDigits: 2 }).format(value);
 
 function ValuationPanel({ report }: { report: Report }) {
@@ -246,7 +217,7 @@ function ValuationPanel({ report }: { report: Report }) {
       <div className="overflow-x-auto"><table className="w-full text-left text-xs">
         <thead className="text-slate-500"><tr><th className="py-2">情境</th><th>倍數</th><th>目標價</th><th>預期報酬</th></tr></thead>
         <tbody>{item.scenarios.map((scenario) => <tr key={scenario.name} className="border-t border-slate-800 text-slate-200">
-          <td className="py-2">{SCENARIO_LABELS[scenario.name]}</td><td>{numberText(scenario.multiple)}x</td>
+          <td className="py-2">{scenarioLabel(scenario.name)}</td><td>{numberText(scenario.multiple)}x</td>
           <td>{numberText(scenario.targetPrice)}</td><td>{numberText(scenario.expectedReturnPercent)}%</td>
         </tr>)}</tbody>
       </table></div>
@@ -315,7 +286,7 @@ export function AIResearchView() {
     catch (cause) {
       if (!controller.signal.aborted) {
         const code = cause instanceof Error ? cause.message : "ai_research_contract_error";
-        setError(ERROR_LABELS[code] ?? code);
+        setError(researchErrorLabel(code));
       }
     } finally {
       if (active.current === controller) { active.current = null; setLoading(false); }
