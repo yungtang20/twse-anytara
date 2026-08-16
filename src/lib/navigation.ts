@@ -1,6 +1,6 @@
 import type { AppView } from "../types";
 
-export const DEFAULT_APP_VIEW: AppView = "markets";
+export const DEFAULT_APP_VIEW: AppView = "dashboard";
 
 const APP_VIEWS = new Set<AppView>([
   "dashboard",

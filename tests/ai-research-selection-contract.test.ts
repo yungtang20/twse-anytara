@@ -174,6 +174,12 @@ test("server verdict policy keeps a two-domain one-sided SELL aligned with deep 
     { clock: () => new Date("2026-08-03T01:00:00Z") });
   assert.equal(result.publicationReady, true, result.errors.join("\n"));
   assert.equal(result.publishedReport?.recommendation.verdict, "SELL");
+  assert.equal(packet.tradeRisks.highestLevel, "none");
+  assert.deepEqual(result.publishedReport?.recommendation.riskFindingIds, []);
+  const strategyClaim = result.publishedReport?.claims.find((claim) => claim.id === "f:strategy:sr");
+  assert.ok(strategyClaim);
+  assert.match(strategyClaim.text, /支撐壓力策略訊號為 SELL/);
+  assert.doesNotMatch(strategyClaim.text, /signal為/);
   assert.ok((result.publishedReport?.valuation.scenarios.find((item) => item.name === "base")
     ?.expectedReturnRatio ?? 0) < -0.05);
 });

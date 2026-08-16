@@ -11,6 +11,7 @@ coverage/
 .claude/
 .agents/
 .harness-worktrees/
+.worktrees/
 .vscode/
 kronos/
 taiwan_stock_unified.db

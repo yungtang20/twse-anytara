@@ -50,28 +50,40 @@ test("frontend client performs one request, preserves server errors, and propaga
 });
 
 test("AIResearchView renders a formal report only when publication gate is ready", async () => {
-  const view = await read("src/components/views/AIResearchView.tsx");
-  for (const text of ["股票代號", "產生 AI 綜合研究", "執行中", "取消", "Data quality",
-    "Provider / Model", "機械驗證預覽", "正式研究報告", "資料限制", "Citations / 來源識別",
-    "撐壓分析", "均線趨勢", "籌碼動能", "型態偵測",
+  const [view, presentation] = await Promise.all([
+    read("src/components/views/AIResearchView.tsx"),
+    read("src/lib/aiResearchPresentation.ts"),
+  ]);
+  for (const text of ["股票代號", "產生 AI 綜合研究", "執行中", "取消", "資料完整度",
+    "AI 服務資訊", "機械驗證預覽", "正式研究報告", "資料限制", "資料來源與佐證", "查看技術詳細資料",
     "此內容為 AI 機械驗證預覽，尚未完成語意發布驗證，不構成投資建議。"] ) {
     assert.match(view, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), text);
+  }
+  for (const text of ["撐壓分析", "均線趨勢", "籌碼動能", "型態偵測"]) {
+    assert.match(presentation, new RegExp(text), text);
   }
   assert.match(view, /runAIResearch/);
   assert.match(view, /AbortController/);
   assert.match(view, /report\.publicationReady\s*\?\s*<PublishedReportPanel[^:]+:\s*<PreviewPanel/s);
   assert.match(view, /report\.publicationReady\s*&&\s*!report\.publishedReport/);
   assert.match(view, /研究報告契約錯誤/);
-  assert.match(view, /server-grounded/);
+  assert.doesNotMatch(view, /title="Data quality"|title="Provider \/ Model"|title="Citations \/ 來源識別"/);
+  assert.match(view, /<details/);
+  assert.match(view, /<summary/);
+  assert.match(view, /groundingLabel\(published\.semanticGrounding\)/);
   assert.match(view, /模型選擇的有界假設/);
+  assert.match(view, /strategyLabel\(id\)/);
+  assert.match(view, /signalLabel\(strategy\.signal\)/);
+  assert.match(view, /scenarioLabel\(scenario\.name\)/);
+  assert.match(view, /researchErrorLabel\(code\)/);
   assert.doesNotMatch(view, /fetchResearchContext|\/api\/job|\/api\/jobs|\/api\/analysis-mvp|\/api\/ai-analysis|setInterval|poll/i);
   assert.doesNotMatch(view, /candidate|untrustedEvidence|ResearchPacket/);
-  assert.match(view, /ai_research_model_output_invalid:\s*"AI 模型回傳內容未通過研究契約驗證"/);
-  assert.match(view, /ai_research_provider_timeout:\s*"AI 研究供應商回應逾時，請稍後再試"/);
-  assert.match(view, /ai_research_provider_response_invalid:\s*"AI 研究供應商回傳格式無效"/);
-  assert.match(view, /ai_research_provider_rate_limited:\s*"AI 研究供應商請求過於頻繁，請稍後再試"/);
-  assert.match(view, /ai_research_provider_rejected:\s*"AI 研究供應商拒絕請求，請檢查金鑰或權限"/);
-  assert.match(view, /ai_research_provider_server_error:\s*"AI 研究供應商服務異常，請稍後再試"/);
+  assert.match(presentation, /ai_research_model_output_invalid:\s*"AI 模型回傳內容未通過研究契約驗證"/);
+  assert.match(presentation, /ai_research_provider_timeout:\s*"AI 研究供應商回應逾時，請稍後再試"/);
+  assert.match(presentation, /ai_research_provider_response_invalid:\s*"AI 研究供應商回傳格式無效"/);
+  assert.match(presentation, /ai_research_provider_rate_limited:\s*"AI 研究供應商請求過於頻繁，請稍後再試"/);
+  assert.match(presentation, /ai_research_provider_rejected:\s*"AI 研究供應商拒絕請求，請檢查金鑰或權限"/);
+  assert.match(presentation, /ai_research_provider_server_error:\s*"AI 研究供應商服務異常，請稍後再試"/);
 });
 
 test("report presenter route and production factory remain isolated", async () => {
