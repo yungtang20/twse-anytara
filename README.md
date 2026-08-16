@@ -3,6 +3,7 @@
 **報告日期**：2026-06-21
 **版本**：v2.0
 **狀態**：開發中
+**線上網站（Render）**：[https://twse-app.onrender.com](https://twse-app.onrender.com)
 
 ---
 
