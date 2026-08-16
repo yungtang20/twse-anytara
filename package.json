@@ -7,10 +7,17 @@
   "engines": {
     "node": ">=24"
   },
+  "overrides": {
+    "@hono/node-server": "1.19.17",
+    "brace-expansion": "5.0.9",
+    "fast-uri": "4.1.2",
+    "hono": "4.13.2",
+    "ip-address": "10.5.0"
+  },
   "scripts": {
     "dev": "tsx server.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx tests/self-check.ts && tsx --test tests/market-stats-enrichment.test.ts tests/cloud-retention-regression.test.ts tests/daily-sync-dispatch.test.ts tests/cloud-lifecycle-boundary.test.ts tests/cloud-api-boundary.test.ts tests/cloud-admin-sqlite-boundary.test.ts tests/maintenance-sqlite-boundary.test.ts tests/cloud-ai-ui-boundary.test.ts tests/cloud-health-stats-boundary.test.ts tests/ai-research-boundary.test.ts tests/research-context.test.ts tests/research-context-cloud-adapter.test.ts tests/stock-strategy-research.test.ts tests/ai-research-packet.test.ts tests/ai-research-richness.test.ts tests/ai-research-evidence.test.ts tests/ai-research-auditor.test.ts tests/ai-research-prompt-isolation.test.ts tests/ai-research-selection-contract.test.ts tests/ai-research-structured-findings.test.ts tests/ai-research-policy.test.ts tests/ai-research-latest-blockers.test.ts tests/ai-research-non-finite.test.ts tests/ai-research-numeric-policy.test.ts tests/ai-research-model-gateway.test.ts tests/ai-research-router-adapter.test.ts tests/ai-research-model-runner.test.ts tests/ai-research-publication-gate.test.ts tests/ai-research-orchestrator.test.ts tests/ai-research-report-route.test.ts tests/ai-research-report-ui.test.ts tests/ai-research-investment-conclusion.test.ts tests/ai-research-valuation.test.ts tests/ai-research-recommendation-ui.test.ts tests/tdcc-cloud-sync.test.ts tests/test-suite-registration.test.ts",
+    "test": "tsx tests/self-check.ts && tsx --test tests/market-stats-enrichment.test.ts tests/cloud-retention-regression.test.ts tests/daily-sync-dispatch.test.ts tests/cloud-lifecycle-boundary.test.ts tests/cloud-api-boundary.test.ts tests/cloud-admin-sqlite-boundary.test.ts tests/maintenance-sqlite-boundary.test.ts tests/cloud-ai-ui-boundary.test.ts tests/cloud-health-stats-boundary.test.ts tests/admin-security.test.ts tests/cloud-history-bounds.test.ts tests/ai-research-boundary.test.ts tests/research-context.test.ts tests/research-context-cloud-adapter.test.ts tests/stock-strategy-research.test.ts tests/ai-research-packet.test.ts tests/ai-research-richness.test.ts tests/ai-research-evidence.test.ts tests/ai-research-auditor.test.ts tests/ai-research-prompt-isolation.test.ts tests/ai-research-selection-contract.test.ts tests/ai-research-structured-findings.test.ts tests/ai-research-policy.test.ts tests/ai-research-latest-blockers.test.ts tests/ai-research-non-finite.test.ts tests/ai-research-numeric-policy.test.ts tests/ai-research-model-gateway.test.ts tests/ai-research-router-adapter.test.ts tests/ai-research-model-runner.test.ts tests/ai-research-publication-gate.test.ts tests/ai-research-orchestrator.test.ts tests/ai-research-report-route.test.ts tests/ai-research-report-ui.test.ts tests/ai-research-investment-conclusion.test.ts tests/ai-research-valuation.test.ts tests/ai-research-recommendation-ui.test.ts tests/tdcc-cloud-sync.test.ts tests/legacy-framework-analysis-boundary.test.ts tests/ai-provider-connection.test.ts tests/public-endpoint.test.ts tests/openai-compatible-transport.test.ts tests/ai-abuse-guard.test.ts tests/maintenance-execution-guard.test.ts tests/supabase-blank-replay.test.ts tests/production-runtime.test.ts tests/test-suite-registration.test.ts",
     "test:tdcc-cloud-sync": "tsx --test tests/tdcc-cloud-sync.test.ts",
     "test:eval": "tsx tests/ai-evaluation.ts",
     "diagnose:ai-research": "tsx scripts/diagnoseAIResearch.ts",
@@ -19,10 +26,12 @@
     "rebuild:tpex-institutional": "tsx scripts/rebuildTpexInstitutional.ts",
     "backfill:tdcc": "tsx scripts/backfillTdccLocal.ts",
     "verify:cloud": "tsx scripts/verifyCloudData.ts",
-    "build": "tsc --noEmit && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "start": "node dist/server.cjs",
+    "verify:supabase-security": "tsx scripts/verifySupabaseSecurity.ts",
+    "build": "tsc --noEmit && vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --define:process.env.NODE_ENV='\"production\"' --sourcemap --outfile=dist/server.cjs",
+    "start": "node scripts/start-production.mjs",
     "clean": "rimraf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "eslint . --max-warnings=0",
+    "test:ui": "vitest run"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
@@ -45,7 +54,11 @@
     "tsx": "^4.21.0"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.1.14",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.4",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/pg": "^8.20.0",
@@ -54,9 +67,14 @@
     "@vitejs/plugin-react": "^5.0.4",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
+    "eslint": "^10.8.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "jsdom": "^30.0.1",
     "rimraf": "^6.0.1",
     "tailwindcss": "^4.1.14",
     "typescript": "~5.8.2",
-    "vite": "^6.2.3"
+    "typescript-eslint": "^8.67.0",
+    "vite": "^6.2.3",
+    "vitest": "^4.1.10"
   }
 }

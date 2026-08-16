@@ -1,0 +1,49 @@
+services:
+  - type: web
+    name: twse-app
+    runtime: docker
+    repo: https://github.com/yungtang20/twse-anytara
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeploy: false
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MARKET_DATA_MODE
+        value: cloud
+      - key: HOST
+        value: 0.0.0.0
+      - key: HCNSEC_BASE_URL
+        value: https://api.hcnsec.cn/v1
+      - key: HCNSEC_MODEL
+        value: auto
+      - key: HCNSEC_MAX_OUTPUT_TOKENS
+        value: 65536
+      - key: AI_RATE_LIMIT_REQUESTS
+        value: 10
+      - key: AI_RATE_LIMIT_WINDOW_MS
+        value: 600000
+      - key: AI_SHARED_DAILY_LIMIT
+        value: 100
+      - key: AI_MAX_CONCURRENCY
+        value: 2
+      - key: MCP_ENABLED
+        value: "false"
+      - key: HCNSEC_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: FINMIND_API_KEY
+        sync: false
+      - key: TRINITY_ADMIN_TOKEN
+        sync: false

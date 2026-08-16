@@ -1,6 +1,7 @@
 import type { ResearchContext } from "../../shared/researchContext";
 import type { AuditResult, PublishedResearchReport, ResearchAuditDraft } from "../../shared/aiResearch";
 import type { AIResearchReportContext } from "../../shared/aiResearchReport";
+import type { ResolvedAIProviderConnection } from "../../shared/aiProvider";
 import { buildAIResearchModelRequest } from "./aiResearchModelRequest";
 import { buildResearchPacket } from "./aiResearchPacket";
 import { evaluateInformationRichness } from "./aiResearchRichness";
@@ -80,7 +81,10 @@ export class AIResearchOrchestrator {
     private readonly runner: AIResearchModelRunnerContract,
   ) {}
 
-  async research(stockId: string, options: { signal?: AbortSignal } = {}): Promise<AIResearchRunResult> {
+  async research(stockId: string, options: {
+    signal?: AbortSignal;
+    connection?: ResolvedAIProviderConnection;
+  } = {}): Promise<AIResearchRunResult> {
     if (options.signal?.aborted) return unavailable("ai_research_aborted");
     let context: ResearchContext;
     try { context = await this.contexts.aggregate(stockId); }

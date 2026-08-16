@@ -2,11 +2,13 @@ import { Router, type Request, type Response } from "express";
 import { scanAndScoreStock } from "../../src/lib/strategy-engine";
 import {
   fetchCloudCandidates,
-  fetchCloudInstitutional,
+  fetchCloudInstitutionalHistories,
+  fetchCloudPriceHistories,
   fetchCloudPrices,
-  fetchCloudShareholding,
+  fetchCloudShareholdingHistories,
   latestCloudDate,
-  mapWithConcurrency,
+  type CloudInstitutionalRow,
+  type CloudShareholdingRow,
 } from "../lib/cloudMarketData";
 import {
   consecutiveNetTotal,
@@ -104,9 +106,10 @@ function includeDisposition(req: Request): boolean {
 router.get("/api/strategy/sr-scan", async (req, res) => {
   try {
     const candidates = await scanCandidates(req);
-    const scored = await mapWithConcurrency(candidates, 8, async (candidate) => {
+    const histories = await fetchCloudPriceHistories(candidates.map((candidate) => candidate.stock_id), 512);
+    const scored = candidates.map((candidate) => {
       try {
-        return scanAndScoreStock(await fetchCloudPrices(candidate.stock_id, 512), candidate.stock_id, candidate.stock_name);
+        return scanAndScoreStock(histories.get(candidate.stock_id) ?? [], candidate.stock_id, candidate.stock_name);
       } catch {
         return null;
       }
@@ -126,8 +129,9 @@ router.get("/api/strategy/ma-scan", async (req, res) => {
     const type: MovingAverageScanType = ["1", "2", "3", "4", "5", "6"].includes(requestedType)
       ? requestedType as MovingAverageScanType : "1";
     const candidates = await scanCandidates(req);
-    const scanned = await mapWithConcurrency(candidates, 8, async (candidate) => {
-      const match = scanMovingAverage(await fetchCloudPrices(candidate.stock_id, 512), type);
+    const histories = await fetchCloudPriceHistories(candidates.map((candidate) => candidate.stock_id), 512);
+    const scanned = candidates.map((candidate) => {
+      const match = scanMovingAverage(histories.get(candidate.stock_id) ?? [], type);
       if (!match) return null;
       return {
         stock_id: candidate.stock_id, stock_name: candidate.stock_name, close: candidate.close,
@@ -152,13 +156,19 @@ router.get("/api/strategy/chips-scan", async (req, res) => {
     const type = String(req.query.type || "1");
     const minimumDays = Math.max(1, Number.parseInt(String(req.query.n_days || "2"), 10) || 2);
     const candidates = await scanCandidates(req);
-    const scanned = await mapWithConcurrency(candidates, 8, async (candidate) => {
-      const [institutional, shareholding] = await Promise.all([
-        type === "3" ? Promise.resolve([]) : fetchCloudInstitutional(candidate.stock_id, 30),
-        // Fetch more than 2 so we can pick the two most recent weeks that have
-        // total_people (official TDCC data). Goodinfo partial rows have null total_people.
-        type === "3" ? fetchCloudShareholding(candidate.stock_id, 12) : Promise.resolve([]),
-      ]);
+    const ids = candidates.map((candidate) => candidate.stock_id);
+    const [institutionalHistories, shareholdingHistories] = await Promise.all([
+      type === "3"
+        ? Promise.resolve(new Map<string, CloudInstitutionalRow[]>())
+        : fetchCloudInstitutionalHistories(ids, 30),
+      // Fetch more than 2 so we can pick the two most recent official weeks.
+      type === "3"
+        ? fetchCloudShareholdingHistories(ids, 12)
+        : Promise.resolve(new Map<string, CloudShareholdingRow[]>()),
+    ]);
+    const scanned = candidates.map((candidate) => {
+      const institutional = institutionalHistories.get(candidate.stock_id) ?? [];
+      const shareholding = shareholdingHistories.get(candidate.stock_id) ?? [];
       if (type === "3") {
         // Strategy requires total_people. Filter to official rows only, never trust partial bootstrap.
         const official = shareholding.filter(
@@ -222,8 +232,9 @@ router.get("/api/strategy/chips-scan", async (req, res) => {
 router.get("/api/strategy/pattern-scan", async (req, res) => {
   try {
     const candidates = await scanCandidates(req);
-    const scanned = await mapWithConcurrency(candidates, 8, async (candidate) => {
-      const pattern = analyzeChartPattern(await fetchCloudPrices(candidate.stock_id, 120));
+    const histories = await fetchCloudPriceHistories(candidates.map((candidate) => candidate.stock_id), 120);
+    const scanned = candidates.map((candidate) => {
+      const pattern = analyzeChartPattern(histories.get(candidate.stock_id) ?? []);
       if (pattern.confidence === 0) return null;
       return {
         stock_id: candidate.stock_id, stock_name: candidate.stock_name, close: candidate.close,

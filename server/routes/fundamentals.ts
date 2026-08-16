@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { supabase } from "../services";
-import { fetchFinancialSnapshot, fetchFundamentalDataset } from "../mvpMcpRoutes";
+import { fetchFinancialSnapshot, fetchFundamentalDataset } from "../lib/legacyFrameworkAnalysis";
 import { buildCompanyFinancialAnalysis } from "../lib/financialAnalysis";
 
 const router = Router();

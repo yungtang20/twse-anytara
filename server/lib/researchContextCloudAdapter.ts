@@ -165,9 +165,15 @@ function financialMetrics(
   }];
 }
 
-function highestRisk(rows: CloudRiskRow[]): RiskLevel {
+function highestRisk(rows: CloudRiskRow[], asOfDate: string): RiskLevel {
   return rows.reduce<RiskLevel>((highest, row) =>
-    row.is_active && LEVEL_ORDER[row.risk_level] > LEVEL_ORDER[highest] ? row.risk_level : highest, "none");
+    row.is_active
+      && /^\d{4}-\d{2}-\d{2}$/.test(row.start_date)
+      && row.start_date <= asOfDate
+      && (row.end_date === null || row.end_date >= asOfDate)
+      && LEVEL_ORDER[row.risk_level] > LEVEL_ORDER[highest]
+      ? row.risk_level
+      : highest, "none");
 }
 
 async function cloudTradeRisks(stockId: string): Promise<CloudRiskRow[]> {
@@ -281,7 +287,7 @@ export class CloudResearchContextAdapter implements ResearchContextAdapter {
     const asOf = rows.map((row) => row.source_updated_at?.slice(0, 10) ?? row.announced_date)
       .filter((date): date is string => date !== null).sort().at(-1) ?? null;
     return {
-      data: { highestLevel: highestRisk(rows), flags: records, dataAsOf: asOf },
+      data: { highestLevel: highestRisk(rows, taipeiDate(this.clock)), flags: records, dataAsOf: asOf },
       source: metadata(this.clock, "stock_trade_risk", "supabase", asOf, rows.length, "available"),
     };
   }

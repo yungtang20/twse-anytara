@@ -1,7 +1,7 @@
 import { PriceData } from './indicators';
-import { normalizeVolumes } from './utils';
 import type { ResearchContext } from '../../shared/researchContext';
 import type { AIResearchReportResponse, AIResearchReportSuccessResponse } from '../../shared/aiResearchReport';
+import { loadAIProviderOverride, readHcnsecPrivacyAccepted } from './aiProviderSettings';
 export type { PriceData };
 export type { ResearchContext } from '../../shared/researchContext';
 export type { AIResearchReportSuccessResponse } from '../../shared/aiResearchReport';
@@ -10,8 +10,8 @@ export type { AIResearchReportSuccessResponse } from '../../shared/aiResearchRep
 // Base URL defaults to same origin; override via VITE_API_URL for production
 const BASE = import.meta.env?.VITE_API_URL || '';
 
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`);
+async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { signal });
   if (!res.ok) throw new Error(`HTTP error: ${res.status}`);
   return res.json() as Promise<T>;
 }
@@ -38,13 +38,35 @@ export async function runAIResearch(
 ): Promise<AIResearchReportSuccessResponse> {
   const response = await fetch(
     `${BASE}/api/ai-research/stocks/${encodeURIComponent(stockId)}/report`,
-    { method: "POST", headers: { "Content-Type": "application/json" }, signal },
+    { method: "POST", headers: {
+      "Content-Type": "application/json",
+    }, body: JSON.stringify({ provider: {
+      ...loadAIProviderOverride(),
+      privacyAccepted: readHcnsecPrivacyAccepted(),
+    } }), signal },
   );
   const payload = await response.json() as AIResearchReportResponse;
   if (!response.ok || !payload.success) {
     throw new Error(payload.success ? `HTTP error: ${response.status}` : payload.error);
   }
   return payload;
+}
+
+export async function testAIProviderConnection(signal?: AbortSignal): Promise<{ modelCount: number }> {
+  const response = await fetch(`${BASE}/api/ai-provider/test`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider: {
+      ...loadAIProviderOverride(),
+      privacyAccepted: readHcnsecPrivacyAccepted(),
+    } }),
+    signal,
+  });
+  const payload = await response.json() as { success: boolean; modelCount?: number; error?: string };
+  if (!response.ok || !payload.success || typeof payload.modelCount !== "number") {
+    throw new Error(payload.error || `HTTP error: ${response.status}`);
+  }
+  return { modelCount: payload.modelCount };
 }
 
 export interface DataQuality {
@@ -165,12 +187,66 @@ type DataEnvelope<T> = {
 
 function readQuality<T>(res: DataEnvelope<T>): DataQuality {
   const quality = res.dataQuality || {};
+  const source = quality.source ?? res.source;
+  const asOf = quality.asOf ?? res.asOf;
+  const isMock = quality.isMock ?? res.isMock;
+  const isStale = quality.isStale ?? res.isStale;
+  const rawWarnings = quality.warnings ?? res.warnings;
+  const contractWarnings: string[] = [];
+  if (typeof source !== 'string' || !source.trim()) contractWarnings.push('資料來源未驗證');
+  if (asOf !== null && typeof asOf !== 'string') contractWarnings.push('資料日期格式無效');
+  if (typeof isMock !== 'boolean' || typeof isStale !== 'boolean') contractWarnings.push('資料品質欄位不完整');
+  if (!Array.isArray(rawWarnings) || rawWarnings.some((warning) => typeof warning !== 'string')) {
+    contractWarnings.push('資料品質警告格式無效');
+  }
   return {
-    source: quality.source || res.source || 'unknown',
-    asOf: quality.asOf ?? res.asOf ?? null,
-    isMock: quality.isMock ?? res.isMock ?? false,
-    isStale: quality.isStale ?? res.isStale ?? false,
-    warnings: quality.warnings || res.warnings || [],
+    source: typeof source === 'string' && source.trim() ? source : 'unverified',
+    asOf: asOf === null || typeof asOf === 'string' ? asOf : null,
+    isMock: typeof isMock === 'boolean' ? isMock : false,
+    isStale: typeof isStale === 'boolean' ? isStale : true,
+    warnings: [
+      ...(Array.isArray(rawWarnings) ? rawWarnings.filter((warning): warning is string => typeof warning === 'string') : []),
+      ...contractWarnings,
+    ],
+  };
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isPriceData(value: unknown): value is PriceData {
+  if (!value || typeof value !== 'object') return false;
+  const row = value as Record<string, unknown>;
+  if (typeof row.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(row.date)) return false;
+  if (![row.open, row.high, row.low, row.close, row.volume].every(isFiniteNumber)) return false;
+  const { open, high, low, close, volume } = row as unknown as PriceData;
+  return open > 0
+    && close > 0
+    && low > 0
+    && high >= Math.max(open, close, low)
+    && low <= Math.min(open, close, high)
+    && volume >= 0;
+}
+
+function validatePriceSeries(raw: unknown, quality: DataQuality): DataSeries<PriceData> {
+  if (!Array.isArray(raw)) {
+    return {
+      data: [],
+      quality: { ...quality, isStale: true, warnings: [...quality.warnings, '行情資料格式無效'] },
+    };
+  }
+  const data = raw.filter(isPriceData);
+  const rejected = raw.length - data.length;
+  return {
+    data,
+    quality: rejected === 0
+      ? quality
+      : {
+          ...quality,
+          isStale: true,
+          warnings: [...quality.warnings, `已拒絕 ${rejected} 筆無效 OHLCV 行情`],
+        },
   };
 }
 
@@ -207,16 +283,19 @@ export interface StockMeta {
   industry_category?: string;
 }
 
-export async function fetchStockSearch(query: string): Promise<StockMeta[]> {
-  const res = await get<{ success: boolean; data: StockMeta[] }>(`/api/stock/search?q=${encodeURIComponent(query)}`);
+export async function fetchStockSearch(query: string, signal?: AbortSignal): Promise<StockMeta[]> {
+  const res = await get<{ success: boolean; data: StockMeta[] }>(`/api/stock/search?q=${encodeURIComponent(query)}`, signal);
   return res.success ? res.data : [];
 }
 
 // ── Stock price history ────────────────────────────────────
 
-export async function fetchStockHistory(id: string, days = 120): Promise<DataSeries<PriceData>> {
-  const res = await get<DataEnvelope<PriceData[]>>(`/api/stock/${id}/history?days=${days}`);
-  return { data: res.success ? normalizeVolumes(res.data) : [], quality: readQuality(res) };
+export async function fetchStockHistory(id: string, days = 120, signal?: AbortSignal): Promise<DataSeries<PriceData>> {
+  const res = await get<DataEnvelope<PriceData[]>>(`/api/stock/${encodeURIComponent(id)}/history?days=${days}`, signal);
+  const quality = readQuality(res);
+  return res.success
+    ? validatePriceSeries(res.data, quality)
+    : { data: [], quality: { ...quality, isStale: true, warnings: [...quality.warnings, '行情 API 回報失敗'] } };
 }
 
 // ── Stock indicators ───────────────────────────────────────
@@ -246,8 +325,8 @@ export interface InstitutionalRow {
   institutional_net?: number;
 }
 
-export async function fetchStockInstitutional(id: string): Promise<DataSeries<InstitutionalRow>> {
-  const res = await get<DataEnvelope<InstitutionalRow[]>>(`/api/stock/${id}/institutional`);
+export async function fetchStockInstitutional(id: string, signal?: AbortSignal): Promise<DataSeries<InstitutionalRow>> {
+  const res = await get<DataEnvelope<InstitutionalRow[]>>(`/api/stock/${encodeURIComponent(id)}/institutional`, signal);
   return { data: res.success ? res.data : [], quality: readQuality(res) };
 }
 
@@ -272,9 +351,28 @@ export interface StockQuote {
   shareholding: { date: string; whale_ratio: number; retail_ratio: number } | null;
 }
 
-export async function fetchStockQuote(id: string): Promise<{ data: StockQuote | null; quality: DataQuality }> {
-  const res = await get<DataEnvelope<StockQuote>>(`/api/stock/${id}/quote`);
-  return { data: res.success ? res.data : null, quality: readQuality(res) };
+export async function fetchStockQuote(id: string, signal?: AbortSignal): Promise<{ data: StockQuote | null; quality: DataQuality }> {
+  const res = await get<DataEnvelope<StockQuote>>(`/api/stock/${encodeURIComponent(id)}/quote`, signal);
+  const quality = readQuality(res);
+  const quote = res.data;
+  const validQuote = res.success
+    && quote
+    && typeof quote.stock_id === 'string'
+    && typeof quote.name === 'string'
+    && isPriceData({
+      date: quote.date,
+      open: quote.open,
+      high: quote.high,
+      low: quote.low,
+      close: quote.close,
+      volume: quote.volume,
+    });
+  return validQuote
+    ? { data: quote, quality }
+    : {
+        data: null,
+        quality: { ...quality, isStale: true, warnings: [...quality.warnings, '即時報價格式無效'] },
+      };
 }
 
 // ── Market movers ──────────────────────────────────────────
@@ -321,8 +419,8 @@ export interface SRAnalysis {
   recentLow: number;
 }
 
-export async function fetchSRAnalysis(id: string): Promise<SRAnalysis | null> {
-  const res = await get<{ success: boolean; data: SRAnalysis }>(`/api/stock/${id}/sr-analysis`);
+export async function fetchSRAnalysis(id: string, signal?: AbortSignal): Promise<SRAnalysis | null> {
+  const res = await get<{ success: boolean; data: SRAnalysis }>(`/api/stock/${encodeURIComponent(id)}/sr-analysis`, signal);
   return res.success ? res.data : null;
 }
 
@@ -340,8 +438,8 @@ export interface MAAnalysis {
   biasLabel: string;
 }
 
-export async function fetchMAAnalysis(id: string): Promise<MAAnalysis | null> {
-  const res = await get<{ success: boolean; data: MAAnalysis }>(`/api/stock/${id}/ma-analysis`);
+export async function fetchMAAnalysis(id: string, signal?: AbortSignal): Promise<MAAnalysis | null> {
+  const res = await get<{ success: boolean; data: MAAnalysis }>(`/api/stock/${encodeURIComponent(id)}/ma-analysis`, signal);
   return res.success ? res.data : null;
 }
 
@@ -362,8 +460,8 @@ export interface ChipsAnalysis {
   chipHistory: { date: string; foreign: number; trust: number }[];
 }
 
-export async function fetchChipsAnalysis(id: string): Promise<ChipsAnalysis | null> {
-  const res = await get<{ success: boolean; data: ChipsAnalysis }>(`/api/stock/${id}/chips-analysis`);
+export async function fetchChipsAnalysis(id: string, signal?: AbortSignal): Promise<ChipsAnalysis | null> {
+  const res = await get<{ success: boolean; data: ChipsAnalysis }>(`/api/stock/${encodeURIComponent(id)}/chips-analysis`, signal);
   return res.success ? res.data : null;
 }
 
@@ -384,9 +482,10 @@ export interface InstitutionalHoldingSnapshot {
   estimated: true;
 }
 
-export async function fetchInstitutionalHoldings(id: string) {
+export async function fetchInstitutionalHoldings(id: string, signal?: AbortSignal) {
   const res = await get<{ success: true; data: InstitutionalHoldingSnapshot }>(
     `/api/stock/${id}/institutional-holdings`,
+    signal,
   );
   return res.data;
 }
@@ -411,8 +510,8 @@ export interface PatternAnalysis {
   volumeRatio: number | null;
 }
 
-export async function fetchPatternAnalysis(id: string): Promise<PatternAnalysis | null> {
-  const res = await get<{ success: boolean; data: PatternAnalysis }>(`/api/stock/${id}/pattern-analysis`);
+export async function fetchPatternAnalysis(id: string, signal?: AbortSignal): Promise<PatternAnalysis | null> {
+  const res = await get<{ success: boolean; data: PatternAnalysis }>(`/api/stock/${encodeURIComponent(id)}/pattern-analysis`, signal);
   return res.success ? res.data : null;
 }
 
@@ -582,8 +681,8 @@ export interface ShareholdingRow {
   shares: number | null;
 }
 
-export async function fetchStockShareholding(id: string): Promise<DataSeries<ShareholdingRow>> {
-  const res = await get<DataEnvelope<ShareholdingRow[]>>(`/api/stock/${id}/shareholding`);
+export async function fetchStockShareholding(id: string, signal?: AbortSignal): Promise<DataSeries<ShareholdingRow>> {
+  const res = await get<DataEnvelope<ShareholdingRow[]>>(`/api/stock/${encodeURIComponent(id)}/shareholding`, signal);
   return { data: res.success ? res.data : [], quality: readQuality(res) };
 }
 

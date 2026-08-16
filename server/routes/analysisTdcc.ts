@@ -10,7 +10,7 @@ import {
   tdccSyncHandler,
   tdccStatusHandler,
 } from "../mvpMcpRoutes";
-import { isLoopbackRequest } from "../lib/security";
+import { requireAdminRequest } from "../lib/security";
 import { ingestTdccCSV, syncTdcc } from "../lib/tdccDownload";
 import { getBridgeStatus, pushTdccToSupabase } from "../lib/syncBridge";
 import { addLog } from "../services";
@@ -34,8 +34,7 @@ router.use([
       error: "Cloud mode does not run local AI jobs, SQLite, TDCC, or bridge operations",
     });
   }
-  if (!isLoopbackRequest(req)) return res.status(403).json({ success: false, error: "AI 與同步功能只能從本機使用" });
-  next();
+  return requireAdminRequest(req, res, next);
 });
 
 router.post("/api/ai-analysis", (_req, res) => res.status(410).json({

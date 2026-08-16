@@ -1,9 +1,10 @@
 import type { AIResearchModelRequest } from "../../shared/aiResearch";
+import type { ResolvedAIProviderConnection } from "../../shared/aiProvider";
 
-export type AIResearchProvider = "router" | "fake";
+export type AIResearchProvider = "hcnsec" | "custom" | "router" | "fake";
 export type AIResearchModelGatewayErrorCode = "not_configured" | "timeout" | "network"
   | "rate_limited" | "server_error" | "empty_response" | "invalid_json"
-  | "aborted" | "local_contract" | "provider_rejected";
+  | "truncated" | "aborted" | "local_contract" | "provider_rejected";
 
 export interface AIResearchProviderUsage {
   inputTokens: number | null;
@@ -49,7 +50,7 @@ export function sanitizeAIResearchProviderMetadata(
 export interface AIResearchModelGateway {
   generateCandidate(
     request: AIResearchModelRequest,
-    options: { signal?: AbortSignal },
+    options: { signal?: AbortSignal; connection?: ResolvedAIProviderConnection },
   ): Promise<AIResearchModelGatewayResult>;
 }
 
@@ -69,7 +70,7 @@ export class InMemoryAIResearchModelGateway implements AIResearchModelGateway {
 
   async generateCandidate(
     request: AIResearchModelRequest,
-    options: { signal?: AbortSignal },
+    options: { signal?: AbortSignal; connection?: ResolvedAIProviderConnection },
   ): Promise<AIResearchModelGatewayResult> {
     if (options.signal?.aborted) throw new AIResearchModelGatewayError("aborted");
     this.calls.push(request);

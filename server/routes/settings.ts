@@ -1,7 +1,7 @@
 import { Router, json, type NextFunction, type Request, type Response } from "express";
 import fs from "fs";
 import path from "path";
-import { isLoopbackRequest, validateEnvValue } from "../lib/security";
+import { requireAdminRequest, validateEnvValue } from "../lib/security";
 import { describeSupabaseError } from "../lib/supabaseDiagnostics";
 import { pruneSupabaseData } from "../lib/syncBridge";
 import { debugState, addLog, pushSyncLog, supabase } from "../services";
@@ -12,10 +12,7 @@ const hasAIResearchApiKey = () => Boolean(
   (process.env.AI_RESEARCH_API_KEY || "").trim(),
 );
 
-router.use((req: Request, res: Response, next: NextFunction) => {
-  if (!isLoopbackRequest(req)) return res.status(403).json({ success: false, error: "設定與同步管理只能從本機使用" });
-  next();
-});
+router.use("/api/settings", requireAdminRequest);
 
 function updateEnvFile(updates: Record<string, string>) {
   const envPath = path.join(process.cwd(), ".env");
@@ -195,9 +192,6 @@ router.get("/api/settings", (_req: Request, res: Response) => {
 
 // API to update server-only settings in the local .env file.
 router.post("/api/settings", json(), async (req: Request, res: Response) => {
-  if (!isLoopbackRequest(req)) {
-    return res.status(403).json({ success: false, error: "設定只能從本機修改" });
-  }
   try {
     const updates: Record<string, string> = {};
     if (req.body.aiResearchApiKey) {

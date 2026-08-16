@@ -3,15 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Layout } from "./components/Layout";
-import { DashboardView } from "./components/views/DashboardView";
-import { MarketsView } from "./components/views/MarketsView";
-import { StrategiesView } from "./components/views/StrategiesView";
-import { SettingsView } from "./components/views/SettingsView";
-import { AIResearchView } from "./components/views/AIResearchView";
 import { AppView } from "./types";
 import { appViewHash, parseAppView } from "./lib/navigation";
+
+const DashboardView = lazy(() => import("./components/views/DashboardView").then((module) => ({ default: module.DashboardView })));
+const MarketsView = lazy(() => import("./components/views/MarketsView").then((module) => ({ default: module.MarketsView })));
+const StrategiesView = lazy(() => import("./components/views/StrategiesView").then((module) => ({ default: module.StrategiesView })));
+const SettingsView = lazy(() => import("./components/views/SettingsView").then((module) => ({ default: module.SettingsView })));
+const AIResearchView = lazy(() => import("./components/views/AIResearchView").then((module) => ({ default: module.AIResearchView })));
 
 export default function App() {
   const [currentView, setCurrentView] = useState<AppView>(() =>
@@ -31,11 +32,13 @@ export default function App() {
 
   return (
     <Layout currentView={currentView} onViewChange={handleViewChange}>
-      {currentView === 'dashboard' && <DashboardView />}
-      {currentView === 'markets' && <MarketsView />}
-      {currentView === 'strategies' && <StrategiesView />}
-      {currentView === 'settings' && <SettingsView />}
-      {currentView === 'ai-analysis' && <AIResearchView />}
+      <Suspense fallback={<div className="flex min-h-48 items-center justify-center text-sm text-slate-500" role="status">載入功能模組…</div>}>
+        {currentView === 'dashboard' && <DashboardView />}
+        {currentView === 'markets' && <MarketsView />}
+        {currentView === 'strategies' && <StrategiesView />}
+        {currentView === 'settings' && <SettingsView />}
+        {currentView === 'ai-analysis' && <AIResearchView />}
+      </Suspense>
     </Layout>
   );
 }

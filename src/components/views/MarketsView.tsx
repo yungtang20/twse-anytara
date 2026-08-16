@@ -2,56 +2,86 @@ import React, { useState, useEffect } from 'react';
 import { Search, AlertTriangle, Terminal as TerminalIcon, ChartLine } from "lucide-react";
 import { MarketDetailDashboard } from '../MarketDetailDashboard';
 import { CompanyFinancialAnalysis } from '../CompanyFinancialAnalysis';
-
-import { StockData } from '../../types/stock';
+import { fetchStockHistory, fetchStockQuote } from '../../lib/api';
 import { SRPanel } from "./SRPanel";
 import { MAPanel } from "./MAPanel";
 import { ChipsPanel } from "./ChipsPanel";
 import { PatternPanel } from "./PatternPanel";
 
+interface MarketStockSummary {
+  id: string;
+  name: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  prevPrice: number;
+  prevChange: number;
+  prevChangePercent: number;
+  volume: number;
+  prevVolume: number;
+  volDiff: number;
+  prevVolDiff: number;
+  lastDate: string;
+  histDate: string;
+}
+
 export function MarketsView() {
   const [ticker, setTicker] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [stock, setStock] = useState<StockData | null>(null);
+  const [stock, setStock] = useState<MarketStockSummary | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (searchQuery) {
-      querySupabase(searchQuery);
-    }
+    if (!searchQuery) return;
+    const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    setStock(null);
+
+    void querySupabase(searchQuery, controller.signal)
+      .then((result) => {
+        if (!controller.signal.aborted) setStock(result);
+      })
+      .catch((reason: unknown) => {
+        if (controller.signal.aborted) return;
+        console.error(`Stock query failed for ${searchQuery}:`, reason);
+        setError(reason instanceof Error ? reason.message : '個股資料載入失敗');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => controller.abort();
   }, [searchQuery]);
 
-  const querySupabase = async (stockId: string) => {
-    try {
-      const quoteRes = await fetch(`/api/stock/${stockId}/quote`).then(r => r.json());
-      if (!quoteRes || !quoteRes.success || !quoteRes.data) {
-          throw new Error('API 返回錯誤或無資料');
-      }
-      
-      const quote = quoteRes.data;
-      let mergedData: any = {
+  const querySupabase = async (stockId: string, signal: AbortSignal): Promise<MarketStockSummary> => {
+      const [quoteResult, historyResult] = await Promise.all([
+        fetchStockQuote(stockId, signal),
+        fetchStockHistory(stockId, 3, signal),
+      ]);
+      const quote = quoteResult.data;
+      if (!quote) throw new Error(quoteResult.quality.warnings.join('、') || 'API 返回錯誤或無資料');
+
+      const mergedData: MarketStockSummary = {
         id: quote.stock_id,
         name: quote.name || '未知',
-        source_type: 'raw',
-        price: Number(quote.close || 0),
+        price: quote.close,
         change: quote.change,
         changePercent: quote.changePercent,
-        volume: Math.floor(Number(quote.volume || 0) / 1000),
-        prevPrice: Number(quote.prevClose || quote.close || 0),
+        volume: Math.floor(quote.volume / 1000),
+        prevPrice: quote.prevClose ?? quote.close,
         prevVolume: 0,
         volDiff: 0,
         prevVolDiff: 0,
         lastDate: quote.date || '',
         histDate: '',
-        chipHistory: [],
-        predictions: [],
-        integratedSupports: [],
-        integratedPressures: []
+        prevChange: 0,
+        prevChangePercent: 0,
       };
-      
-      const histRes = await fetch(`/api/stock/${stockId}/history?days=3`).then(r => r.json());
-      if (histRes && histRes.success && histRes.data && histRes.data.length > 0) {
-          const priceData = histRes.data; // Note: API returns normalized volume
-          
+
+      const priceData = historyResult.data;
+      if (priceData.length > 0) {
           const latestPrice = priceData.at(-1);
           const prevPriceRec = priceData.at(-2) || latestPrice;
           const prev2PriceRec = priceData.at(-3) || prevPriceRec;
@@ -59,29 +89,23 @@ export function MarketsView() {
             throw new Error('歷史價格筆數不足');
           }
 
-          const changePrev = Number(prevPriceRec.close || 0) - Number(prev2PriceRec.close || prevPriceRec.close);
+          const changePrev = prevPriceRec.close - prev2PriceRec.close;
 
-          mergedData.price = Number(latestPrice.close || quote.close || 0);
-          mergedData.prevPrice = Number(prevPriceRec.close || latestPrice.close || 0);
-          mergedData.lastDate = String(latestPrice.date || quote.date || '');
-          mergedData.histDate = String(prevPriceRec.date || '');
+          mergedData.price = latestPrice.close;
+          mergedData.prevPrice = prevPriceRec.close;
+          mergedData.lastDate = latestPrice.date;
+          mergedData.histDate = prevPriceRec.date;
           mergedData.prevChange = changePrev;
-          mergedData.prevChangePercent = Number(prev2PriceRec.close || prevPriceRec.close) > 0 ? Number(((changePrev / Number(prev2PriceRec.close || prevPriceRec.close)) * 100).toFixed(2)) : 0;
+          mergedData.prevChangePercent = Number(((changePrev / prev2PriceRec.close) * 100).toFixed(2));
 
-          mergedData.volume = Math.floor(Number(latestPrice.volume || 0) / 1000);
-          mergedData.prevVolume = Math.floor(Number(prevPriceRec.volume || 0) / 1000);
-          const prev2Vol = Math.floor(Number(prev2PriceRec.volume || 0) / 1000);
+          mergedData.volume = Math.floor(latestPrice.volume / 1000);
+          mergedData.prevVolume = Math.floor(prevPriceRec.volume / 1000);
+          const prev2Vol = Math.floor(prev2PriceRec.volume / 1000);
 
           mergedData.volDiff = mergedData.volume - mergedData.prevVolume;
           mergedData.prevVolDiff = mergedData.prevVolume - prev2Vol;
       }
-      
-      setStock(mergedData);
-      
-    } catch (err: any) {
-      console.error(`Stock query failed for ${stockId}:`, err);
-      setStock(null);
-    }
+      return mergedData;
   };
 
   const handleSearch = (e: React.FormEvent) => {
@@ -151,13 +175,18 @@ export function MarketsView() {
             請在上方搜尋欄位中輸入上市櫃股票代號（例如: <span className="text-cyan-400 font-mono">2330</span>），即可載入個股決策資料。
           </p>
         </div>
+      ) : loading ? (
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center min-h-[160px]" role="status">
+          <div className="mb-4 h-10 w-10 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent" />
+          <p className="text-sm text-slate-400">正在載入「{searchQuery}」的 Supabase 資料…</p>
+        </div>
       ) : !stock ? (
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center min-h-[160px]">
           <AlertTriangle className="text-amber-500 mb-4" size={48} />
           <h3 className="text-white text-lg font-bold mb-2 tracking-widest">NO DATA AVAILABLE</h3>
           <p className="text-slate-400 text-center text-sm max-w-md">
-            目前無法獲取「{searchQuery}」的真實數據。根據系統指令，禁止顯示模擬或虛假資料。<br/>
-            請檢查本地資料庫或 Supabase 連線，並確認該股代號是否存在於歷史紀錄中。
+            目前無法獲取「{searchQuery}」的真實數據。系統不會以模擬資料替代。<br/>
+            {error || '請確認 Supabase 連線與股票代號。'}
           </p>
         </div>
       ) : (

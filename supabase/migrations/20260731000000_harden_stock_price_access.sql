@@ -1,4 +1,20 @@
 -- Public clients may read prices. Only the server-side service role may write.
+-- This bootstrap definition keeps the canonical chain replayable on an empty
+-- database while remaining a no-op for projects where stock_price already exists.
+create table if not exists public.stock_price (
+  stock_id text not null,
+  date text not null,
+  open double precision,
+  high double precision,
+  low double precision,
+  close double precision,
+  volume bigint,
+  amount bigint,
+  trade_count bigint,
+  spread double precision,
+  primary key (stock_id, date)
+);
+
 alter table public.stock_price enable row level security;
 
 revoke all on table public.stock_price from anon, authenticated;

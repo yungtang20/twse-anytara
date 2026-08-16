@@ -4,8 +4,11 @@
 //   Polling reads the same state.  Server restart resumes interrupted jobs.
 import { getDb } from "../db";
 import { supabase } from "../services";
-import { fetchAnalysisSnapshot, runFrameworkAnalysis } from "../mvpMcpRoutes";
-import type { AnalysisSnapshot } from "../mvpMcpRoutes";
+import {
+  fetchAnalysisSnapshot,
+  runFrameworkAnalysis,
+  type AnalysisSnapshot,
+} from "./legacyFrameworkAnalysis";
 import type { EvidenceSummary, ReportClaim } from "./evidenceReport";
 import { fetchWithOneRetry } from "./fetchRetry";
 

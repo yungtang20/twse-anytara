@@ -2,6 +2,11 @@ import { useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { AlertTriangle, Ban, Database, LoaderCircle, Play, ShieldCheck } from "lucide-react";
 import { runAIResearch, type AIResearchReportSuccessResponse } from "../../lib/api";
+import {
+  loadAIProviderOverride,
+  readHcnsecPrivacyAccepted,
+  setHcnsecPrivacyAccepted,
+} from "../../lib/aiProviderSettings";
 
 type Report = AIResearchReportSuccessResponse;
 type StrategyId = keyof Report["auditSummary"]["strategies"];
@@ -31,7 +36,19 @@ const ERROR_LABELS: Record<string, string> = {
   ai_research_model_output_invalid: "AI 模型回傳內容未通過研究契約驗證",
   ai_research_timeout: "研究執行逾時，請稍後再試",
   ai_research_contract_error: "研究流程發生契約錯誤",
+  hcnsec_privacy_ack_required: "使用 HCNSEC 前請先同意第三方資料傳送告知",
+  custom_key_required: "自訂 Base URL 必須搭配個人 API Key",
+  ai_rate_limited: "請求過於頻繁，請稍後再試",
+  ai_shared_daily_limit: "免費 AI 今日共享額度已用完，可改用個人 API Key",
+  ai_concurrency_limit: "目前 AI 同時使用人數已達上限，請稍後再試",
 };
+
+function effectiveProviderUsesHcnsec(): boolean {
+  const baseUrl = loadAIProviderOverride().baseUrl;
+  if (!baseUrl) return true;
+  try { return new URL(baseUrl).hostname.toLowerCase() === "api.hcnsec.cn"; }
+  catch { return false; }
+}
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
@@ -43,13 +60,16 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 function ResearchForm({
-  stockId, setStockId, loading, onSubmit, onCancel,
+  stockId, setStockId, loading, onSubmit, onCancel, usesHcnsec, privacyAccepted, onPrivacyChange,
 }: {
   stockId: string;
   setStockId: (value: string) => void;
   loading: boolean;
   onSubmit: (event: FormEvent) => void;
   onCancel: () => void;
+  usesHcnsec: boolean;
+  privacyAccepted: boolean;
+  onPrivacyChange: (accepted: boolean) => void;
 }) {
   return (
     <header className="rounded-2xl border border-blue-500/30 bg-slate-900 p-4">
@@ -57,6 +77,14 @@ function ResearchForm({
         <Database className="mt-0.5 text-blue-300" size={22} />
         <div><h1 className="text-lg font-bold text-white">AI 綜合研究</h1>
           <p className="mt-1 text-xs text-slate-400">建立可追溯、經伺服器語意驗證的綜合研究。</p></div>
+      </div>
+      <div className="mt-3 rounded-xl border border-slate-700 bg-slate-950/50 p-3 text-xs text-slate-300">
+        <p className="font-semibold text-blue-200">{usesHcnsec ? "目前使用：免費 HCNSEC" : "目前使用：個人 AI 供應商"}</p>
+        {usesHcnsec && <label className="mt-2 flex items-start gap-2 text-amber-100">
+          <input type="checkbox" checked={privacyAccepted} onChange={(event) => onPrivacyChange(event.target.checked)}
+            className="mt-0.5" />
+          <span>我了解：HCNSEC 表示可能至少保留 180 天的請求時間、IP、裝置資料、提示內容與回應內容。我不會傳送個人資料、機密資訊、身分驗證資訊或未公開商業資訊，並同意將研究資料傳送給第三方 HCNSEC。</span>
+        </label>}
       </div>
       <form onSubmit={onSubmit} className="mt-4 flex flex-wrap gap-2">
         <label className="min-w-44 flex-1 text-xs text-slate-400">
@@ -66,7 +94,7 @@ function ResearchForm({
             className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2.5 text-sm text-white outline-none focus:border-blue-500" />
         </label>
         <div className="flex items-end gap-2">
-          <button disabled={loading || !stockId.trim()} className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
+          <button disabled={loading || !stockId.trim() || (usesHcnsec && !privacyAccepted)} className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
             {loading ? <LoaderCircle className="animate-spin" size={17} /> : <Play size={17} />}
             {loading ? "執行中" : "產生 AI 綜合研究"}
           </button>
@@ -249,6 +277,8 @@ export function AIResearchView() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [report, setReport] = useState<Report | null>(null);
+  const [usesHcnsec] = useState(effectiveProviderUsesHcnsec);
+  const [privacyAccepted, setPrivacyAccepted] = useState(readHcnsecPrivacyAccepted);
   const active = useRef<AbortController | null>(null);
 
   const submit = async (event: FormEvent) => {
@@ -269,7 +299,9 @@ export function AIResearchView() {
 
   return <div className="mx-auto w-full max-w-7xl space-y-3 pb-6">
     <ResearchForm stockId={stockId} setStockId={setStockId} loading={loading}
-      onSubmit={(event) => { void submit(event); }} onCancel={() => active.current?.abort()} />
+      onSubmit={(event) => { void submit(event); }} onCancel={() => active.current?.abort()}
+      usesHcnsec={usesHcnsec} privacyAccepted={privacyAccepted}
+      onPrivacyChange={(accepted) => { setHcnsecPrivacyAccepted(accepted); setPrivacyAccepted(accepted); }} />
     {error && <div role="alert" className="flex gap-2 rounded-2xl border border-rose-700/50 bg-rose-950/30 p-4 text-sm text-rose-200">
       <AlertTriangle size={18} /><span>{error}</span></div>}
     {report && <ReportView report={report} />}

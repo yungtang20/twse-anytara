@@ -40,7 +40,7 @@ export interface AIResearchReportAuditSummary {
 }
 
 export interface AIResearchReportProviderMetadata {
-  provider: "router" | "fake";
+  provider: "hcnsec" | "custom" | "router" | "fake";
   model: string;
   durationMs: number | null;
   usage: { inputTokens: number | null; outputTokens: number | null };

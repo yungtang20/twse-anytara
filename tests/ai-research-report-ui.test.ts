@@ -81,7 +81,9 @@ test("report presenter route and production factory remain isolated", async () =
     read("server/lib/aiResearchProduction.ts"),
     read("server/lib/aiResearchModelRunner.ts"),
   ]);
-  assert.match(route, /isLoopbackRequest/);
+  assert.doesNotMatch(route, /isLoopbackRequest|requireAdminRequest|authorizeAdminRequest/);
+  assert.match(route, /resolveAIProviderConnection/);
+  assert.match(route, /createAIAbuseGuard/);
   assert.match(route, /presentAIResearchReport/);
   assert.doesNotMatch(route, /buildResearchPacket|buildAIResearchModelRequest|auditResearchReport|createCloudResearchContextAdapter|Supabase|SQLite/i);
   assert.match(factory, /ResearchContextAggregator/);

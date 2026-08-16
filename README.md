@@ -119,7 +119,7 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 │  數據收集策略        │  股票代號 / 股名                          │
 │  Supabase: TDCC      │  [2330        ]                          │
 │  FinMind: 7個        │                                          │
-│  Router glm-5.2      │  可追溯研究報告                           │
+│  預設 HCNSEC / BYOK  │  可追溯研究報告                           │
 │  2015-01-01 至今      │  [輸入您的問題...]                        │
 ├──────────────────────┼──────────────────────────────────────────┤
 │  分析模板            │  分析結果                                 │
@@ -208,7 +208,7 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 **數據來源優先級**：
 1. Supabase（價格、公司資料、法人、TDCC 與股利）
 2. FinMind（分析框架要求的財務、估值與營收資料）
-3. AI Research Router 固定 `glm-5.2`（根據上述結構化資料生成候選報告）
+3. AI Research Router（預設 HCNSEC `auto`，或使用者於目前分頁提供 OpenAI-compatible BYOK）根據上述結構化資料生成候選報告
 
 **FinMind API 數據集**：依分析模板按需讀取，不再固定下載全部資料
 
@@ -233,8 +233,8 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 4. AI Research Router 生成候選報告
    ├─ 建立固定契約提示詞與不受信任證據封包
    ├─ 發送單次非串流請求到 https://api.hcnsec.cn/v1
-   │   ├─ model: glm-5.2（固定，不接受前端或環境覆寫）
-   │   ├─ max_tokens: 16,384
+   │   ├─ model: `auto`（預設），或目前分頁的個人 BYOK 模型
+   │   ├─ max_tokens: 65,536
    │   └─ response_format: json_object
    └─ 伺服器重新驗證引用、數字、風險、建議與估值
     ↓
@@ -245,7 +245,7 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 
 ```json
 {
-  "model": "glm-5.2",
+  "model": "auto",
   "messages": [
     {
       "role": "system",
@@ -256,7 +256,7 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
       "content": "結構化且標示為不受信任的研究證據"
     }
   ],
-  "max_tokens": 16384,
+  "max_tokens": 65536,
   "stream": false,
   "response_format": { "type": "json_object" }
 }
@@ -284,15 +284,20 @@ TRINITY 台股分析平台是一個全方位的股票分析工具，提供即時
 | 日期範圍 | 2015-01-01 至今日 |
 | 每個數據集 | 只調閱 1 次 |
 
-### 5.2 AI Research Router
+### 5.2 AI Research（預設 HCNSEC／個人 BYOK）
 
 | 限制 | 說明 |
 |------|------|
 | 端點 | `https://api.hcnsec.cn/v1` |
-| 模型 | `glm-5.2`（固定） |
-| max_tokens | 16,384 |
-| 供應商逾時 | 300 秒；整體報告逾時 315 秒 |
-| 金鑰 | 僅伺服器端 `AI_RESEARCH_API_KEY` |
+| 模型 | 預設 `auto`；個人 BYOK 可指定 OpenAI-compatible 模型 |
+| max_tokens | 65,536；`finish_reason=length` 一律視為報告截斷失敗 |
+| 供應商逾時 | 預設 900 秒；完整報告可能需要數分鐘 |
+| 預設金鑰 | 僅伺服器端 `HCNSEC_API_KEY`，不得加上 `VITE_` 前綴 |
+| 個人設定 | Base URL、API Key、Model 僅存於目前分頁的 `sessionStorage` |
+
+設定頁欄位全部留空時使用免費 HCNSEC。若填自訂 Base URL，必須同時填入個人 API Key；伺服器絕不會把共享 HCNSEC 金鑰送往自訂網域。自訂端點只允許 HTTPS 443、公網 DNS/IP、固定 DNS 解析且禁止 redirect。
+
+使用 HCNSEC 前，使用者必須同意第三方資料傳送告知：HCNSEC 表示可能至少保留 180 天的請求時間、IP、裝置資料、提示內容與回應內容；使用者不得傳送個人資料、機密資訊、身分驗證資訊或未公開商業資訊。預設匿名保護為每 IP 每 10 分鐘 10 次、共享金鑰每日 100 次、全站同時 2 次；可用 `AI_RATE_LIMIT_REQUESTS`、`AI_RATE_LIMIT_WINDOW_MS`、`AI_SHARED_DAILY_LIMIT`、`AI_MAX_CONCURRENCY` 調整。
 
 ### 5.3 Supabase
 
@@ -307,12 +312,21 @@ Supabase 存取分工：
 
 - `SUPABASE_ANON_KEY`／`VITE_SUPABASE_ANON_KEY`：前端與一般唯讀查詢。
 - `SUPABASE_SERVICE_ROLE_KEY`：僅限伺服器與同步腳本寫入，禁止使用 `VITE_` 前綴。
-- 部署時依序套用 `supabase/migrations/`；市場表啟用 RLS 公開唯讀，私有快取與同步紀錄只允許 service role。
+- 新專案須從空白資料庫依序重播 `supabase/migrations/`；既有正式專案只套用經審查且尚未存在的 migration，不以檔名猜測重播歷史 migration。市場表啟用 RLS 公開唯讀，私有快取與同步紀錄只允許 service role。
 - `npm run sync` 直接從 TWSE、TPEX、TDCC 官方來源寫入 Supabase；`SUPABASE_SYNC_MAX_DAYS` 限制股價單次追補範圍。
 - 股價固定保留最新 512 個交易日；法人首次補齊最新 60 個交易日後持續累積，TDCC 每週持續累積。三者最後都以股價第 512 個交易日為共同截止日，一起刪除更舊資料。
-- TDCC 官方整批開放資料只提供最新一週；個股頁可按「從集保網頁補一年」逐股抓取官方最近 51～52 週，全市場其餘資料則由每週同步逐步累積，不能把本機資料庫當成雲端回補來源。
+- TDCC 官方整批開放資料只提供最新一週；全市場歷史由每週正式同步逐步累積，前端不提供已停用的本機回補操作，也不能把本機資料庫當成雲端回補來源。
 - FinMind Free 的全市場股票資訊會在雲端更新時補齊產業分類；財報、月營收、PER、股利、融資券與外資持股依 Free 額度逐股抓取並快取。API Token 僅可設定為伺服器端 `FINMIND_API_KEY`，不得使用 `VITE_` 前綴。
 - `npm run verify:cloud` 可檢查容量、最新日期、RLS、儀表板與主要 API。
+- `tests/supabase-blank-replay.test.ts` 只做靜態 preflight；真正空白重播由 GitHub Actions 的隔離 Supabase job 執行。本機若沒有 Docker，重播狀態必須記為「未驗證」。
+
+### 5.4 Render 正式部署
+
+- 既有服務名稱為 `twse-app`，來源倉庫為 `yungtang20/twse-anytara` 的 `main`；服務維持既有 Docker runtime，由多階段 `Dockerfile` 執行 `npm ci`、build、production-only install 與 `npm start`，健康檢查為 `/api/health`。
+- 正式環境使用 Supabase，且不得使用正式 SQLite；`MARKET_DATA_MODE=test` 與 `SQLITE_DB_PATH` 只供作業系統暫存測試資料庫。
+- Render secret 至少包含 `HCNSEC_API_KEY`、`SUPABASE_URL`、`SUPABASE_ANON_KEY`、`SUPABASE_SERVICE_ROLE_KEY`；前端建置另需 publishable 的 `VITE_SUPABASE_URL` 與 `VITE_SUPABASE_ANON_KEY`。任何 service-role 或 HCNSEC 共享密鑰都不得使用 `VITE_`。
+- 發布前執行 `npm audit --omit=dev`、`npm run typecheck`、`npm run lint`、`npm test`、`npm run test:ui`、`npm run test:eval`、`npm run build`。Supabase schema 另以 `npm run verify:supabase-security -- --production` 唯讀查核。
+- Rollback：保留切換前 deploy ID 與服務設定；若健康檢查、靜態資產、雲端讀取或 AI smoke 任一失敗，重新部署上一個已知可用 deploy，不執行破壞性資料庫回滾。
 
 ---
 
@@ -333,7 +347,7 @@ Supabase 存取分工：
 
 ### 6.3 外部 API
 - **FinMind**：台股數據
-- **AI Research Router / glm-5.2**：AI 綜合研究候選報告
+- **AI Research Router**：預設 HCNSEC `auto`，並支援目前分頁限定的 OpenAI-compatible BYOK
 - **Supabase**：雲端資料庫
 
 ---

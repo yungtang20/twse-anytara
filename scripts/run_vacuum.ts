@@ -1,42 +1,40 @@
-import pg from "pg";
 import dotenv from "dotenv";
+import pg from "pg";
 
 dotenv.config();
 
-const connectionString = process.env.DATABASE_URL;
+const TABLES = ["stock_price", "stock_institutional", "tdcc_shareholding", "stock_features"] as const;
 
-if (!connectionString) {
-  console.error("❌ DATABASE_URL is not set in environment!");
-  process.exit(1);
+function executionProjectRef(args = process.argv.slice(2), env = process.env): string | null {
+  if (!args.includes("--execute")) return null;
+  const index = args.indexOf("--project-ref");
+  const supplied = index >= 0 ? args[index + 1]?.trim() : "";
+  if (!supplied) throw new Error("--project-ref is required with --execute");
+  const expected = env.SUPABASE_PROJECT_REF?.trim();
+  if (!expected || supplied !== expected) throw new Error("project ref mismatch");
+  return supplied;
 }
 
-// Disable SSL certificate validation for connection flexibility if needed
-const pool = new pg.Pool({
-  connectionString,
-  ssl: {
-    rejectUnauthorized: false
+async function run(): Promise<void> {
+  const projectRef = executionProjectRef();
+  if (!projectRef) {
+    console.log(`DRY RUN: VACUUM FULL would lock and rewrite ${TABLES.join(", ")}.`);
+    console.log("No database connection was opened. Use --execute --project-ref <SUPABASE_PROJECT_REF> to run.");
+    return;
   }
-});
-
-async function run() {
-  console.log("🚀 Connecting to Supabase via direct connection to run VACUUM FULL...");
+  const connectionString = process.env.DATABASE_URL?.trim();
+  if (!connectionString) throw new Error("DATABASE_URL is required");
+  const pool = new pg.Pool({ connectionString, ssl: { rejectUnauthorized: true } });
   try {
-    // pg driver can run VACUUM if not in a transaction block
-    // default pool.query runs a single statement without an explicit BEGIN/COMMIT block
-    console.log("Running VACUUM FULL on stock_price...");
-    await pool.query('VACUUM FULL stock_price');
-    console.log("Running VACUUM FULL on stock_institutional...");
-    await pool.query('VACUUM FULL stock_institutional');
-    console.log("Running VACUUM FULL on tdcc_shareholding...");
-    await pool.query('VACUUM FULL tdcc_shareholding');
-    console.log("Running VACUUM FULL on stock_features...");
-    await pool.query('VACUUM FULL stock_features');
-    console.log("✅ VACUUM FULL completed successfully. Disk space should be reclaimed.");
-  } catch (err: any) {
-    console.error("❌ Failed to run VACUUM FULL:", err.message);
+    console.log(`Executing VACUUM FULL for project ${projectRef}.`);
+    for (const table of TABLES) await pool.query(`VACUUM FULL ${table}`);
+    console.log("VACUUM FULL completed.");
   } finally {
     await pool.end();
   }
 }
 
-run();
+run().catch((error: unknown) => {
+  console.error("VACUUM FULL failed:", error instanceof Error ? error.message : "unknown_error");
+  process.exitCode = 1;
+});

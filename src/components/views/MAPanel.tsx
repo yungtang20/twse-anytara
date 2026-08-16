@@ -15,7 +15,12 @@ export function MAPanel({ stockId, data: providedData, change, changePercent }: 
 
   useEffect(() => {
     if (!stockId || providedData !== undefined) return;
-    fetchMAAnalysis(stockId).then(setLoadedData).catch(() => setLoadedData(null));
+    const controller = new AbortController();
+    setLoadedData(null);
+    fetchMAAnalysis(stockId, controller.signal)
+      .then((result) => { if (!controller.signal.aborted) setLoadedData(result); })
+      .catch(() => { if (!controller.signal.aborted) setLoadedData(null); });
+    return () => controller.abort();
   }, [stockId, providedData]);
 
   const TrendIcon = ({ trend }: { trend: string }) => {

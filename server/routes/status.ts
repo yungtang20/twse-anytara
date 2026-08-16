@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { getDb } from "../db";
 import { checkSupabaseReachability } from "../lib/cloudHealth";
 import { debugState, getOtcStats, getTwseStats } from "../services";
+import { requireAdminRequest } from "../lib/security";
 
 const router = Router();
 const useTestSqlite = process.env.MARKET_DATA_MODE === "test";
@@ -40,7 +41,7 @@ router.get("/api/otc-stats", async (_req: Request, res: Response) => {
   res.json(data);
 });
 
-router.get("/api/debug-status", (_req: Request, res: Response) => {
+router.get("/api/debug-status", requireAdminRequest, (_req: Request, res: Response) => {
   res.json({
     time: new Date().toLocaleString("en-US", { timeZone: "Asia/Taipei" }),
     logs: debugState.debugLogs,

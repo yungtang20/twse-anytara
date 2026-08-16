@@ -1,8 +1,9 @@
 import { supabase, supabaseAdmin } from "./runtimeState";
-import Database from "better-sqlite3";
+import { createHash } from "node:crypto";
 import fs from "fs";
 import path from "path";
 import { isEligibleOrdinaryStock, isOrdinaryStockId, type StockMetaUniverseRow } from "./stockUniverse";
+import { loadSqliteDriver } from "./sqliteDriver";
 
 export type TradeRiskType =
   | "attention" | "disposition" | "trading_halt" | "margin_restricted"
@@ -63,7 +64,18 @@ export interface RiskFlag {
 }
 
 const LEVEL_ORDER: Record<RiskLevel, number> = { none: 0, medium: 1, high: 2, critical: 3 };
-const MAX_DATA_AGE_MS = Math.max(1, Number(process.env.TRADE_RISK_MAX_AGE_HOURS || 72)) * 3_600_000;
+const DEFAULT_MAX_DATA_AGE_HOURS = 72;
+const MAX_CONFIGURED_DATA_AGE_HOURS = 24 * 30;
+const FUTURE_CLOCK_SKEW_MS = 5 * 60_000;
+
+export function resolveTradeRiskMaxAgeHours(value = process.env.TRADE_RISK_MAX_AGE_HOURS): number {
+  if (value === undefined || value.trim() === "") return DEFAULT_MAX_DATA_AGE_HOURS;
+  const hours = Number(value);
+  if (!Number.isFinite(hours) || hours < 1 || hours > MAX_CONFIGURED_DATA_AGE_HOURS) {
+    throw new Error(`TRADE_RISK_MAX_AGE_HOURS must be a finite number between 1 and ${MAX_CONFIGURED_DATA_AGE_HOURS}`);
+  }
+  return hours;
+}
 
 export function taipeiDate(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -102,14 +114,22 @@ function sortRisks(rows: TradeRiskView[]): TradeRiskView[] {
 async function cloudRows(stockId?: string, type?: TradeRiskType, activeOnly = false): Promise<StoredTradeRisk[]> {
   if (!supabase) throw new Error("Supabase 尚未設定");
   const today = taipeiDate();
-  let query = supabase.from("stock_trade_risk").select("*");
-  if (stockId) query = query.eq("stock_id", stockId);
-  if (type) query = query.eq("risk_type", type);
-  if (activeOnly) query = query.eq("is_active", true).lte("start_date", today).or(`end_date.is.null,end_date.gte.${today}`);
-  else query = query.or(`end_date.is.null,end_date.gte.${today}`);
-  const { data, error } = await query.order("start_date", { ascending: true });
-  if (error) throw new Error(`Supabase 交易風險查詢失敗: ${error.message}`);
-  const rows = (data || []) as StoredTradeRisk[];
+  const rows: StoredTradeRisk[] = [];
+  for (let offset = 0; ; offset += 1_000) {
+    let query = supabase.from("stock_trade_risk").select("*");
+    if (stockId) query = query.eq("stock_id", stockId);
+    if (type) query = query.eq("risk_type", type);
+    if (activeOnly) query = query.eq("is_active", true).lte("start_date", today).or(`end_date.is.null,end_date.gte.${today}`);
+    else query = query.or(`end_date.is.null,end_date.gte.${today}`);
+    const { data, error } = await query
+      .order("start_date", { ascending: true })
+      .order("id", { ascending: true })
+      .range(offset, offset + 999);
+    if (error) throw new Error(`Supabase 交易風險查詢失敗: ${error.message}`);
+    const page = (data || []) as StoredTradeRisk[];
+    rows.push(...page);
+    if (page.length < 1_000) break;
+  }
   return activeOnly ? rows.filter((row) => isTradeRiskActive(row, today)) : rows;
 }
 
@@ -138,6 +158,7 @@ function localRiskPath(): string {
 
 function readLocal(sql: string, params: string[] = []): unknown[] {
   const riskPath = localRiskPath();
+  const Database = loadSqliteDriver();
   const database = new Database(riskPath, { readonly: true, fileMustExist: true });
   try { return database.prepare(sql).all(...params); }
   finally { database.close(); }
@@ -183,6 +204,10 @@ export async function getMarketTradeRisks(
 
 export function tradeRiskRecordKey(row: Pick<StoredTradeRisk, "stock_id" | "market" | "risk_type" | "source" | "start_date">): string {
   return [row.stock_id, row.market, row.risk_type, row.source, row.start_date].join("|");
+}
+
+export function tradeRiskRecordKeyDigest(keys: Iterable<string>): string {
+  return createHash("sha256").update([...keys].sort().join("\n"), "utf8").digest("hex");
 }
 
 function canonicalLocalRows(): StoredTradeRisk[] {
@@ -258,10 +283,11 @@ export async function syncTradeRisksToSupabase(): Promise<{ pushed: number; remo
   const active = rows.filter((row) => isTradeRiskActive(row, today)).length;
   const syncedAt = new Date().toISOString();
   const latest = rows.map((row) => row.fetched_at).sort().at(-1) || null;
+  const recordKeyDigest = tradeRiskRecordKeyDigest(localKeys);
   const { error } = await supabaseAdmin.from("trade_risk_sync_status").upsert({
     id: true, status: "success", local_total: rows.length, cloud_total: cloud.length,
     active, latest_source_fetched_at: latest, synced_at: syncedAt, attempted_at: syncedAt, error: null,
-    summary: { pushed, removed, record_keys: localKeys.size },
+    summary: { pushed, removed, record_keys: localKeys.size, record_key_digest: recordKeyDigest },
   }, { onConflict: "id" });
   if (error) throw new Error(`Supabase 同步狀態寫入失敗: ${error.message}`);
   return { pushed, removed, active, syncedAt };
@@ -394,18 +420,38 @@ type TradeRiskPolicyLoader = () => Promise<TradeRiskPolicyDataset>;
 
 function isStaleTimestamp(value: string | null | undefined): boolean {
   const timestamp = value ? Date.parse(value) : Number.NaN;
-  return !Number.isFinite(timestamp) || Date.now() - timestamp > MAX_DATA_AGE_MS;
+  if (!Number.isFinite(timestamp)) return true;
+  const now = Date.now();
+  if (timestamp > now + FUTURE_CLOCK_SKEW_MS) return true;
+  return now - timestamp > resolveTradeRiskMaxAgeHours() * 3_600_000;
 }
 
 export async function loadTradeRiskPolicyDataset(): Promise<TradeRiskPolicyDataset> {
   if (!supabase) throw new Error("Supabase 尚未設定");
   const { data, error } = await supabase.from("trade_risk_sync_status")
-    .select("synced_at,latest_source_fetched_at,status").eq("id", true).maybeSingle();
+    .select("synced_at,latest_source_fetched_at,status,cloud_total,active,summary").eq("id", true).maybeSingle();
   if (error) throw new Error(`Supabase 交易風險同步狀態查詢失敗: ${error.message}`);
   if (!data || data.status !== "success") throw new Error("Supabase 交易風險尚未完成成功同步");
   const freshness = data.latest_source_fetched_at || data.synced_at;
   if (isStaleTimestamp(freshness)) throw new Error("Supabase 交易風險資料已過期");
-  return { rows: await cloudRows(undefined, undefined, true), asOf: String(freshness).slice(0, 10), source: "supabase" };
+  const allRows = await cloudRiskRows();
+  const keys = allRows.map((row) => row.record_key || tradeRiskRecordKey(row));
+  const summary = data.summary && typeof data.summary === "object"
+    ? data.summary as Record<string, unknown>
+    : {};
+  if (Number(data.cloud_total) !== allRows.length || Number(summary.record_keys) !== new Set(keys).size) {
+    throw new Error("Supabase 交易風險筆數與成功同步摘要不一致");
+  }
+  const expectedDigest = typeof summary.record_key_digest === "string" ? summary.record_key_digest : "";
+  if (!expectedDigest || tradeRiskRecordKeyDigest(keys) !== expectedDigest) {
+    throw new Error("Supabase 交易風險 record_key 摘要不一致");
+  }
+  const today = taipeiDate();
+  const activeRows = allRows.filter((row) => isTradeRiskActive(row, today));
+  if (Number(data.active) !== activeRows.length) {
+    throw new Error("Supabase 交易風險 active 筆數與成功同步摘要不一致");
+  }
+  return { rows: activeRows, asOf: String(freshness).slice(0, 10), source: "supabase" };
 }
 
 export async function applyTradeRiskPolicy<T extends { stock_id: string }>(

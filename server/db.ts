@@ -1,10 +1,10 @@
-import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
 import os from "os";
 import { runMigrations } from "./lib/migrations";
 import { ensureCanonicalSchema } from "./lib/sqliteSchema";
 import { resolveRuntimeMode } from "./lib/runtimeMode";
+import { loadSqliteDriver } from "./lib/sqliteDriver";
 
 let db: any = null;
 
@@ -37,6 +37,7 @@ export function initDb() {
   }
   const dbPath = resolveTestDatabasePath();
   try {
+    const Database = loadSqliteDriver();
     // Ensure the folder exists
     const dbDir = path.dirname(dbPath);
     if (!fs.existsSync(dbDir)) {

@@ -1,4 +1,5 @@
 import type { AIResearchModelRequest, AIResearchPacket, AuditResult } from "../../shared/aiResearch";
+import type { ResolvedAIProviderConnection } from "../../shared/aiProvider";
 import {
   AIResearchModelGatewayError,
   sanitizeAIResearchProviderMetadata,
@@ -36,7 +37,7 @@ export interface AIResearchModelRunnerContract {
   generateAudited(
     request: AIResearchModelRequest,
     packet: AIResearchPacket,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; connection?: ResolvedAIProviderConnection },
   ): Promise<AIResearchModelRunnerResult>;
 }
 
@@ -61,7 +62,9 @@ function gatewayFailure(error: AIResearchModelGatewayError): AIResearchModelRunn
   if (error.code === "aborted") return "ai_research_aborted";
   if (error.code === "local_contract") return "ai_research_contract_error";
   if (error.code === "timeout") return "ai_research_provider_timeout";
-  if (error.code === "invalid_json" || error.code === "empty_response") return "ai_research_provider_response_invalid";
+  if (error.code === "invalid_json" || error.code === "empty_response" || error.code === "truncated") {
+    return "ai_research_provider_response_invalid";
+  }
   if (error.code === "rate_limited") return "ai_research_provider_rate_limited";
   if (error.code === "provider_rejected") return "ai_research_provider_rejected";
   if (error.code === "server_error") return "ai_research_provider_server_error";
@@ -75,14 +78,17 @@ export class AIResearchModelRunner implements AIResearchModelRunnerContract {
   ) {}
 
   async generateAudited(request: AIResearchModelRequest, packet: AIResearchPacket,
-    options: { signal?: AbortSignal } = {}): Promise<AIResearchModelRunnerResult> {
+    options: { signal?: AbortSignal; connection?: ResolvedAIProviderConnection } = {}): Promise<AIResearchModelRunnerResult> {
     if (options.signal?.aborted) return failure("ai_research_aborted");
     const providerMetadata: AIResearchProviderMetadata[] = [];
     let nextRequest = request;
     let lastDiagnostics: AIResearchAuditDiagnostics | undefined;
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
-        const generated = await this.gateway.generateCandidate(nextRequest, { signal: options.signal });
+        const generated = await this.gateway.generateCandidate(nextRequest, {
+          signal: options.signal,
+          connection: options.connection,
+        });
         providerMetadata.push(sanitizeAIResearchProviderMetadata(generated));
         if (options.signal?.aborted) return failure("ai_research_aborted", providerMetadata);
         const audit = this.auditor(generated.candidate, packet);

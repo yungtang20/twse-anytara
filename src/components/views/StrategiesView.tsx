@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   AlertCircle,
@@ -60,6 +60,8 @@ function StrategyTabs({ selected, onSelect }: { selected: StrategyId; onSelect: 
       {strategies.map((strategy) => (
         <button
           key={strategy.id}
+          type="button"
+          aria-pressed={selected === strategy.id}
           onClick={() => onSelect(strategy.id)}
           className={`shrink-0 rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
             selected === strategy.id ? `${strategy.background} ${strategy.color}` : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'
@@ -74,7 +76,7 @@ function ModeSwitch({ mode, onChange }: { mode: PageMode; onChange: (mode: PageM
   return (
     <div className="inline-flex rounded-xl border border-slate-800 bg-slate-950 p-1">
       {([['stock', '個股分析'], ['scan', '全市場掃描']] as const).map(([id, label]) => (
-        <button key={id} onClick={() => onChange(id)} className={`rounded-lg px-4 py-2 text-sm font-medium ${mode === id ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}>
+        <button key={id} type="button" aria-pressed={mode === id} onClick={() => onChange(id)} className={`rounded-lg px-4 py-2 text-sm font-medium ${mode === id ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white'}`}>
           {label}
         </button>
       ))}
@@ -99,6 +101,7 @@ export function StrategiesView() {
   const [srData, setSrData] = useState<SRAnalysis | null>(null);
   const [maData, setMaData] = useState<MAAnalysis | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
+  const searchControllerRef = useRef<AbortController | null>(null);
 
   const activeStrategy = strategies.find((strategy) => strategy.id === selectedStrategy);
   const activeStockId = selectedStock?.stock_id ?? '';
@@ -114,47 +117,69 @@ export function StrategiesView() {
 
   useEffect(() => {
     if (!activeStockId) return;
-    let current = true;
-    setLoadingStock(true); setPageError(null);
+    const controller = new AbortController();
+    setLoadingStock(true);
+    setPageError(null);
+    setPriceData([]);
+    setInstitutional([]);
+    setShareholding([]);
+    setHasDataIssue(true);
     Promise.all([
-      fetchStockHistory(activeStockId, 1000),
-      fetchStockInstitutional(activeStockId),
-      fetchStockShareholding(activeStockId),
+      fetchStockHistory(activeStockId, 1000, controller.signal),
+      fetchStockInstitutional(activeStockId, controller.signal),
+      fetchStockShareholding(activeStockId, controller.signal),
     ]).then(([prices, institutions, holders]) => {
-      if (!current) return;
+      if (controller.signal.aborted) return;
       setPriceData(prices.data);
       setInstitutional(institutions.data);
       setShareholding(holders.data);
-      setHasDataIssue(prices.data.length === 0 || prices.quality.isMock || prices.quality.isStale || prices.quality.warnings.length > 0);
+      setHasDataIssue(
+        prices.data.length === 0
+        || [prices.quality, institutions.quality, holders.quality].some(
+          (quality) => quality.isMock || quality.isStale || quality.warnings.length > 0,
+        )
+      );
     }).catch((reason) => {
-      if (current) setPageError(reason instanceof Error ? reason.message : '個股資料載入失敗');
-    }).finally(() => { if (current) setLoadingStock(false); });
-    return () => { current = false; };
+      if (!controller.signal.aborted) setPageError(reason instanceof Error ? reason.message : '個股資料載入失敗');
+    }).finally(() => { if (!controller.signal.aborted) setLoadingStock(false); });
+    return () => controller.abort();
   }, [activeStockId]);
 
   useEffect(() => {
     if (!activeStockId || !selectedStrategy || !['support-resistance', 'ma-trend'].includes(selectedStrategy)) return;
-    let current = true;
+    const controller = new AbortController();
     setAnalysisLoading(true);
+    setSrData(null);
+    setMaData(null);
     const request = selectedStrategy === 'support-resistance'
-      ? fetchSRAnalysis(activeStockId).then((data) => { if (current) setSrData(data); })
-      : fetchMAAnalysis(activeStockId).then((data) => { if (current) setMaData(data); });
+      ? fetchSRAnalysis(activeStockId, controller.signal).then((data) => { if (!controller.signal.aborted) setSrData(data); })
+      : fetchMAAnalysis(activeStockId, controller.signal).then((data) => { if (!controller.signal.aborted) setMaData(data); });
     request.catch((reason) => {
-      if (current) setPageError(reason instanceof Error ? reason.message : '策略分析載入失敗');
-    }).finally(() => { if (current) setAnalysisLoading(false); });
-    return () => { current = false; };
+      if (!controller.signal.aborted) setPageError(reason instanceof Error ? reason.message : '策略分析載入失敗');
+    }).finally(() => { if (!controller.signal.aborted) setAnalysisLoading(false); });
+    return () => controller.abort();
   }, [activeStockId, selectedStrategy]);
 
   const updateQuery = async (value: string) => {
     setQuery(value);
-    if (value.trim().length < 2) { setSearchResults([]); return; }
+    searchControllerRef.current?.abort();
+    if (value.trim().length < 2) { setSearchResults([]); setSearching(false); return; }
+    const controller = new AbortController();
+    searchControllerRef.current = controller;
     setSearching(true);
-    try { setSearchResults(await fetchStockSearch(value.trim())); }
-    catch { setSearchResults([]); }
-    finally { setSearching(false); }
+    try {
+      const results = await fetchStockSearch(value.trim(), controller.signal);
+      if (!controller.signal.aborted) setSearchResults(results);
+    } catch {
+      if (!controller.signal.aborted) setSearchResults([]);
+    } finally {
+      if (!controller.signal.aborted) setSearching(false);
+    }
   };
 
   const chooseStock = (stock: StockMeta, fromScan = false) => {
+    searchControllerRef.current?.abort();
+    setSearching(false);
     setSelectedStock(stock);
     setSelectedFromScan(fromScan);
     setQuery(stock.stock_id);
@@ -175,6 +200,7 @@ export function StrategiesView() {
   };
 
   const clearStock = () => {
+    searchControllerRef.current?.abort();
     setSelectedStock(null); setQuery(''); setSearchResults([]);
     setSelectedFromScan(false);
     setPriceData([]); setInstitutional([]); setShareholding([]);

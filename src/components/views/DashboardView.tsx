@@ -28,6 +28,30 @@ interface IndexStats {
   date?: string;
 }
 
+type HealthState =
+  | { status: "checking" }
+  | { status: "healthy"; checkedAt: string }
+  | { status: "unavailable"; error: string };
+
+function MarketStatusBadge() {
+  const [isOpen, setIsOpen] = useState(() => getMarketStatus());
+  useEffect(() => {
+    const timer = globalThis.setInterval(() => setIsOpen(getMarketStatus()), 30_000);
+    return () => globalThis.clearInterval(timer);
+  }, []);
+  return isOpen ? (
+    <span className="flex items-center gap-1 text-[11px] font-medium text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full" title="依台北時間與週間時段推估，未取代交易日曆">
+      <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+      交易時段（推估）
+    </span>
+  ) : (
+    <span className="flex items-center gap-1 text-[11px] font-medium text-gray-400 bg-gray-500/10 px-2 py-0.5 rounded-full" title="依台北時間與週間時段推估，未取代交易日曆">
+      <span className="w-1.5 h-1.5 rounded-full bg-gray-500" />
+      非交易時段（推估）
+    </span>
+  );
+}
+
 interface IndexChartDataPoint {
   date: string;
   index: number;
@@ -112,8 +136,10 @@ function CollapsibleCard({
 
   return (
     <div className="bg-bg-secondary border border-border rounded-lg overflow-hidden">
-      <div
-        className="px-2 py-1.5 bg-bg-tertiary border-b border-border flex items-center justify-between cursor-pointer select-none"
+      <button
+        type="button"
+        aria-expanded={!collapsed}
+        className="px-2 py-1.5 bg-bg-tertiary border-b border-border flex w-full items-center justify-between cursor-pointer select-none text-left"
         onClick={() => setCollapsed(!collapsed)}
       >
         <div className="flex items-center gap-2">
@@ -130,7 +156,7 @@ function CollapsibleCard({
             <ChevronUp className="w-3.5 h-3.5 text-gray-500" />
           )}
         </div>
-      </div>
+      </button>
       {!collapsed && (
         <div className="p-2">
           {loading && (
@@ -205,8 +231,23 @@ export function DashboardView() {
     down: 0,
     limitDown: 0,
   });
+  const [health, setHealth] = useState<HealthState>({ status: "checking" });
 
-  const isOpen = getMarketStatus();
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch("/api/health", { signal: controller.signal })
+      .then(async (response) => {
+        const payload = await response.json() as { success?: boolean; time?: string; error?: string };
+        if (!response.ok || payload.success !== true) throw new Error(payload.error || `HTTP ${response.status}`);
+        if (!controller.signal.aborted) setHealth({ status: "healthy", checkedAt: payload.time || new Date().toISOString() });
+      })
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted) {
+          setHealth({ status: "unavailable", error: reason instanceof Error ? reason.message : "健康檢查失敗" });
+        }
+      });
+    return () => controller.abort();
+  }, []);
 
   // Load TWSE stats
   useEffect(() => {
@@ -214,7 +255,7 @@ export function DashboardView() {
       try {
         const res = await fetch("/api/twse-stats");
         const data = await res.json();
-        if (data.success) {
+        if (res.ok && data.success) {
           const stats = data.data || data;
           setTseStats({
             success: true,
@@ -229,9 +270,11 @@ export function DashboardView() {
             limitDown: stats.limitDown,
             date: stats.date,
           });
+          return;
         }
-      } catch {
-        // ignore TWSE error
+        throw new Error(data.error || `HTTP ${res.status}`);
+      } catch (reason: unknown) {
+        setTseStats((current) => ({ ...current, success: false, error: reason instanceof Error ? reason.message : "加權指數載入失敗" }));
       }
     };
     loadTwse();
@@ -243,7 +286,7 @@ export function DashboardView() {
       try {
         const res = await fetch("/api/otc-stats");
         const data = await res.json();
-        if (data.success) {
+        if (res.ok && data.success) {
           const stats = data.data || data;
           setOtcStats({
             success: true,
@@ -258,9 +301,11 @@ export function DashboardView() {
             limitDown: stats.limitDown,
             date: stats.date,
           });
+          return;
         }
-      } catch {
-        // ignore OTC error
+        throw new Error(data.error || `HTTP ${res.status}`);
+      } catch (reason: unknown) {
+        setOtcStats((current) => ({ ...current, success: false, error: reason instanceof Error ? reason.message : "櫃買指數載入失敗" }));
       }
     };
     loadOtc();
@@ -349,7 +394,7 @@ export function DashboardView() {
   // Safe number formatter that handles undefined/null
   const safeToFixed = (val: number | undefined | null, digits: number = 2) => {
     const num = Number(val);
-    return isNaN(num) ? '0.00' : num.toFixed(digits);
+    return Number.isFinite(num) ? num.toFixed(digits) : '--';
   };
 
   // Index card component — 標題顏色隨漲跌變化（紅漲綠跌）
@@ -361,7 +406,7 @@ export function DashboardView() {
       return (
         <div className="bg-bg-secondary border border-border rounded-lg p-2.5">
           <div className="text-[16px] font-bold mb-2 text-gray-400">{title} ---</div>
-          <div className="text-gray-600 text-center py-4">暫無資料</div>
+          <div className="text-gray-600 text-center py-4">{stats.error || '暫無資料'}</div>
         </div>
       );
     }
@@ -451,32 +496,32 @@ export function DashboardView() {
             <span className="flex items-center gap-1.5 text-xs font-semibold text-primary-500 bg-primary-500/10 px-2 py-0.5 rounded-full">
               <ClockBadge />
             </span>
-            <span>
-              {isOpen ? (
-                <span className="flex items-center gap-1 text-[11px] font-medium text-green-400 bg-green-500/10 px-2 py-0.5 rounded-full">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                  開盤中
-                </span>
-              ) : (
-                <span className="flex items-center gap-1 text-[11px] font-medium text-gray-400 bg-gray-500/10 px-2 py-0.5 rounded-full">
-                  <span className="w-1.5 h-1.5 rounded-full bg-gray-500" />
-                  市場收盤
-                </span>
-              )}
-            </span>
+            <MarketStatusBadge />
           </div>
           <p className="text-xs text-gray-400 mt-1 flex items-center gap-1.5">
             <Info className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
             <span>
-              最新數據基準日：<strong className="text-gray-200">{tseStats.date || "2026-06-25"}</strong>（與交易所每日盤後同步）
+              最新數據基準日：<strong className="text-gray-200">{tseStats.date || "未取得"}</strong>
             </span>
           </p>
         </div>
         <div className="flex flex-col sm:flex-row md:items-end gap-2 text-right">
-          <div className="flex items-center gap-1.5 text-xs text-green-400 bg-green-500/5 border border-green-500/10 px-2.5 py-1 rounded-md">
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>系統資料庫運作良好 • 同步完成</span>
-          </div>
+          {health.status === "healthy" ? (
+            <div className="flex items-center gap-1.5 text-xs text-green-400 bg-green-500/5 border border-green-500/10 px-2.5 py-1 rounded-md" title={`檢查時間 ${health.checkedAt}`}>
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>Supabase 連線已驗證</span>
+            </div>
+          ) : health.status === "checking" ? (
+            <div className="flex items-center gap-1.5 text-xs text-gray-400 bg-gray-500/5 border border-gray-500/10 px-2.5 py-1 rounded-md">
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              <span>正在驗證資料庫連線</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-xs text-amber-400 bg-amber-500/5 border border-amber-500/10 px-2.5 py-1 rounded-md" title={health.error}>
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span>Supabase 連線未驗證</span>
+            </div>
+          )}
         </div>
       </div>
 

@@ -1,13 +1,13 @@
 import { Router, type Response } from "express";
-import { isLoopbackRequest } from "../lib/security";
+import { isAuthorizedAdminRequest } from "../lib/security";
 import {
   getMarketTradeRisks, getStockTradeRisks, getTradeRiskStatus,
   type TradeRiskType,
 } from "../lib/tradeRisks";
 
 const router = Router();
-const allowTestSqlite = (req: Parameters<typeof isLoopbackRequest>[0]) =>
-  process.env.MARKET_DATA_MODE === "test" && isLoopbackRequest(req);
+const allowTestSqlite = (req: Parameters<typeof isAuthorizedAdminRequest>[0]) =>
+  process.env.MARKET_DATA_MODE === "test" && isAuthorizedAdminRequest(req);
 const TYPES = new Set<TradeRiskType>([
   "attention", "disposition", "trading_halt", "margin_restricted",
   "short_sale_restricted", "daytrade_restricted",

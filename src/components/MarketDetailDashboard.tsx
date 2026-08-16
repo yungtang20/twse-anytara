@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { KlineChart } from './KlineChart';
 import {
-  backfillStockShareholding,
   fetchStockHistory,
   fetchStockInstitutional,
   fetchStockShareholding,
@@ -10,7 +9,7 @@ import {
   type PriceData,
   type ShareholdingRow,
 } from '../lib/api';
-import { ShieldAlert, CheckCircle2, RefreshCw } from 'lucide-react';
+import { ShieldAlert, CheckCircle2 } from 'lucide-react';
 import { TradeRiskBanner } from './TradeRiskBanner';
 
 interface MarketDetailDashboardProps {
@@ -24,48 +23,47 @@ export function MarketDetailDashboard({ stockId }: MarketDetailDashboardProps) {
   const [loading, setLoading] = useState(false);
   const [hasDataIssue, setHasDataIssue] = useState(false);
   const [quality, setQuality] = useState<DataQuality | null>(null);
-  const [tdccBackfilling, setTdccBackfilling] = useState(false);
-  const [tdccMessage, setTdccMessage] = useState('');
-
-  const backfillTdcc = async () => {
-    setTdccBackfilling(true);
-    setTdccMessage('正在從集保官方網頁回補 52 週...');
-    try {
-      const inserted = await backfillStockShareholding(stockId);
-      const whales = await fetchStockShareholding(stockId);
-      setShareholding(whales.data);
-      setTdccMessage(inserted > 0 ? `已新增 ${inserted} 週集保資料` : '集保一年資料已完整');
-    } catch (error) {
-      setTdccMessage(error instanceof Error ? error.message : '集保歷史回補失敗');
-    } finally {
-      setTdccBackfilling(false);
-    }
-  };
+  const [dataError, setDataError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!stockId) return;
+    const controller = new AbortController();
     setLoading(true);
+    setPriceData([]);
+    setInstData([]);
+    setShareholding([]);
+    setQuality(null);
+    setHasDataIssue(true);
+    setDataError(null);
     const loadData = async () => {
       try {
         const [prices, insts, whales] = await Promise.all([
-          fetchStockHistory(stockId, 1000),
-          fetchStockInstitutional(stockId),
-          fetchStockShareholding(stockId),
+          fetchStockHistory(stockId, 1000, controller.signal),
+          fetchStockInstitutional(stockId, controller.signal),
+          fetchStockShareholding(stockId, controller.signal),
         ]);
-
+        if (controller.signal.aborted) return;
         setPriceData(prices.data);
-        setHasDataIssue(prices.data.length === 0 || prices.quality.isMock || prices.quality.isStale || prices.quality.warnings.length > 0);
+        setHasDataIssue(
+          prices.data.length === 0
+          || [prices.quality, insts.quality, whales.quality].some(
+            (item) => item.isMock || item.isStale || item.warnings.length > 0,
+          )
+        );
         setQuality(prices.quality);
         setInstData(insts.data);
         setShareholding(whales.data);
-      } catch (err) {
+      } catch (err: unknown) {
+        if (controller.signal.aborted) return;
         console.error("Failed to load stock data in MarketDetailDashboard via API:", err);
+        setDataError(err instanceof Error ? err.message : '個股資料載入失敗');
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     };
 
-    loadData();
+    void loadData();
+    return () => controller.abort();
   }, [stockId]);
 
   if (loading) {
@@ -107,18 +105,7 @@ export function MarketDetailDashboard({ stockId }: MarketDetailDashboardProps) {
         <span className="font-mono text-slate-500">
           K 線、成交量、外資、投信與千戶大戶已共用日期範圍
         </span>
-        <div className="flex items-center gap-2">
-          {tdccMessage && <span className="text-slate-400">{tdccMessage}</span>}
-          <button
-            type="button"
-            onClick={backfillTdcc}
-            disabled={tdccBackfilling}
-            className="flex items-center gap-1.5 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-2.5 py-1.5 font-bold text-cyan-300 disabled:opacity-50"
-          >
-            <RefreshCw size={12} className={tdccBackfilling ? 'animate-spin' : ''} />
-            {tdccBackfilling ? '回補中' : '從集保網頁補一年'}
-          </button>
-        </div>
+        <span className="text-slate-500">TDCC 歷史資料由受控的官方排程維護</span>
       </div>
 
       <div className="relative min-h-[300px]">
@@ -138,7 +125,7 @@ export function MarketDetailDashboard({ stockId }: MarketDetailDashboardProps) {
           </div>
         ) : (
           <div className="bg-slate-900/40 border border-slate-850/60 rounded-xl py-6 flex flex-col items-center justify-center text-center">
-            <span className="text-slate-500 text-xs font-mono">無歷史交易數據，請前往策略分析分頁進行一鍵同步</span>
+            <span className="text-slate-500 text-xs font-mono">{dataError || '沒有可用且通過驗證的歷史交易資料'}</span>
           </div>
         )}
       </div>

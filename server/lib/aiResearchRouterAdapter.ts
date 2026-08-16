@@ -1,88 +1,89 @@
-import OpenAI from "openai";
 import type { AIResearchModelRequest } from "../../shared/aiResearch";
-import { validateEnvValue } from "./security";
+import type { ResolvedAIProviderConnection } from "../../shared/aiProvider";
 import {
   AIResearchModelGatewayError,
   sanitizeAIResearchDurationMs,
   sanitizeAIResearchProviderUsage,
   type AIResearchModelGateway,
+  type AIResearchModelGatewayErrorCode,
   type AIResearchModelGatewayResult,
 } from "./aiResearchModelGateway";
+import {
+  OpenAICompatibleTransportError,
+  postChatCompletion,
+} from "./openAICompatibleTransport";
 
-export const AI_RESEARCH_ROUTER_BASE_URL = "https://api.hcnsec.cn/v1";
-export const AI_RESEARCH_ROUTER_MODEL = "glm-5.2";
-const AI_RESEARCH_MAX_TOKENS = 16384;
-
-type Env = Record<string, string | undefined>;
 interface CompletionResponse {
-  choices?: Array<{ message?: { content?: unknown } }>;
+  choices?: Array<{ finish_reason?: unknown; message?: { content?: unknown } }>;
   usage?: { prompt_tokens?: unknown; completion_tokens?: unknown };
-}
-interface RouterClient {
-  chat: { completions: { create(
-    parameters: Record<string, unknown>,
-    options: { signal: AbortSignal },
-  ): Promise<CompletionResponse> } };
-}
-interface RouterClientOptions { apiKey: string; baseURL: string; maxRetries: 0 }
-interface RouterAdapterOptions {
-  env?: Env;
-  clientFactory?: (options: RouterClientOptions) => RouterClient;
-  nowMs?: () => number;
-  timeoutMs?: number;
+  model?: unknown;
 }
 
-function throwIfCallerAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) throw new AIResearchModelGatewayError("aborted");
+interface RouterAdapterOptions {
+  postCompletion?: typeof postChatCompletion;
+  nowMs?: () => number;
 }
 
 function parseCandidate(value: unknown): unknown {
-  if (typeof value !== "string" || value.trim() === "") throw new AIResearchModelGatewayError("empty_response");
-  try { return JSON.parse(value) as unknown; }
-  catch { throw new AIResearchModelGatewayError("invalid_json"); }
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new AIResearchModelGatewayError("empty_response");
+  }
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    throw new AIResearchModelGatewayError("invalid_json");
+  }
 }
 
-function classify(error: unknown, callerAborted: boolean, timedOut: boolean): AIResearchModelGatewayError {
-  if (callerAborted) return new AIResearchModelGatewayError("aborted");
-  if (timedOut) return new AIResearchModelGatewayError("timeout");
-  const status = typeof error === "object" && error !== null && "status" in error
-    ? Number((error as { status: unknown }).status) : null;
-  if (status === 429) return new AIResearchModelGatewayError("rate_limited");
-  if (status !== null && status >= 500) return new AIResearchModelGatewayError("server_error");
-  if (status !== null && status >= 400) return new AIResearchModelGatewayError("provider_rejected");
-  return new AIResearchModelGatewayError("network");
+function provider(connection: ResolvedAIProviderConnection): "hcnsec" | "custom" {
+  try {
+    return new URL(connection.baseUrl).hostname.toLowerCase() === "api.hcnsec.cn"
+      ? "hcnsec" : "custom";
+  } catch {
+    return "custom";
+  }
+}
+
+function safeModel(value: unknown, fallback: string): string {
+  return typeof value === "string" && value.trim() && value.length <= 128 && !/[\r\n\0]/.test(value)
+    ? value.trim() : fallback;
+}
+
+function transportCode(error: OpenAICompatibleTransportError): AIResearchModelGatewayErrorCode {
+  if (error.code === "provider_aborted") return "aborted";
+  if (error.code === "provider_timeout") return "timeout";
+  if (error.code === "provider_rate_limited") return "rate_limited";
+  if (error.code === "provider_server_error") return "server_error";
+  if (error.code === "provider_rejected" || error.code === "provider_redirect_forbidden") {
+    return "provider_rejected";
+  }
+  if (error.code === "provider_invalid_json" || error.code === "provider_response_too_large") {
+    return "invalid_json";
+  }
+  return "network";
 }
 
 export class RouterAIResearchModelGateway implements AIResearchModelGateway {
-  private readonly env: Env;
-  private readonly clientFactory: (options: RouterClientOptions) => RouterClient;
+  private readonly postCompletion: typeof postChatCompletion;
   private readonly nowMs: () => number;
-  private readonly timeoutMs: number;
 
   constructor(options: RouterAdapterOptions = {}) {
-    this.env = options.env ?? process.env;
-    this.clientFactory = options.clientFactory ?? ((clientOptions) =>
-      new OpenAI(clientOptions) as unknown as RouterClient);
+    this.postCompletion = options.postCompletion ?? postChatCompletion;
     this.nowMs = options.nowMs ?? (() => performance.now());
-    this.timeoutMs = options.timeoutMs ?? 300_000;
   }
 
   async generateCandidate(
     request: AIResearchModelRequest,
-    options: { signal?: AbortSignal },
+    options: { signal?: AbortSignal; connection?: ResolvedAIProviderConnection },
   ): Promise<AIResearchModelGatewayResult> {
-    throwIfCallerAborted(options.signal);
-    const keyValue = this.env.AI_RESEARCH_API_KEY;
-    if (!keyValue) throw new AIResearchModelGatewayError("not_configured");
-    const apiKey = validateEnvValue("AI_RESEARCH_API_KEY", keyValue);
-    const client = this.clientFactory({ apiKey, baseURL: AI_RESEARCH_ROUTER_BASE_URL, maxRetries: 0 });
-    const timeout = AbortSignal.timeout(this.timeoutMs);
-    const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
+    if (options.signal?.aborted) throw new AIResearchModelGatewayError("aborted");
+    const connection = options.connection;
+    if (!connection) throw new AIResearchModelGatewayError("local_contract");
     const started = this.nowMs();
     let response: CompletionResponse;
     try {
-      response = await client.chat.completions.create({
-        model: AI_RESEARCH_ROUTER_MODEL,
+      response = await this.postCompletion(connection, {
+        model: connection.model,
         messages: [
           { role: "system", content: request.systemInstructions },
           { role: "user", content: JSON.stringify({
@@ -90,18 +91,29 @@ export class RouterAIResearchModelGateway implements AIResearchModelGateway {
             untrustedEvidence: request.untrustedEvidence,
           }) },
         ],
-        max_tokens: AI_RESEARCH_MAX_TOKENS,
+        max_tokens: connection.maxOutputTokens,
         stream: false,
         response_format: { type: "json_object" },
-      }, { signal });
+      }, { signal: options.signal }) as CompletionResponse;
     } catch (error) {
-      throw classify(error, Boolean(options.signal?.aborted), timeout.aborted);
+      if (error instanceof OpenAICompatibleTransportError) {
+        throw new AIResearchModelGatewayError(transportCode(error));
+      }
+      throw new AIResearchModelGatewayError("network");
     }
-    throwIfCallerAborted(options.signal);
-    const candidate = parseCandidate(response.choices?.[0]?.message?.content);
-    throwIfCallerAborted(options.signal);
-    return { candidate, provider: "router", model: AI_RESEARCH_ROUTER_MODEL,
+    if (options.signal?.aborted) throw new AIResearchModelGatewayError("aborted");
+    const choice = response.choices?.[0];
+    if (choice?.finish_reason === "length") throw new AIResearchModelGatewayError("truncated");
+    const candidate = parseCandidate(choice?.message?.content);
+    return {
+      candidate,
+      provider: provider(connection),
+      model: safeModel(response.model, connection.model),
       durationMs: sanitizeAIResearchDurationMs(this.nowMs() - started),
-      usage: sanitizeAIResearchProviderUsage(response.usage?.prompt_tokens, response.usage?.completion_tokens) };
+      usage: sanitizeAIResearchProviderUsage(
+        response.usage?.prompt_tokens,
+        response.usage?.completion_tokens,
+      ),
+    };
   }
 }

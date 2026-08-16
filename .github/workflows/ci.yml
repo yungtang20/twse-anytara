@@ -17,6 +17,52 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run lint
       - run: npm test
+      - run: npm run test:ui
       - run: npm run test:eval
       - run: npm run build
+
+  docker-production-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production image
+        run: docker build --tag trinity-production-smoke:${{ github.sha }} .
+      - name: Start production image
+        run: >-
+          docker run --detach --name trinity-production-smoke --publish 4317:10000
+          --env PORT=10000
+          --env SUPABASE_URL=https://example.supabase.co
+          --env SUPABASE_ANON_KEY=ci-placeholder
+          --env SUPABASE_SERVICE_ROLE_KEY=ci-placeholder
+          --env HCNSEC_API_KEY=ci-placeholder
+          trinity-production-smoke:${{ github.sha }}
+      - name: Verify production HTTP startup
+        run: curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://127.0.0.1:4317/
+      - name: Stop production image
+        if: always()
+        run: docker rm --force trinity-production-smoke || true
+
+  supabase-blank-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Start isolated Postgres and apply migrations
+        run: npx --yes supabase@2.114.0 start --exclude gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+      - name: Replay migrations from a blank database
+        run: npx --yes supabase@2.114.0 db reset
+      - name: Verify local schema policies, grants, constraints, and functions
+        run: npm run verify:supabase-security -- --local
+        env:
+          LOCAL_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+      - name: Stop isolated Supabase
+        if: always()
+        run: npx --yes supabase@2.114.0 stop --no-backup
