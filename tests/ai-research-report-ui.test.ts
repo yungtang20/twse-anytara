@@ -51,8 +51,8 @@ test("frontend client performs one request, preserves server errors, and propaga
 
 test("AIResearchView renders a formal report only when publication gate is ready", async () => {
   const view = await read("src/components/views/AIResearchView.tsx");
-  for (const text of ["股票代號", "產生 AI 綜合研究", "執行中", "取消", "Data quality",
-    "Provider / Model", "機械驗證預覽", "正式研究報告", "資料限制", "Citations / 來源識別",
+  for (const text of ["股票代號", "產生 AI 綜合研究", "執行中", "取消", "資料完整度",
+    "AI 服務資訊", "機械驗證預覽", "正式研究報告", "資料限制", "資料來源與佐證", "查看技術詳細資料",
     "撐壓分析", "均線趨勢", "籌碼動能", "型態偵測",
     "此內容為 AI 機械驗證預覽，尚未完成語意發布驗證，不構成投資建議。"] ) {
     assert.match(view, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), text);
@@ -62,7 +62,10 @@ test("AIResearchView renders a formal report only when publication gate is ready
   assert.match(view, /report\.publicationReady\s*\?\s*<PublishedReportPanel[^:]+:\s*<PreviewPanel/s);
   assert.match(view, /report\.publicationReady\s*&&\s*!report\.publishedReport/);
   assert.match(view, /研究報告契約錯誤/);
-  assert.match(view, /server-grounded/);
+  assert.doesNotMatch(view, /title="Data quality"|title="Provider \/ Model"|title="Citations \/ 來源識別"/);
+  assert.match(view, /<details/);
+  assert.match(view, /<summary/);
+  assert.match(view, /groundingLabel\(published\.semanticGrounding\)/);
   assert.match(view, /模型選擇的有界假設/);
   assert.doesNotMatch(view, /fetchResearchContext|\/api\/job|\/api\/jobs|\/api\/analysis-mvp|\/api\/ai-analysis|setInterval|poll/i);
   assert.doesNotMatch(view, /candidate|untrustedEvidence|ResearchPacket/);

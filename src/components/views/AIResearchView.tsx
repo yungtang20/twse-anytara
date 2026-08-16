@@ -3,6 +3,16 @@ import type { FormEvent, ReactNode } from "react";
 import { AlertTriangle, Ban, Database, LoaderCircle, Play, ShieldCheck } from "lucide-react";
 import { runAIResearch, type AIResearchReportSuccessResponse } from "../../lib/api";
 import {
+  claimKindLabel,
+  claimStanceLabel,
+  datasetLabel,
+  formatDuration,
+  groundingLabel,
+  informationRichnessLabel,
+  providerLabel,
+  qualityStatusLabel,
+} from "../../lib/aiResearchPresentation";
+import {
   loadAIProviderOverride,
   readHcnsecPrivacyAccepted,
   setHcnsecPrivacyAccepted,
@@ -111,13 +121,13 @@ function ResearchForm({
 function QualityPanel({ report }: { report: Report }) {
   const quality = report.auditSummary.dataQuality;
   return (
-    <Section title="Data quality">
+    <Section title="資料完整度">
       <div className="flex flex-wrap gap-2 text-xs">
-        <span className="rounded-full bg-blue-500/15 px-2.5 py-1 text-blue-200">Richness {quality.informationRichness}</span>
-        <span className="rounded-full bg-slate-800 px-2.5 py-1 text-slate-200">{quality.status}</span>
+        <span className="rounded-full bg-blue-500/15 px-2.5 py-1 text-blue-200">{informationRichnessLabel(quality.informationRichness)}</span>
+        <span className="rounded-full bg-slate-800 px-2.5 py-1 text-slate-200">{qualityStatusLabel(quality.status)}</span>
       </div>
-      {quality.missingDatasets.length > 0 && <p className="mt-3 text-xs text-amber-200">缺少：{quality.missingDatasets.join("、")}</p>}
-      {quality.staleDatasets.length > 0 && <p className="mt-1 text-xs text-amber-200">可能過期：{quality.staleDatasets.join("、")}</p>}
+      {quality.missingDatasets.length > 0 && <p className="mt-3 text-xs text-amber-200">缺少：{quality.missingDatasets.map(datasetLabel).join("、")}</p>}
+      {quality.staleDatasets.length > 0 && <p className="mt-1 text-xs text-amber-200">可能過期：{quality.staleDatasets.map(datasetLabel).join("、")}</p>}
       {quality.warnings.map((warning) => <p key={warning} className="mt-1 text-xs text-slate-400">{warning}</p>)}
     </Section>
   );
@@ -125,14 +135,12 @@ function QualityPanel({ report }: { report: Report }) {
 
 function ProviderPanel({ report }: { report: Report }) {
   return (
-    <Section title="Provider / Model">
+    <Section title="AI 服務資訊">
       <div className="space-y-2">
         {report.providerMetadata.map((item, index) => (
-          <div key={`${item.provider}-${index}`} className="rounded-xl bg-slate-950/60 p-3 text-xs text-slate-300">
-            <strong className="text-white">{item.provider}</strong> · {item.model}
-            <span className="ml-2 text-slate-500">
-              {item.durationMs === null ? "耗時無資料" : `${item.durationMs.toFixed(0)} ms`}
-            </span>
+          <div key={`${item.provider}-${index}`} className="flex flex-col gap-2 rounded-xl bg-slate-950/60 p-3 text-xs text-slate-300 sm:flex-row sm:items-start sm:justify-between">
+            <span className="min-w-0"><strong className="text-white">{providerLabel(item.provider)}</strong> · <span className="min-w-0 break-words">{item.model}</span></span>
+            <span className="shrink-0 whitespace-nowrap text-slate-500">{formatDuration(item.durationMs)}</span>
           </div>
         ))}
       </div>
@@ -167,7 +175,7 @@ function PreviewPanel({ report }: { report: Report }) {
       <div className="space-y-2">{claims.map((claim) => (
         <article key={claim.id} className="rounded-xl bg-slate-950/60 p-3">
           <p className="text-sm text-slate-100">{claim.text}</p>
-          <p className="mt-1 text-[11px] text-slate-500">{claim.kind} · {claim.stance}</p>
+          <p className="mt-1 text-[11px] text-slate-500">{claimKindLabel(claim.kind)} · {claimStanceLabel(claim.stance)}</p>
         </article>
       ))}</div>
       {report.draft && <p className="mt-4 border-t border-slate-800 pt-3 text-sm text-slate-200">{report.draft.conclusion}</p>}
@@ -180,13 +188,13 @@ function PublishedReportPanel({ report }: { report: Report }) {
   if (!report.publicationReady || !published) return null;
   return <Section title="正式研究報告">
     <div className="mb-3 flex items-center gap-2 rounded-xl border border-emerald-600/40 bg-emerald-950/30 p-3 text-xs text-emerald-100">
-      <ShieldCheck size={17} />事實由伺服器證據落地，目標價由伺服器計算；估值倍數仍是模型選擇的有界假設。
+      <ShieldCheck size={17} />事實與計算均已由伺服器驗證；估值倍數仍為模型選擇的有界假設，建議信心仍屬模型自評。
     </div>
-    <p className="mb-3 text-[11px] text-slate-500">server-grounded · 發布時間 {published.generatedAt}</p>
+    <p className="mb-3 text-[11px] text-slate-500">{groundingLabel(published.semanticGrounding)} · 發布時間 {published.generatedAt}</p>
     <div className="space-y-2">{published.claims.map((claim) => <article key={claim.id}
       className="rounded-xl bg-slate-950/60 p-3">
       <p className="text-sm text-slate-100">{claim.text}</p>
-      <p className="mt-1 text-[11px] text-slate-500">{claim.kind} · {claim.stance} · server-grounded</p>
+      <p className="mt-1 text-[11px] text-slate-500">{claimKindLabel(claim.kind)} · {claimStanceLabel(claim.stance)} · {groundingLabel(published.semanticGrounding)}</p>
     </article>)}</div>
     <p className="mt-4 border-t border-slate-800 pt-3 text-sm text-slate-200">{published.conclusion}</p>
   </Section>;
@@ -197,19 +205,25 @@ function RecommendationPanel({ report }: { report: Report }) {
     ? report.publishedReport.recommendation : report.recommendation;
   const reportClaims = report.publishedReport?.claims ?? report.draft?.claims ?? [];
   const claims = new Map(reportClaims.map((entry) => [entry.id, entry.text]));
-  const list = (ids: string[]) => ids.length === 0 ? "無資料"
-    : ids.map((id) => claims.get(id) ?? id).join("；");
+  const normalList = (ids: string[]) => ids.length === 0 ? "無資料"
+    : ids.map((id) => claims.get(id) ?? "未找到對應研究發現").join("；");
+  const riskAndLimitationIds = report.publicationReady && report.publishedReport
+    ? [...new Set([...item?.riskFindingIds ?? [], ...report.publishedReport.conclusionFindingIds.limitations])]
+    : item?.riskFindingIds ?? [];
+  const riskAndLimitationList = riskAndLimitationIds.length === 0
+    ? "本次未列入需關注的主要風險或資料限制"
+    : riskAndLimitationIds.map((id) => claims.get(id) ?? "未找到對應研究發現").join("；");
   return <Section title="綜合研究結論">
     {!item ? <p className="text-sm text-slate-400">現有資料不足以形成可驗證研究建議</p> : <div className="space-y-3">
       {!report.publicationReady && <p className="text-xs text-amber-200">模型候選預覽，尚未正式發布</p>}
       <div className="flex flex-wrap items-center gap-2">
         <span className="rounded-full bg-blue-500/20 px-3 py-1 text-sm font-bold text-blue-100">{item.verdict} · {item.label}</span>
         <span className="text-xs text-slate-400">研究期間 {item.horizonMonths} 個月</span>
-        <span className="text-xs text-slate-400">模型信心值估計 {(item.confidence * 100).toFixed(0)}%（未經驗證）</span>
+        <span className="text-xs text-slate-400">模型自評信心 {(item.confidence * 100).toFixed(0)}%（未經外部驗證，不代表歷史準確率）</span>
       </div>
-      <p className="text-xs text-slate-300"><strong>支持因素：</strong>{list(item.supportingFindingIds)}</p>
-      <p className="text-xs text-slate-300"><strong>反對因素：</strong>{list(item.opposingFindingIds)}</p>
-      <p className="text-xs text-amber-200"><strong>主要風險：</strong>{list(item.riskFindingIds)}</p>
+      <p className="text-xs text-slate-300"><strong>支持因素：</strong>{normalList(item.supportingFindingIds)}</p>
+      <p className="text-xs text-slate-300"><strong>反對因素：</strong>{normalList(item.opposingFindingIds)}</p>
+      <p className="text-xs text-amber-200"><strong>風險與資料限制：</strong>{riskAndLimitationList}</p>
     </div>}
   </Section>;
 }
@@ -220,12 +234,14 @@ const numberText = (value: number) => new Intl.NumberFormat("zh-TW", { maximumFr
 function ValuationPanel({ report }: { report: Report }) {
   const item = report.publicationReady && report.publishedReport
     ? report.publishedReport.valuation : report.valuation;
+  const source = item && report.auditSummary.sources.find((entry) => entry.id === item.metric.sourceId);
+  const sourceSummary = source ? `${datasetLabel(source.dataset)} · ${providerLabel(source.provider)}` : "詳見技術詳細資料";
   return <Section title="估值情境">
     {!item ? <p className="text-sm text-slate-400">現有資料不足以建立可驗證估值</p> : <>
       <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-300">
         <span>方法：{item.method}</span><span>現價：{numberText(item.currentPrice)}</span>
         <span>{item.metric.name}：{numberText(item.metric.value)}{item.metric.estimated ? "（估算）" : ""}</span>
-        <span>財務期間：{item.metric.period}</span><span>source：{item.metric.sourceId}</span><span>as-of：{item.asOf}</span>
+        <span>財務期間：{item.metric.period}</span><span>資料來源：{sourceSummary}</span><span>資料日期：{item.asOf}</span>
       </div>
       <div className="overflow-x-auto"><table className="w-full text-left text-xs">
         <thead className="text-slate-500"><tr><th className="py-2">情境</th><th>倍數</th><th>目標價</th><th>預期報酬</th></tr></thead>
@@ -240,25 +256,34 @@ function ValuationPanel({ report }: { report: Report }) {
 }
 
 function ProvenancePanel({ report }: { report: Report }) {
+  const provenanceClaims = report.publishedReport?.claims ?? report.draft?.claims ?? [];
+  const valuation = report.publishedReport?.valuation ?? report.valuation;
   return (
     <div className="grid gap-3 lg:grid-cols-2">
       <Section title="資料限制">
         {report.auditSummary.limitations.length === 0 ? <p className="text-sm text-slate-400">未列出額外限制</p>
           : report.auditSummary.limitations.map((item) => <p key={item} className="mb-1 text-xs text-amber-200">{item}</p>)}
       </Section>
-      <Section title="Citations / 來源識別">
-        {report.auditSummary.citations.map((item) => <p key={item.findingId} className="mb-1 text-xs text-slate-300">
-          {item.findingId}: {item.evidenceIds.join("、")}
+      <Section title="資料來源與佐證">
+        {report.auditSummary.sources.map((source) => <p key={source.id} className="mt-2 text-xs text-slate-300">
+          {datasetLabel(source.dataset)} · {providerLabel(source.provider)} · 資料日期 {source.asOf ?? "無日期"}
         </p>)}
-        {report.auditSummary.sources.map((source) => <p key={source.id} className="mt-2 text-[11px] text-slate-500">
-          {source.dataset} · {source.provider} · {source.asOf ?? "無日期"}
-        </p>)}
+        <details className="mt-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-[11px] text-slate-500">
+          <summary className="cursor-pointer text-slate-300">查看技術詳細資料</summary>
+          <div className="mt-2 space-y-2">
+            {report.auditSummary.citations.map((item) => <p key={item.findingId}>研究發現 ID：{item.findingId}；證據 ID：{item.evidenceIds.join("、")}</p>)}
+            {report.auditSummary.sources.map((source) => <p key={source.id}>來源 ID：{source.id}；資料集：{source.dataset}；供應商：{source.provider}；資料日期：{source.asOf ?? "無日期"}</p>)}
+            {report.providerMetadata.map((item, index) => <p key={`${item.provider}-${index}`}>AI 供應商：{item.provider}；模型：{item.model}</p>)}
+            {provenanceClaims.map((claim) => <p key={claim.id}>研究發現 ID：{claim.id}；證據 ID：{claim.evidenceIds.join("、")}</p>)}
+            {valuation && <p>估值來源 ID：{valuation.metric.sourceId}</p>}
+          </div>
+        </details>
       </Section>
     </div>
   );
 }
 
-function ReportView({ report }: { report: Report }) {
+export function ReportView({ report }: { report: Report }) {
   if (report.publicationReady && !report.publishedReport) {
     return <div role="alert" className="rounded-2xl border border-rose-700/50 bg-rose-950/30 p-4 text-sm text-rose-200">
       研究報告契約錯誤：正式發布狀態缺少 publishedReport
