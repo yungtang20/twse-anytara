@@ -31,12 +31,18 @@ const DATASET_LABELS: Readonly<Record<string, string>> = {
   strategy_ma: "均線策略", strategy_chips: "籌碼策略", strategy_pattern: "型態策略",
 };
 
-export const informationRichnessLabel = (value: string) => ({ A: "資訊豐富", B: "資訊足夠", C: "資訊有限" }[value] ?? "資訊等級未知");
-export const qualityStatusLabel = (value: string) => ({ complete: "資料完整", partial: "部分資料" }[value] ?? "資料狀態未知");
-export const claimKindLabel = (value: string) => CLAIM_KIND_LABELS[value] ?? "其他研究發現";
-export const claimStanceLabel = (value: string) => CLAIM_STANCE_LABELS[value] ?? "方向未分類";
-export const groundingLabel = (value: string) => GROUNDING_LABELS[value] ?? "驗證狀態未知";
-export const providerLabel = (value: string) => PROVIDER_LABELS[value] ?? "其他 AI 服務";
-export const datasetLabel = (value: string) => DATASET_LABELS[value] ?? "其他資料來源";
+const INFORMATION_RICHNESS_LABELS: Readonly<Record<string, string>> = { A: "資訊豐富", B: "資訊足夠", C: "資訊有限" };
+const QUALITY_STATUS_LABELS: Readonly<Record<string, string>> = { complete: "資料完整", partial: "部分資料" };
+
+const labelFor = (labels: Readonly<Record<string, string>>, value: string, fallback: string) =>
+  Object.hasOwn(labels, value) ? labels[value] : fallback;
+
+export const informationRichnessLabel = (value: string) => labelFor(INFORMATION_RICHNESS_LABELS, value, "資訊等級未知");
+export const qualityStatusLabel = (value: string) => labelFor(QUALITY_STATUS_LABELS, value, "資料狀態未知");
+export const claimKindLabel = (value: string) => labelFor(CLAIM_KIND_LABELS, value, "其他研究發現");
+export const claimStanceLabel = (value: string) => labelFor(CLAIM_STANCE_LABELS, value, "方向未分類");
+export const groundingLabel = (value: string) => labelFor(GROUNDING_LABELS, value, "驗證狀態未知");
+export const providerLabel = (value: string) => labelFor(PROVIDER_LABELS, value, "其他 AI 服務");
+export const datasetLabel = (value: string) => labelFor(DATASET_LABELS, value, "其他資料來源");
 export const formatDuration = (durationMs: number | null) => durationMs === null
   ? "處理時間未知" : `處理時間約 ${(durationMs / 1000).toFixed(1)} 秒`;
