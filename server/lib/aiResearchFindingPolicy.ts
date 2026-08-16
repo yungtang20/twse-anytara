@@ -47,7 +47,16 @@ const FIELD_LABELS: Record<string, string> = {
   "tdcc.whalePeople": "千張大戶人數", "tradeRisks.highestLevel": "最高交易風險",
 };
 
+const STRATEGY_SIGNAL_LABELS: Record<string, string> = {
+  sr: "支撐壓力策略訊號",
+  ma: "均線策略訊號",
+  chips: "籌碼策略訊號",
+  pattern: "型態策略訊號",
+};
+
 function fieldLabel(field: string): string {
+  const strategySignal = /^strategies\.([^.]+)\.signal$/.exec(field);
+  if (strategySignal) return STRATEGY_SIGNAL_LABELS[strategySignal[1]] ?? "策略訊號";
   if (field.endsWith(".foreignNet")) return "外資買賣超";
   if (field.endsWith(".trustNet")) return "投信買賣超";
   if (field.endsWith(".dealerNet")) return "自營商買賣超";
