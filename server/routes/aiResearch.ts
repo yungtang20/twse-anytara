@@ -53,6 +53,12 @@ interface AIProviderTestHandlerOptions {
   probe?: (connection: ResolvedAIProviderConnection, options: { signal?: AbortSignal }) =>
     Promise<{ ok: true; modelCount: number }>;
   correlationId?: () => string;
+  log?: (event: {
+    event: "ai_provider_transport_error";
+    correlationId: string;
+    error: string;
+    networkCode: string;
+  }) => void;
 }
 
 const REPORT_TIMEOUT_MS = 900_000;
@@ -219,8 +225,10 @@ export function createAIProviderTestHandler(options: AIProviderTestHandlerOption
   const guard = options.guard ?? createAIAbuseGuard();
   const probe = options.probe ?? probeProviderConnection;
   const correlationId = options.correlationId ?? randomUUID;
+  const log = options.log ?? ((event) => console.warn(JSON.stringify(event)));
   return async (request: ReportRequest, response: ReportResponse): Promise<void> => {
-    response.setHeader("X-Correlation-Id", correlationId());
+    const requestCorrelationId = correlationId();
+    response.setHeader("X-Correlation-Id", requestCorrelationId);
     let connection: ResolvedAIProviderConnection;
     let release: (() => void) | undefined;
     try {
@@ -253,6 +261,14 @@ export function createAIProviderTestHandler(options: AIProviderTestHandlerOption
       response.json({ success: true, modelCount: result.modelCount });
     } catch (error) {
       if (responseClosed) return;
+      if (error instanceof OpenAICompatibleTransportError && error.networkCode) {
+        log({
+          event: "ai_provider_transport_error",
+          correlationId: requestCorrelationId,
+          error: error.code,
+          networkCode: error.networkCode,
+        });
+      }
       const failure = probeError(error, connection);
       response.status(failure.status).json({ success: false, error: failure.error });
     } finally {
