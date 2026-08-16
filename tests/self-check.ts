@@ -415,10 +415,18 @@ assert.deepEqual(
   mondayTicks(["2026-07-24", "2026-07-27", "2026-07-31", "2026-08-03"]),
   ["2026-07-27", "2026-08-03"],
 );
-assert.equal(parseAppView(""), "markets");
+assert.equal(parseAppView(""), "dashboard");
+assert.equal(parseAppView("#/dashboard"), "dashboard");
+assert.equal(parseAppView("#/markets"), "markets");
+assert.equal(parseAppView("#/strategies"), "strategies");
 assert.equal(parseAppView("#/ai-analysis"), "ai-analysis");
-assert.equal(parseAppView("#/unknown"), "markets");
+assert.equal(parseAppView("#/settings"), "settings");
+assert.equal(parseAppView("#/unknown"), "dashboard");
 assert.equal(appViewHash("markets"), "#/markets");
+
+const indexHtml = readFileSync(path.join(process.cwd(), "index.html"), "utf8");
+assert.match(indexHtml, /<title>TRINITY 台股決策研究平台<\/title>/);
+assert.doesNotMatch(indexHtml, /My Google AI Studio App/);
 const simulatedProjection = buildSimulatedPriceProjection(
   Array.from({ length: 20 }, (_, index) => ({ close: 100 + index })),
 );
